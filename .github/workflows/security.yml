@@ -35,7 +35,7 @@ jobs:
           echo "languages=${langs}]" >>"$GITHUB_OUTPUT"
 
   codeql:
-    name: CodeQL (${{ matrix.language }})
+    name: CodeQL
     needs: plan
     runs-on: ubuntu-24.04
     timeout-minutes: 30
