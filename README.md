@@ -469,7 +469,7 @@ flowchart LR
     REL -. push .-> IMG3[(ghcr: :X.Y.Z, :latest)]
 ```
 
-- Nhánh tính năng tách từ `develop`, merge vào `develop` qua PR. Phát hành bằng PR `develop → main`, sau đó gắn tag `vX.Y.Z` trên `main`.
+- Nhánh tính năng tách từ `develop`, merge vào `develop` qua PR bằng **squash merge**. Phát hành bằng PR `develop → main` dùng **merge commit** (không squash/rebase, để hai nhánh giữ chung lịch sử), sau đó gắn tag `vX.Y.Z` trên `main`.
 - Tiêu đề PR theo **Conventional Commits** (`feat(trip): ...`, `fix(payment): ...`) vì squash merge dùng tiêu đề PR làm commit message.
 
 #### Workflow
@@ -505,9 +505,9 @@ flowchart LR
 
 #### Thiết lập trên GitHub (làm một lần)
 
-1. **Branch protection** cho `main` và `develop`: bắt buộc PR, required checks `CI passed`, `Conventional PR title`, `Dependency review`, `CodeQL (actions)`; cấm force push. Riêng `main`: yêu cầu nhánh cập nhật trước khi merge.
+1. **Branch protection** *(đã bật cho `main`)*: bắt buộc PR (0 approval vì nhóm hiện có một người), required checks `CI passed`, `Conventional PR title`, `Dependency review`, nhánh phải cập nhật trước khi merge, phải giải quyết hết comment, áp dụng cả với admin, cấm force push và xóa nhánh. Không bật *linear history* vì PR `develop → main` dùng merge commit. Khi nhóm đông hơn, tăng số approval và bật *Require review from Code Owners*.
 2. **Settings → Code security:** bật Dependabot alerts và security updates, secret scanning, push protection.
-3. **Settings → General → Pull Requests:** chỉ bật *Squash merging* (mặc định dùng tiêu đề PR) và tự xóa nhánh sau khi merge.
+3. **Settings → General → Pull Requests:** bật *Squash merging* (cho PR vào `develop`) và *Merge commits* (cho PR `develop → main`), tắt *Rebase merging*, bật tự xóa nhánh sau khi merge.
 4. **Packages:** sau lần publish đầu tiên, liên kết package GHCR với repo và đặt visibility phù hợp.
 
 > **Chưa có bước deploy.** SRS (§1.1) không đưa hạ tầng triển khai vào phạm vi. Khi chọn được môi trường (Kubernetes, VPS + Docker Compose, cloud PaaS, ...), thêm job `deploy` vào `delivery.yml`, gắn GitHub Environments `staging` (từ `develop`) và `production` (từ tag, yêu cầu người duyệt), và deploy theo **digest** đã ký.
