@@ -1,0 +1,175 @@
+name: CI
+
+# Pull requests run CI directly; pushes to develop/main and release tags run it
+# through delivery.yml (workflow_call) so each commit is verified once before
+# images are published.
+on:
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      services:
+        description: JSON array of services affected by this change
+        value: ${{ jobs.plan.outputs.services }}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: '21'
+  JAVA_DISTRIBUTION: temurin
+  MAVEN_ARGS: -B -ntp -Dstyle.color=always
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      has-maven: ${{ steps.detect.outputs.has-maven }}
+      has-contracts: ${{ steps.detect.outputs.has-contracts }}
+      build-needed: ${{ steps.detect.outputs.build-needed }}
+      maven-pl: ${{ steps.detect.outputs.maven-pl }}
+      services: ${{ steps.detect.outputs.services }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: detect
+        name: Detect affected modules
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          FORCE_ALL: ${{ github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') }}
+        run: bash .github/scripts/detect-changes.sh
+
+  lint-workflows:
+    name: Lint workflows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: actionlint (+ shellcheck)
+        run: docker run --rm -v "${PWD}:/repo" --workdir /repo rhysd/actionlint:1.7.12 -color
+
+  contracts:
+    name: Validate contracts
+    needs: plan
+    if: needs.plan.outputs.has-contracts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: JSON Schema (events, WebSocket)
+        run: |
+          npm install --no-save --no-audit --no-fund --prefix "$RUNNER_TEMP/ajv" ajv@8.20.0 ajv-formats@3.0.1
+          NODE_PATH="$RUNNER_TEMP/ajv/node_modules" node .github/scripts/validate-contracts.cjs contracts
+      - name: OpenAPI lint
+        run: |
+          shopt -s nullglob
+          specs=(contracts/openapi/*.yaml contracts/openapi/*.yml)
+          if ((${#specs[@]} == 0)); then
+            echo "No OpenAPI specs yet - skipping."
+            exit 0
+          fi
+          npx --yes @redocly/cli@2.58.1 lint "${specs[@]}"
+
+  build:
+    name: Build & test
+    needs: plan
+    if: needs.plan.outputs.build-needed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+      - name: Maven verify (unit + integration tests, coverage gates)
+        env:
+          MAVEN_PL: ${{ needs.plan.outputs.maven-pl }}
+        run: |
+          mvn_cmd=mvn
+          [[ -x ./mvnw ]] && mvn_cmd=./mvnw
+          if [[ -n "$MAVEN_PL" ]]; then
+            "$mvn_cmd" verify -pl "$MAVEN_PL" -am
+          else
+            "$mvn_cmd" verify
+          fi
+      - name: Test report
+        if: ${{ !cancelled() }}
+        uses: mikepenz/action-junit-report@b7b80d7ac5b1da46d6aaff9fb57ad50d8453bcb3 # v6.6.0
+        with:
+          report_paths: '**/target/{surefire,failsafe}-reports/TEST-*.xml'
+          annotate_only: true
+          detailed_summary: true
+          require_tests: false
+      - name: Upload test & coverage reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: test-reports
+          path: |
+            **/target/surefire-reports/
+            **/target/failsafe-reports/
+            **/target/site/jacoco/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  docker-build:
+    name: Docker build
+    needs: [plan, build]
+    if: github.event_name == 'pull_request' && needs.build.result == 'success' && needs.plan.outputs.services != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.plan.outputs.services) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build image (no push)
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: docker/service.Dockerfile
+          build-args: SERVICE=${{ matrix.service }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+
+  # Single required status check for branch protection: stays green when jobs
+  # are skipped because nothing relevant changed, fails if any job failed.
+  ci-passed:
+    name: CI passed
+    needs: [plan, lint-workflows, contracts, build, docker-build]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          for r in $RESULTS; do
+            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
+              echo "::error::At least one CI job did not succeed."
+              exit 1
+            fi
+          done

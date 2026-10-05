@@ -1,0 +1,10 @@
+.git
+.github
+.idea
+*.iml
+**/target
+**/node_modules
+**/*.log
+*.md
+!README.md
+docker-compose*.yml

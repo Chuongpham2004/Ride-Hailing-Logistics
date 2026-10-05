@@ -1,0 +1,7 @@
+# Default owner for everything. Add per-service owners as the team grows, e.g.:
+#   /services/payment-service/  @finance-team-lead
+#   /contracts/                 @architect
+*       @Chuongpham2004
+
+/.github/   @Chuongpham2004
+/contracts/ @Chuongpham2004
