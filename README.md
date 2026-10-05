@@ -383,6 +383,8 @@ flowchart LR
 
 ```
 ride-hailing-logistics/
+├── .github/                        # CI/CD (§4.12), Dependabot, CODEOWNERS, PR template
+├── docker/service.Dockerfile       # Dockerfile dùng chung cho mọi service
 ├── pom.xml                         # Parent POM: Spring Boot BOM, Spring Cloud BOM, plugin chung
 ├── contracts/                      # Hợp đồng là nguồn sự thật cho giao tiếp
 │   ├── openapi/                    #   *.yaml cho từng service
@@ -452,6 +454,63 @@ rhl:
 ```
 
 > Các giá trị trên chỉ là placeholder cho dev. Giá trị chính thức chờ chốt ở TBD-04, TBD-05, TBD-06, TBD-14.
+
+### 4.12. CI/CD (GitHub Actions)
+
+#### Quy trình nhánh
+
+```mermaid
+flowchart LR
+    F[feature/* · fix/*] -- PR + CI --> DEV[develop]
+    DEV -- PR + CI --> MAIN[main]
+    MAIN -- tag vX.Y.Z --> REL[Release]
+    DEV -. push .-> IMG1[(ghcr: :develop)]
+    MAIN -. push .-> IMG2[(ghcr: :main)]
+    REL -. push .-> IMG3[(ghcr: :X.Y.Z, :latest)]
+```
+
+- Nhánh tính năng tách từ `develop`, merge vào `develop` qua PR. Phát hành bằng PR `develop → main`, sau đó gắn tag `vX.Y.Z` trên `main`.
+- Tiêu đề PR theo **Conventional Commits** (`feat(trip): ...`, `fix(payment): ...`) vì squash merge dùng tiêu đề PR làm commit message.
+
+#### Workflow
+
+| File | Kích hoạt | Nội dung |
+|---|---|---|
+| `ci.yml` | PR vào `develop`/`main`; được `delivery.yml` gọi lại | Phát hiện module thay đổi → `mvn verify` (unit + integration test, Testcontainers) chỉ cho service bị ảnh hưởng → báo cáo test và JaCoCo → validate JSON Schema và OpenAPI trong `contracts/` → actionlint + shellcheck → build thử Docker image. Job **`CI passed`** tổng hợp kết quả để dùng làm required check |
+| `security.yml` | PR, push `develop`/`main`, thứ Hai hằng tuần, chạy tay | CodeQL (`security-extended`) cho Java và chính các workflow · Dependency Review (chặn CVE mức high và license GPL/AGPL) · gitleaks quét secret · Trivy quét dependency, misconfig, secret; kết quả đẩy lên tab **Security** |
+| `delivery.yml` | Push `develop`/`main`, tag `v*.*.*`, chạy tay | Chạy CI → build image cho service thay đổi → push **GHCR** `ghcr.io/chuongpham2004/rhl-<service>` kèm SBOM và SLSA provenance → Trivy quét image (fail nếu có CRITICAL/HIGH đã có bản vá) → ký **cosign keyless** → tag tạo GitHub Release với release notes tự sinh |
+| `pr-quality.yml` | PR | Kiểm tra tiêu đề PR theo Conventional Commits và scope (`trip`, `payment`, ...) |
+| `dependabot.yml` | Thứ Hai hằng tuần | Cập nhật Maven, GitHub Actions, Docker base image theo nhóm; PR nhắm vào `develop` |
+
+#### Nguyên tắc
+
+- **Build theo thay đổi:** chỉ build và publish service có file thay đổi. Thay đổi ở `pom.xml`, `libs/`, `contracts/`, `docker/`, `.github/` sẽ build lại toàn bộ (`.github/scripts/detect-changes.sh`).
+- **Supply chain:**
+  - Mọi action được pin theo **commit SHA**.
+  - `GITHUB_TOKEN` mặc định chỉ có quyền `contents: read`; job nào cần thêm quyền thì khai báo riêng.
+  - Checkout không giữ credential.
+  - Image có SBOM, provenance và chữ ký cosign.
+- **Image:** dùng chung `docker/service.Dockerfile` với các bước build Maven, tách layer Spring Boot, chạy trên JRE 21, user không phải root (UID 10001), múi giờ UTC.
+- **Khi chưa có code:** các job Maven, contracts và Docker tự bỏ qua; pipeline vẫn xanh.
+
+#### Quy ước để pipeline nhận diện đúng
+
+| Quy ước | Ví dụ |
+|---|---|
+| Mỗi service là một Maven module tại `services/<name>/pom.xml` | `services/trip-service/pom.xml` |
+| Root `pom.xml` là parent/aggregator; có `mvnw` thì CI ưu tiên dùng | `./mvnw verify` |
+| Integration test đặt tên `*IT.java` (Failsafe); ngưỡng coverage đặt trong JaCoCo `check` của parent POM | `TripAcceptConcurrencyIT` |
+| Schema: `<Name>.v<n>.schema.json`; payload mẫu: `<Name>.v<n>.example.json` | `TripAccepted.v1.example.json` |
+| OpenAPI đặt tại `contracts/openapi/*.yaml` | `contracts/openapi/trip-service.yaml` |
+
+#### Thiết lập trên GitHub (làm một lần)
+
+1. **Branch protection** cho `main` và `develop`: bắt buộc PR, required checks `CI passed`, `Conventional PR title`, `Dependency review`, `CodeQL (actions)`; cấm force push. Riêng `main`: yêu cầu nhánh cập nhật trước khi merge.
+2. **Settings → Code security:** bật Dependabot alerts và security updates, secret scanning, push protection.
+3. **Settings → General → Pull Requests:** chỉ bật *Squash merging* (mặc định dùng tiêu đề PR) và tự xóa nhánh sau khi merge.
+4. **Packages:** sau lần publish đầu tiên, liên kết package GHCR với repo và đặt visibility phù hợp.
+
+> **Chưa có bước deploy.** SRS (§1.1) không đưa hạ tầng triển khai vào phạm vi. Khi chọn được môi trường (Kubernetes, VPS + Docker Compose, cloud PaaS, ...), thêm job `deploy` vào `delivery.yml`, gắn GitHub Environments `staging` (từ `develop`) và `production` (từ tag, yêu cầu người duyệt), và deploy theo **digest** đã ký.
 
 ---
 
