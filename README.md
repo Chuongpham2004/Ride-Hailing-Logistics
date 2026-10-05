@@ -505,9 +505,10 @@ flowchart LR
 
 #### Thiết lập trên GitHub (làm một lần)
 
-1. **Branch protection** *(đã bật cho `main`)*: bắt buộc PR (0 approval vì nhóm hiện có một người), required checks `CI passed`, `Conventional PR title`, `Dependency review`, nhánh phải cập nhật trước khi merge, phải giải quyết hết comment, áp dụng cả với admin, cấm force push và xóa nhánh. Không bật *linear history* vì PR `develop → main` dùng merge commit. Khi nhóm đông hơn, tăng số approval và bật *Require review from Code Owners*.
+1. **Branch protection `main`** *(đã bật)*: bắt buộc PR (0 approval vì nhóm hiện có một người), required checks `CI passed`, `Conventional PR title`, `Dependency review`, nhánh phải cập nhật trước khi merge, phải giải quyết hết comment, áp dụng cả với admin, cấm force push và xóa nhánh. Không bật *linear history* vì PR `develop → main` dùng merge commit. Khi nhóm đông hơn, tăng số approval và bật *Require review from Code Owners*. **Lưu ý:** comment do bot code scanning (CodeQL, Trivy) để lại trên PR cũng tính là conversation. Phải resolve hết, hoặc sửa/dismiss cảnh báo trong tab Security, thì mới merge được.
+   - **Branch protection `develop`** *(đã bật, mức tối thiểu)*: chỉ cấm xóa nhánh và force push; vẫn cho push thẳng, không bắt buộc PR hay check. Lớp bảo vệ này **bắt buộc phải có** vì GitHub tự xóa nhánh nguồn sau khi merge, và `develop` là nhánh nguồn của PR `develop → main`. Nhánh được bảo vệ sẽ không bị tự xóa. Khi nhóm đông hơn, nên nâng lên: bắt buộc PR và check `CI passed`.
 2. **Settings → Code security:** bật Dependabot alerts và security updates, secret scanning, push protection.
-3. **Settings → General → Pull Requests:** bật *Squash merging* (cho PR vào `develop`) và *Merge commits* (cho PR `develop → main`), tắt *Rebase merging*, bật tự xóa nhánh sau khi merge.
+3. **Settings → General → Pull Requests:** bật *Squash merging* (cho PR vào `develop`) và *Merge commits* (cho PR `develop → main`), tắt *Rebase merging*, bật tự xóa nhánh sau khi merge (an toàn với `develop` nhờ lớp bảo vệ ở bước 1).
 4. **Packages:** sau lần publish đầu tiên, liên kết package GHCR với repo và đặt visibility phù hợp.
 
 > **Chưa có bước deploy.** SRS (§1.1) không đưa hạ tầng triển khai vào phạm vi. Khi chọn được môi trường (Kubernetes, VPS + Docker Compose, cloud PaaS, ...), thêm job `deploy` vào `delivery.yml`, gắn GitHub Environments `staging` (từ `develop`) và `production` (từ tag, yêu cầu người duyệt), và deploy theo **digest** đã ký.
