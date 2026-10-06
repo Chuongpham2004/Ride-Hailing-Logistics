@@ -24,6 +24,7 @@
         <module>services/api-gateway</module>
         <module>services/user-service</module>
         <module>services/location-service</module>
+        <module>services/trip-service</module>
     </modules>
 
     <properties>

@@ -1,0 +1,17 @@
+{
+  "eventId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9f09",
+  "eventType": "DriverOfferCancelled",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-05T08:31:00Z",
+  "correlationId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9eff",
+  "producer": "trip-service",
+  "aggregateId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e03",
+  "aggregateVersion": 1,
+  "payload": {
+    "offerId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e03",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "reason": "TRIP_CANCELLED",
+    "cancelledAt": "2026-10-05T08:31:03Z"
+  }
+}

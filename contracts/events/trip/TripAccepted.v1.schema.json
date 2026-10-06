@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:TripAccepted:v1",
+  "title": "TripAccepted v1",
+  "description": "A driver won the trip (MATCHING -> ACCEPTED); the driver is now BUSY. Topic trip.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
+  "properties": {
+    "eventType": { "const": "TripAccepted" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "trip-service" },
+    "payload": {
+      "type": "object",
+      "required": ["tripId", "customerId", "driverId", "offerId", "serviceType", "acceptedAt"],
+      "properties": {
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "type": "string", "format": "uuid" },
+        "offerId": { "type": "string", "format": "uuid" },
+        "serviceType": { "enum": ["RIDE", "DELIVERY"] },
+        "acceptedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:DriverOfferCancelled:v1",
+  "title": "DriverOfferCancelled v1",
+  "description": "The offer was withdrawn because the trip was cancelled or stopped matching; the driver is AVAILABLE again. Topic dispatch.offers.v1, key = driverId.",
+  "type": "object",
+  "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
+  "properties": {
+    "eventType": { "const": "DriverOfferCancelled" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "trip-service" },
+    "payload": {
+      "type": "object",
+      "required": ["offerId", "tripId", "driverId", "reason", "cancelledAt"],
+      "properties": {
+        "offerId": { "type": "string", "format": "uuid" },
+        "tripId": { "type": "string", "format": "uuid" },
+        "driverId": { "type": "string", "format": "uuid" },
+        "reason": { "enum": ["TRIP_CANCELLED", "NO_DRIVER"] },
+        "cancelledAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

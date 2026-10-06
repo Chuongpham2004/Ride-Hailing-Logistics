@@ -1,0 +1,20 @@
+{
+  "eventId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9f01",
+  "eventType": "TripRequested",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-05T08:31:00Z",
+  "correlationId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9eff",
+  "producer": "trip-service",
+  "aggregateId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+  "aggregateVersion": 0,
+  "payload": {
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "customerId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e02",
+    "serviceType": "RIDE",
+    "status": "MATCHING",
+    "pickup": { "latitude": 10.7725, "longitude": 106.698, "address": "Chợ Bến Thành, Quận 1, TP.HCM" },
+    "dropoff": { "latitude": 10.7626, "longitude": 106.6822, "address": "Trường ĐH Khoa học Tự nhiên, Quận 5, TP.HCM" },
+    "matchingDeadline": "2026-10-05T08:31:30Z",
+    "occurredAt": "2026-10-05T08:31:00Z"
+  }
+}
