@@ -2,6 +2,7 @@ package com.rhl.trip.application;
 
 import com.rhl.common.messaging.OutboxWriter;
 import com.rhl.trip.domain.DriverOffer;
+import com.rhl.trip.domain.FareSnapshot;
 import com.rhl.trip.domain.Stop;
 import com.rhl.trip.domain.Transition;
 import com.rhl.trip.domain.Trip;
@@ -34,6 +35,11 @@ public class TripEventPublisher {
         payload.put("dropoff", stop(trip.getDropoff()));
         payload.put("matchingDeadline", trip.getMatchingDeadline().toString());
         payload.put("occurredAt", at.toString());
+        FareSnapshot fare = trip.getFare();
+        payload.put("quoteId", fare.quoteId().toString());
+        payload.put("quotedFare", fare.quotedFare());
+        payload.put("currency", fare.currency());
+        payload.put("surgeMultiplier", fare.surgeMultiplier());
         trip(trip, "TripRequested", payload);
     }
 

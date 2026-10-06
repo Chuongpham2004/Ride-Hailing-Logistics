@@ -56,7 +56,9 @@ class PricingRuleTest {
     void estimatedRouteUsesRoadFactorAndAverageSpeed() {
         EstimatedRouteProvider provider = new EstimatedRouteProvider(new PricingServiceProperties(
                 new PricingServiceProperties.Quote(Duration.ofMinutes(5), 1_000, 200, 100_000),
-                new PricingServiceProperties.Route(1.35, 22, 60), "DEFAULT"));
+                new PricingServiceProperties.Route(1.35, 22, 60),
+                new PricingServiceProperties.Surge(8, 1, Duration.ofMinutes(5), Duration.ofSeconds(60)),
+                new PricingServiceProperties.Kafka(3, (short) 1, 1), "DEFAULT"));
         // Ben Thanh market -> University of Science, District 5: about 2.0 km as the crow flies.
         Stop pickup = new Stop(10.7725, 106.6980, "Ben Thanh");
         Stop dropoff = new Stop(10.7626, 106.6822, "DH KHTN");

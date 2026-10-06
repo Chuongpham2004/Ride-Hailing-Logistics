@@ -2,6 +2,7 @@ package com.rhl.trip.domain;
 
 import org.junit.jupiter.api.Test;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -16,6 +17,10 @@ class TripTest {
             new MatchingPolicy(2000, 1000, 4000, Duration.ofSeconds(15), Duration.ofSeconds(30));
     private static final Stop PICKUP = new Stop(10.7725, 106.698, "Ben Thanh");
     private static final Stop DROPOFF = new Stop(10.7626, 106.6822, "District 5");
+
+    private static FareSnapshot fare(String surge) {
+        return new FareSnapshot(UUID.randomUUID(), 27_000L, "VND", new BigDecimal(surge), 1, 2_764, 452);
+    }
 
     private final UUID customer = UUID.randomUUID();
     private final UUID driver = UUID.randomUUID();
@@ -97,8 +102,32 @@ class TripTest {
         assertThat(trip.isMatchingOverdue(NOW.plusSeconds(60))).isFalse();
     }
 
+    @Test
+    void aSurgedQuoteNeedsTheExactMultiplierConfirmed() {
+        FareSnapshot surged = fare("1.50");
+
+        assertThatThrownBy(() -> surged.requireSurgeConsent(null))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("x1.50");
+        assertThatThrownBy(() -> surged.requireSurgeConsent(new BigDecimal("1.40")))
+                .isInstanceOf(DomainException.class)
+                .hasMessageContaining("changed");
+        surged.requireSurgeConsent(new BigDecimal("1.5"));
+    }
+
+    @Test
+    void anUnsurgedQuoteNeedsNoConfirmationButRejectsAStaleOne() {
+        FareSnapshot normal = fare("1.00");
+
+        normal.requireSurgeConsent(null);
+        normal.requireSurgeConsent(new BigDecimal("1.00"));
+        assertThatThrownBy(() -> normal.requireSurgeConsent(new BigDecimal("1.30")))
+                .isInstanceOf(DomainException.class);
+    }
+
     private Trip matchingTrip() {
-        Trip trip = Trip.create(UUID.randomUUID(), customer, ServiceType.RIDE, PICKUP, DROPOFF, POLICY, NOW);
+        Trip trip = Trip.create(UUID.randomUUID(), customer, ServiceType.RIDE, PICKUP, DROPOFF, fare("1.00"), POLICY,
+                NOW);
         trip.startMatching(NOW);
         return trip;
     }

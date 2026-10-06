@@ -26,6 +26,9 @@ public interface TripRepository extends JpaRepository<Trip, UUID> {
             """, nativeQuery = true)
     boolean hasActiveTrip(@Param("customerId") UUID customerId);
 
+    @Query("SELECT COUNT(t) > 0 FROM Trip t WHERE t.fare.quoteId = :quoteId")
+    boolean isQuoteUsed(@Param("quoteId") UUID quoteId);
+
     @Query(value = """
             SELECT driver_id FROM trips
             WHERE driver_id IN (:driverIds) AND status IN ('ACCEPTED', 'PICKING_UP', 'ARRIVED', 'IN_TRIP')

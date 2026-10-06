@@ -2,6 +2,7 @@ package com.rhl.pricing;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rhl.common.id.UuidV7;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -9,6 +10,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
@@ -19,10 +21,15 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+import org.testcontainers.kafka.KafkaContainer;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,7 +40,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/** End-to-end against real PostgreSQL and Redis (UC-02, FR-PRI, BR-005, BR-007). */
+/** End-to-end against real PostgreSQL, Redis and Kafka (UC-02, FR-PRI, BR-005…007). */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Testcontainers
@@ -56,6 +63,10 @@ class PricingServiceIT {
     @ServiceConnection(name = "redis")
     static GenericContainer<?> redis = new GenericContainer<>("redis:7.4-alpine").withExposedPorts(6379);
 
+    @Container
+    @ServiceConnection
+    static KafkaContainer kafka = new KafkaContainer("apache/kafka:3.9.1");
+
     @Autowired
     MockMvc mvc;
 
@@ -64,6 +75,9 @@ class PricingServiceIT {
 
     @Autowired
     StringRedisTemplate redisTemplate;
+
+    @Autowired
+    KafkaTemplate<String, String> kafkaTemplate;
 
     @Test
     void customerGetsAPricedQuoteThatOnlyTheyAndTripServiceCanUse() throws Exception {
@@ -80,6 +94,8 @@ class PricingServiceIT {
         assertThat(quote.path("currency").asText()).isEqualTo("VND");
         assertThat(quote.path("ruleVersion").asInt()).isEqualTo(1);
         assertThat(quote.path("surgeMultiplier").decimalValue()).isEqualByComparingTo("1.00");
+        assertThat(quote.path("surgeSource").asText()).isEqualTo("COMPUTED");
+        assertThat(quote.path("surgeConfirmationRequired").asBoolean()).isFalse();
         assertThat(quote.path("routeSource").asText()).isEqualTo("ESTIMATE");
         assertThat(quote.path("distanceMeters").asInt()).isBetween(2_600, 2_900);
         assertThat(Duration.between(Instant.parse(quote.path("createdAt").asText()),
@@ -143,6 +159,56 @@ class PricingServiceIT {
                 .andExpect(jsonPath("$.data.total").value(before.path("total").asLong()));
     }
 
+    /** Hoan Kiem, Ha Noi: far from the other tests' pickups, so its counters are its own. */
+    @Test
+    void demandAboveSupplyRaisesTheMultiplierAndTheQuoteRecordsWhy() throws Exception {
+        Map<String, Object> pickup = Map.of("latitude", 21.0285, "longitude", 105.8542, "address", "Ho Hoan Kiem");
+        Map<String, Object> dropoff = Map.of("latitude", 21.0368, "longitude", 105.8342, "address", "Lang Bac");
+        UUID customer = UUID.randomUUID();
+        assertThat(data(quote(customer, "RIDE", pickup, dropoff)).path("surgeMultiplier").decimalValue())
+                .isEqualByComparingTo("1.00");
+
+        // One AVAILABLE driver nearby, one BUSY driver who must not count as supply.
+        UUID available = UUID.randomUUID();
+        UUID busy = UUID.randomUUID();
+        publish("driver.events.v1", available, "DriverAvailabilityChanged", "user-service", 1,
+                availability(available, "AVAILABLE"));
+        publish("driver.events.v1", busy, "DriverAvailabilityChanged", "user-service", 1, availability(busy, "BUSY"));
+        // driver.events and location.updates are separate topics: let availability land first.
+        await().atMost(Duration.ofSeconds(20)).until(() ->
+                "AVAILABLE".equals(redisTemplate.opsForHash().get("surge:driver:" + available, "status"))
+                        && "BUSY".equals(redisTemplate.opsForHash().get("surge:driver:" + busy, "status")));
+        publish("location.updates.v1", available, "DriverLocationUpdated", "location-service", 7,
+                position(available, 21.0290, 105.8540));
+        publish("location.updates.v1", busy, "DriverLocationUpdated", "location-service", 7,
+                position(busy, 21.0291, 105.8541));
+
+        // Six trip requests in the area within the window: demand 6 vs supply 1 -> capped at 2.00.
+        for (int i = 0; i < 6; i++) {
+            UUID tripId = UuidV7.random();
+            publish("trip.events.v1", tripId, "TripRequested", "trip-service", 0, tripRequested(tripId, pickup, dropoff));
+        }
+
+        JsonNode surged = await().atMost(Duration.ofSeconds(20)).until(
+                () -> data(quote(customer, "RIDE", pickup, dropoff)),
+                q -> q.path("surgeMultiplier").decimalValue().compareTo(new BigDecimal("2.00")) == 0);
+
+        assertThat(surged.path("surgeConfirmationRequired").asBoolean()).isTrue();
+        assertThat(surged.path("surgeSource").asText()).isEqualTo("COMPUTED");
+        assertThat(surged.path("surgeRuleVersion").asInt()).isEqualTo(1);
+        JsonNode b = surged.path("breakdown");
+        assertThat(b.path("surgeAmount").asLong()).isPositive();
+        assertThat(surged.path("total").asLong()).isGreaterThanOrEqualTo(
+                2 * (b.path("baseFare").asLong() + b.path("distanceFare").asLong() + b.path("timeFare").asLong()
+                        + b.path("minimumFareAdjustment").asLong()));
+        Set<String> supplyKeys = redisTemplate.keys("surge:supply:RIDE:*");
+        assertThat(supplyKeys).isNotEmpty();
+        assertThat(supplyKeys).anySatisfy(key ->
+                assertThat(redisTemplate.opsForZSet().score(key, available.toString())).isNotNull());
+        assertThat(supplyKeys).allSatisfy(key ->
+                assertThat(redisTemplate.opsForZSet().score(key, busy.toString())).isNull());
+    }
+
     @Test
     void quotesValidateTheirInput() throws Exception {
         UUID customer = UUID.randomUUID();
@@ -168,6 +234,46 @@ class PricingServiceIT {
                                 Map<String, Object> dropoff) throws Exception {
         return perform(post("/api/v1/quotes"), customerToken(customer),
                 Map.of("serviceType", serviceType, "pickup", pickup, "dropoff", dropoff));
+    }
+
+    private void publish(String topic, UUID key, String type, String producer, long version,
+                         Map<String, Object> payload) throws Exception {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("eventId", UuidV7.randomString());
+        envelope.put("eventType", type);
+        envelope.put("eventVersion", 1);
+        envelope.put("occurredAt", Instant.now().toString());
+        envelope.put("correlationId", UuidV7.randomString());
+        envelope.put("producer", producer);
+        envelope.put("aggregateId", key.toString());
+        envelope.put("aggregateVersion", version);
+        envelope.put("payload", payload);
+        kafkaTemplate.send(topic, key.toString(), json.writeValueAsString(envelope)).get();
+    }
+
+    private static Map<String, Object> availability(UUID driver, String status) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("driverId", driver.toString());
+        payload.put("oldStatus", "OFFLINE");
+        payload.put("newStatus", status);
+        payload.put("serviceTypes", List.of("RIDE"));
+        payload.put("vehicleId", UUID.randomUUID().toString());
+        payload.put("reason", null);
+        payload.put("occurredAt", Instant.now().toString());
+        return payload;
+    }
+
+    private static Map<String, Object> position(UUID driver, double lat, double lng) {
+        Instant now = Instant.now();
+        return Map.of("driverId", driver.toString(), "sequence", 7, "latitude", lat, "longitude", lng,
+                "accuracyMeters", 8.0, "deviceTimestamp", now.toString(), "serverTimestamp", now.toString());
+    }
+
+    private static Map<String, Object> tripRequested(UUID tripId, Map<String, Object> pickup,
+                                                     Map<String, Object> dropoff) {
+        return Map.of("tripId", tripId.toString(), "customerId", UUID.randomUUID().toString(), "serviceType", "RIDE",
+                "status", "MATCHING", "pickup", pickup, "dropoff", dropoff,
+                "matchingDeadline", Instant.now().plusSeconds(30).toString(), "occurredAt", Instant.now().toString());
     }
 
     private static Map<String, Object> rule(Instant effectiveFrom) {

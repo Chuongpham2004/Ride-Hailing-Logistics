@@ -7,15 +7,12 @@ import com.rhl.common.web.ApiResponse;
 import com.rhl.trip.application.TripService;
 import com.rhl.trip.application.TripViews;
 import com.rhl.trip.domain.CancelReason;
-import com.rhl.trip.domain.ServiceType;
-import com.rhl.trip.domain.Stop;
 import com.rhl.trip.domain.TripStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -33,6 +30,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -51,23 +49,21 @@ public class TripController {
     private final TripService trips;
     private final ObjectMapper objectMapper;
 
-    public record StopRequest(@NotNull @DecimalMin("-90") @DecimalMax("90") Double latitude,
-                              @NotNull @DecimalMin("-180") @DecimalMax("180") Double longitude,
-                              @NotBlank @Size(max = 300) String address) {
-
-        Stop toStop() {
-            return new Stop(latitude, longitude, address.strip());
-        }
-    }
-
-    public record CreateTripRequest(@NotNull ServiceType serviceType, @NotNull @Valid StopRequest pickup,
-                                    @NotNull @Valid StopRequest dropoff) {
+    /**
+     * @param quoteId                 from {@code POST /api/v1/quotes}; route, service and price come from it
+     * @param acceptedSurgeMultiplier required when the quote has a surge above 1.00, and must equal it (BR-006)
+     */
+    public record CreateTripRequest(@NotNull UUID quoteId,
+                                    @DecimalMin("1.00") @DecimalMax("99.99") BigDecimal acceptedSurgeMultiplier) {
     }
 
     public record CancelRequest(@NotNull CancelReason reason, @Size(max = 300) String note) {
     }
 
-    /** Requires {@code Idempotency-Key} (COM-008); retries with the same key return the same trip. */
+    /**
+     * Books a quote (UC-03). Requires {@code Idempotency-Key} (COM-008); retries with the same key
+     * return the same trip.
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     @PreAuthorize("hasRole('CUSTOMER')")
@@ -75,8 +71,7 @@ public class TripController {
             @RequestHeader(IDEMPOTENCY_KEY) @Pattern(regexp = "^[A-Za-z0-9_-]{8,100}$") String idempotencyKey,
             @Valid @RequestBody CreateTripRequest request) {
         return ApiResponse.ok(trips.create(CurrentUser.get().id(), idempotencyKey, hash(request),
-                new TripService.CreateCommand(request.serviceType(), request.pickup().toStop(),
-                        request.dropoff().toStop())));
+                new TripService.CreateCommand(request.quoteId(), request.acceptedSurgeMultiplier())));
     }
 
     @GetMapping

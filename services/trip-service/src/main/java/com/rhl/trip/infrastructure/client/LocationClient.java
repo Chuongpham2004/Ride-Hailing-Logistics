@@ -27,7 +27,7 @@ public class LocationClient {
     private final RestClient rest;
 
     public LocationClient(RestClient.Builder builder, TripServiceProperties properties) {
-        TripServiceProperties.Location config = properties.location();
+        TripServiceProperties.Remote config = properties.location();
         HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
         factory.setReadTimeout(config.readTimeout());
