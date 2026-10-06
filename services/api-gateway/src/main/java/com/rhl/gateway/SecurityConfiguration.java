@@ -46,6 +46,9 @@ public class SecurityConfiguration {
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
                                 "/api/v1/auth/refresh").permitAll()
+                        // Payment provider webhooks carry no user token; payment-service verifies their
+                        // HMAC signature, timestamp and event ID instead (FR-PAY).
+                        .pathMatchers(HttpMethod.POST, "/api/v1/payments/callbacks/**").permitAll()
                         .pathMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .pathMatchers("/api/v1/admin/**").hasAnyRole(Role.REVIEWER.name(), Role.SUPPORT_STAFF.name(),
                                 Role.FINANCE_STAFF.name(), Role.ADMINISTRATOR.name())

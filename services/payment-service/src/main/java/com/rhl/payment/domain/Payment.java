@@ -132,6 +132,13 @@ public class Payment {
         updatedAt = now;
     }
 
+    /** The provider accepted the charge and will report the outcome by callback. */
+    public void awaitingCallback(PaymentAttempt attempt, String reference, Instant now) {
+        requireCurrent(attempt);
+        attempt.accepted(reference);
+        updatedAt = now;
+    }
+
     public void failed(PaymentAttempt attempt, String code, Instant now) {
         requireCurrent(attempt);
         attempt.fail(code, now);

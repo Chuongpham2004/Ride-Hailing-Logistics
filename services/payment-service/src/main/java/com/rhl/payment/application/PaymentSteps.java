@@ -4,10 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.id.UuidV7;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.ProcessedEvents;
+import com.rhl.common.web.ApiException;
 import com.rhl.payment.domain.CommissionRule;
 import com.rhl.payment.domain.Payment;
 import com.rhl.payment.domain.PaymentAttempt;
 import com.rhl.payment.domain.PaymentPurpose;
+import com.rhl.payment.domain.PaymentStatus;
 import com.rhl.payment.domain.ServiceType;
 import com.rhl.payment.domain.Wallet;
 import com.rhl.payment.domain.WalletEntry;
@@ -82,6 +84,31 @@ public class PaymentSteps {
         return Optional.of(attempt.getId());
     }
 
+    /**
+     * A customer asks to pay a failed payment again (FR-PAY: retry after failure). Only a FAILED
+     * payment gets a new attempt: one in flight or already paid is left alone, so double clicks
+     * never create two charges.
+     *
+     * @return the new attempt to send, empty when there is nothing to retry
+     */
+    @Transactional
+    public Optional<UUID> retry(UUID customerId, UUID paymentId, int maxAttempts) {
+        Payment payment = payments.findByIdForUpdate(paymentId)
+                .filter(p -> p.getCustomerId().equals(customerId))
+                .orElseThrow(() -> ApiException.notFound("Payment"));
+        if (payment.getStatus() != PaymentStatus.FAILED) {
+            return Optional.empty();
+        }
+        if (payment.getAttemptCount() >= maxAttempts) {
+            throw ApiException.rule("This payment was attempted " + maxAttempts
+                    + " times; please contact support");
+        }
+        PaymentAttempt attempt = payment.startAttempt(UuidV7.random(), provider.name(), clock.instant());
+        payments.saveAndFlush(payment);
+        attempts.save(attempt);
+        return Optional.of(attempt.getId());
+    }
+
     /** What to send to the provider for an attempt whose outcome is not known yet. */
     @Transactional(readOnly = true)
     public Optional<PaymentProvider.ChargeRequest> request(UUID attemptId) {
@@ -96,25 +123,38 @@ public class PaymentSteps {
     }
 
     /**
-     * Records the provider's answer. Idempotent: an attempt already resolved (by a concurrent
-     * worker or an earlier delivery) is left as it is, so events and ledger lines are written
-     * once (BR-015).
+     * Records the provider's answer, from the synchronous call or from a signed callback.
+     * Idempotent: an attempt already resolved (by a concurrent worker, an earlier delivery or a
+     * repeated callback) is left as it is, so events and ledger lines are written once (BR-015).
+     *
+     * @return whether this call settled the attempt ({@code false} if it was already resolved or
+     *         the outcome is still pending at the provider)
      */
     @Transactional
-    public void complete(UUID attemptId, PaymentProvider.ChargeResult result) {
+    public boolean complete(UUID attemptId, PaymentProvider.ChargeResult result) {
         UUID paymentId = attempts.findPaymentId(attemptId).orElseThrow();
         Payment payment = payments.findByIdForUpdate(paymentId).orElseThrow();
         // Attempts only change under this lock, so this read is current.
         PaymentAttempt attempt = attempts.findById(attemptId).orElseThrow();
         if (!attempt.isPending()) {
-            return;
+            return false;
         }
         Instant now = clock.instant();
-        if (!result.succeeded()) {
-            payment.failed(attempt, result.failureCode(), now);
-            payments.saveAndFlush(payment);
-            events.failed(payment, attempt);
-            return;
+        switch (result.outcome()) {
+            case PENDING -> {
+                payment.awaitingCallback(attempt, result.reference(), now);
+                payments.saveAndFlush(payment);
+                return false;
+            }
+            case DECLINED -> {
+                payment.failed(attempt, result.failureCode(), now);
+                payments.saveAndFlush(payment);
+                events.failed(payment, attempt);
+                return true;
+            }
+            case SUCCEEDED -> {
+                // handled below
+            }
         }
         payment.succeeded(attempt, result.reference(), now);
         payments.saveAndFlush(payment);
@@ -122,6 +162,7 @@ public class PaymentSteps {
         if (payment.getDriverId() != null) {
             creditDriver(payment, now);
         }
+        return true;
     }
 
     /** Net earning and commission into the driver's ledger, once per payment (BR-011, BR-012). */

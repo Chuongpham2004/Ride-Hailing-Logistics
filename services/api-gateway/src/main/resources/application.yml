@@ -54,7 +54,7 @@ spring:
             - id: payment-service
               uri: ${PAYMENT_SERVICE_URL:http://localhost:8086}
               predicates:
-                - Path=/api/v1/payments/**,/api/v1/wallets/**,/api/v1/admin/payments/**
+                - Path=/api/v1/payments/**,/api/v1/wallets/**,/api/v1/admin/payments/**,/api/v1/admin/wallets/**
           httpclient:
             connect-timeout: 2000
             response-timeout: 10s
