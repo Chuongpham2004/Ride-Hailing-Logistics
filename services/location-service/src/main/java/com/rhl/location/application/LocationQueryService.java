@@ -49,8 +49,11 @@ public class LocationQueryService {
      * periodically (README §4.6, BR-004).
      */
     public List<NearbyDriver> nearby(ServiceType type, double latitude, double longitude, int radiusMeters,
-                                     int limit) {
-        List<LocationStore.GeoHit> hits = store.search(type, latitude, longitude, radiusMeters, limit * OVERFETCH);
+                                     int requestedLimit) {
+        // Bounded here as well as in the controller, so the over-fetch below can never overflow.
+        int limit = Math.clamp(requestedLimit, 1, properties.nearby().maxLimit());
+        int radius = Math.clamp(radiusMeters, 1, properties.nearby().maxRadiusMeters());
+        List<LocationStore.GeoHit> hits = store.search(type, latitude, longitude, radius, limit * OVERFETCH);
         if (hits.isEmpty()) {
             return List.of();
         }
