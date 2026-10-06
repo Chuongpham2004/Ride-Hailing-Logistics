@@ -14,8 +14,8 @@ import java.time.Duration;
 /** Business thresholds (NFR-MNT-005); matching values are placeholders until TBD-06 is settled. */
 @Validated
 @ConfigurationProperties(prefix = "rhl")
-public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @NotNull Location location,
-                                    @Valid @NotNull Kafka kafka) {
+public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @NotNull Remote location,
+                                    @Valid @NotNull Remote pricing, @Valid @NotNull Kafka kafka) {
 
     /**
      * @param candidateLimit drivers asked from location-service per round
@@ -38,7 +38,8 @@ public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @N
         }
     }
 
-    public record Location(@NotBlank String baseUrl, @NotNull Duration connectTimeout, @NotNull Duration readTimeout) {
+    /** A service called over REST, with short timeouts (README §8.5). */
+    public record Remote(@NotBlank String baseUrl, @NotNull Duration connectTimeout, @NotNull Duration readTimeout) {
     }
 
     public record Kafka(@Min(1) int partitions, @Min(1) short replicas) {

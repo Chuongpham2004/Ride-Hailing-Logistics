@@ -79,6 +79,10 @@ rhl:
     base-url: ${LOCATION_SERVICE_URL:http://localhost:8082}
     connect-timeout: 500ms
     read-timeout: 1s
+  pricing:
+    base-url: ${PRICING_SERVICE_URL:http://localhost:8084}
+    connect-timeout: 500ms
+    read-timeout: 2s
   kafka:
     partitions: 3
     replicas: 1

@@ -26,13 +26,13 @@ public class InternalQuoteController {
     private final QuoteService quotes;
 
     /**
-     * 200 with the quote snapshot when it belongs to {@code customerId}, matches
-     * {@code serviceType} and is still valid; 404 when it is not this customer's; 422
+     * 200 with the quote snapshot when it belongs to {@code customerId}, is still valid and
+     * matches {@code serviceType} if given; 404 when it is not this customer's; 422
      * {@code QUOTE_EXPIRED} when it ran out.
      */
     @GetMapping("/{quoteId}")
     public ApiResponse<PricingViews.QuoteView> validate(@PathVariable UUID quoteId, @RequestParam UUID customerId,
-                                                        @RequestParam ServiceType serviceType) {
+                                                        @RequestParam(required = false) ServiceType serviceType) {
         return ApiResponse.ok(quotes.validateFor(quoteId, customerId, serviceType));
     }
 }

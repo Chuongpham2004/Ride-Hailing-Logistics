@@ -59,6 +59,10 @@ public class Trip {
             @AttributeOverride(name = "address", column = @Column(name = "dropoff_address"))})
     private Stop dropoff;
 
+    /** {@code null} only for trips created before quotes were required. */
+    @Embedded
+    private FareSnapshot fare;
+
     @Column(name = "matching_radius_meters", nullable = false)
     private int matchingRadiusMeters;
 
@@ -99,13 +103,14 @@ public class Trip {
     private Instant cancelledAt;
 
     public static Trip create(UUID id, UUID customerId, ServiceType serviceType, Stop pickup, Stop dropoff,
-                              MatchingPolicy policy, Instant now) {
+                              FareSnapshot fare, MatchingPolicy policy, Instant now) {
         Trip trip = new Trip();
         trip.id = Objects.requireNonNull(id);
         trip.customerId = Objects.requireNonNull(customerId);
         trip.serviceType = Objects.requireNonNull(serviceType);
         trip.pickup = Objects.requireNonNull(pickup);
         trip.dropoff = Objects.requireNonNull(dropoff);
+        trip.fare = Objects.requireNonNull(fare);
         trip.status = TripStatus.CREATED;
         trip.matchingRadiusMeters = policy.initialRadiusMeters();
         trip.matchingDeadline = now.plus(policy.matchingTimeout());

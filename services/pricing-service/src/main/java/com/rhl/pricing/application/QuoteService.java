@@ -13,6 +13,7 @@ import com.rhl.pricing.domain.PricingRule;
 import com.rhl.pricing.domain.RouteEstimate;
 import com.rhl.pricing.domain.ServiceType;
 import com.rhl.pricing.domain.Stop;
+import com.rhl.pricing.domain.SurgeAssessment;
 import com.rhl.pricing.infrastructure.cache.QuoteCache;
 import com.rhl.pricing.infrastructure.persistence.FareQuoteRepository;
 import com.rhl.pricing.infrastructure.persistence.PricingRuleRepository;
@@ -22,7 +23,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.UUID;
@@ -58,11 +58,12 @@ public class QuoteService {
         }
         PricingRule rule = rules.findEffective(command.serviceType(), properties.regionCode(), now)
                 .orElseThrow(() -> DomainException.rule("No price is configured for " + command.serviceType()));
-        BigDecimal multiplier = surge.multiplier(command.serviceType(), command.pickup());
-        FareBreakdown fare = FareCalculator.calculate(rule.tariff(), route, multiplier, config.roundingStep());
+        SurgeAssessment assessment = surge.assess(command.serviceType(), command.pickup(), now);
+        FareBreakdown fare = FareCalculator.calculate(rule.tariff(), route, assessment.multiplier(),
+                config.roundingStep());
 
         FareQuote quote = FareQuote.issue(UuidV7.random(), customerId, command.serviceType(), command.pickup(),
-                command.dropoff(), route, rule, fare, config.ttl(), now);
+                command.dropoff(), route, rule, assessment, fare, config.ttl(), now);
         quotes.save(quote);
         PricingViews.QuoteView view = PricingViews.QuoteView.of(quote);
         // Cached only once committed, so trip-service never sees a quote the database does not have.
@@ -86,8 +87,8 @@ public class QuoteService {
     }
 
     /**
-     * For trip-service (README §5.1): the quote must belong to {@code customerId}, be for
-     * {@code serviceType} and still be valid.
+     * For trip-service (README §5.1): the quote must belong to {@code customerId}, still be valid
+     * and, when {@code serviceType} is given, be for that service.
      */
     @Transactional(readOnly = true)
     public PricingViews.QuoteView validateFor(UUID quoteId, UUID customerId, ServiceType serviceType) {
@@ -98,7 +99,7 @@ public class QuoteService {
         if (!clock.instant().isBefore(quote.expiresAt())) {
             throw DomainException.quoteExpired("The quote expired at " + quote.expiresAt() + ", ask for a new one");
         }
-        if (quote.serviceType() != serviceType) {
+        if (serviceType != null && quote.serviceType() != serviceType) {
             throw DomainException.rule("The quote is for " + quote.serviceType() + ", not " + serviceType);
         }
         return quote;

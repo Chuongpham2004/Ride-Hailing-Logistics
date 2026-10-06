@@ -18,17 +18,22 @@ public final class PricingViews {
 
     /**
      * Everything FR-PRI asks a quote to show: route, components, surge, total, currency, rule
-     * version and expiry. {@code customerId} lets trip-service check ownership (BR-005).
+     * versions and expiry. {@code customerId} lets trip-service check ownership (BR-005).
+     *
+     * @param surgeConfirmationRequired the app must show the surge and get the customer's explicit
+     *                                  consent before booking (BR-006)
      */
     public record QuoteView(UUID id, UUID customerId, ServiceType serviceType, Stop pickup, Stop dropoff,
                             int distanceMeters, int durationSeconds, String routeSource, UUID ruleId,
-                            int ruleVersion, BigDecimal surgeMultiplier, FareBreakdown breakdown, long total,
+                            int ruleVersion, BigDecimal surgeMultiplier, boolean surgeConfirmationRequired,
+                            String surgeSource, Integer surgeRuleVersion, FareBreakdown breakdown, long total,
                             String currency, Instant createdAt, Instant expiresAt) {
 
         static QuoteView of(FareQuote q) {
             return new QuoteView(q.getId(), q.getCustomerId(), q.getServiceType(), q.getPickup(), q.getDropoff(),
                     q.getDistanceMeters(), q.getDurationSeconds(), q.getRouteSource(), q.getRuleId(),
-                    q.getRuleVersion(), q.getSurgeMultiplier(), q.breakdown(), q.getTotal(), q.getCurrency(),
+                    q.getRuleVersion(), q.getSurgeMultiplier(), q.getSurgeMultiplier().compareTo(BigDecimal.ONE) > 0,
+                    q.getSurgeSource(), q.getSurgeRuleVersion(), q.breakdown(), q.getTotal(), q.getCurrency(),
                     q.getCreatedAt(), q.getExpiresAt());
         }
     }

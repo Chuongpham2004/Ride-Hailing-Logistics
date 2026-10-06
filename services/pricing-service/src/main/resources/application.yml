@@ -37,6 +37,16 @@ spring:
       value-serializer: org.apache.kafka.common.serialization.StringSerializer
       properties:
         enable.idempotence: true
+    consumer:
+      group-id: pricing-service
+      enable-auto-commit: false
+      # From the start: drivers already online must be known for supply. Replays are harmless
+      # (versions compared in Redis, requests outside the demand window skipped).
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
   security:
     oauth2:
       resourceserver:
@@ -76,6 +86,16 @@ rhl:
     road-factor: 1.35
     average-speed-kmh: 22
     min-duration-seconds: 60
+  # Placeholders until TBD-04 (area size, window) is decided; the formula is in surge_rules.
+  surge:
+    h3-resolution: 8
+    ring-size: 1
+    demand-window: 5m
+    supply-freshness: 60s
+  kafka:
+    partitions: 3
+    replicas: 1
+    location-concurrency: 3
   # Nothing is published yet; FareFinalized and CancellationFeeCalculated come with final fares.
   outbox:
     enabled: false

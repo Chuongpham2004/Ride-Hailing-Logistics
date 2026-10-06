@@ -75,6 +75,24 @@ public class FareQuote {
     @Column(name = "surge_multiplier", nullable = false)
     private BigDecimal surgeMultiplier;
 
+    @Column(name = "surge_source", nullable = false)
+    private String surgeSource;
+
+    @Column(name = "h3_cell")
+    private String h3Cell;
+
+    @Column(name = "surge_demand")
+    private Integer surgeDemand;
+
+    @Column(name = "surge_supply")
+    private Integer surgeSupply;
+
+    @Column(name = "surge_rule_id")
+    private UUID surgeRuleId;
+
+    @Column(name = "surge_rule_version")
+    private Integer surgeRuleVersion;
+
     @Column(name = "base_fare", nullable = false)
     private long baseFare;
 
@@ -108,10 +126,13 @@ public class FareQuote {
     private Instant expiresAt;
 
     public static FareQuote issue(UUID id, UUID customerId, ServiceType serviceType, Stop pickup, Stop dropoff,
-                                  RouteEstimate route, PricingRule rule, FareBreakdown fare, Duration ttl,
-                                  Instant now) {
+                                  RouteEstimate route, PricingRule rule, SurgeAssessment surge, FareBreakdown fare,
+                                  Duration ttl, Instant now) {
         if (rule.getServiceType() != serviceType || !rule.isEffectiveAt(now)) {
             throw new IllegalArgumentException("Rule " + rule.getId() + " does not apply to this quote");
+        }
+        if (fare.surgeMultiplier().compareTo(surge.multiplier()) != 0) {
+            throw new IllegalArgumentException("The fare was not priced with the assessed surge");
         }
         FareQuote quote = new FareQuote();
         quote.id = Objects.requireNonNull(id);
@@ -125,6 +146,12 @@ public class FareQuote {
         quote.ruleId = rule.getId();
         quote.ruleVersion = rule.getVersion();
         quote.surgeMultiplier = fare.surgeMultiplier();
+        quote.surgeSource = surge.source();
+        quote.h3Cell = surge.h3Cell();
+        quote.surgeDemand = surge.demand();
+        quote.surgeSupply = surge.supply();
+        quote.surgeRuleId = surge.ruleId();
+        quote.surgeRuleVersion = surge.ruleVersion();
         quote.baseFare = fare.baseFare();
         quote.distanceFare = fare.distanceFare();
         quote.timeFare = fare.timeFare();
