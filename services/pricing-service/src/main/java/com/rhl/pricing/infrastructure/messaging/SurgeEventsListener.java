@@ -12,18 +12,16 @@ import org.springframework.stereotype.Component;
 
 import java.util.function.Consumer;
 
-/** Supply and demand signals for surge; other event types on these topics are skipped unparsed. */
+/**
+ * Supply signals for surge; other event types on these topics are skipped unparsed. Demand
+ * (TripRequested) arrives through {@link TripEventsListener}, the only listener on trip.events.v1.
+ */
 @Component
 @RequiredArgsConstructor
 public class SurgeEventsListener {
 
     private final EventReader reader;
     private final SurgeSignals signals;
-
-    @KafkaListener(id = "pricing-trip-demand", idIsGroup = false, topics = Topics.TRIP_EVENTS)
-    public void onTripEvent(ConsumerRecord<String, String> record) throws JsonProcessingException {
-        handle(record, "TripRequested", signals::onTripRequested);
-    }
 
     @KafkaListener(id = "pricing-driver-supply", idIsGroup = false, topics = Topics.DRIVER_EVENTS)
     public void onDriverEvent(ConsumerRecord<String, String> record) throws JsonProcessingException {

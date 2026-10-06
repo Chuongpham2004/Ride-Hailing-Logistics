@@ -113,6 +113,7 @@ public class TripEventPublisher {
         payload.put("dropoff", stop(trip.getDropoff()));
         payload.put("acceptedAt", trip.getAcceptedAt().toString());
         payload.put("completedAt", trip.getCompletedAt().toString());
+        quoteId(trip, payload);
         trip(trip, "TripCompleted", payload);
     }
 
@@ -124,7 +125,19 @@ public class TripEventPublisher {
         payload.put("actorId", id(transition.actor().id()));
         payload.put("reason", trip.getCancelReason().name());
         payload.put("cancelledAt", trip.getCancelledAt().toString());
+        payload.put("serviceType", trip.getServiceType().name());
+        if (trip.getAcceptedAt() != null) {
+            payload.put("acceptedAt", trip.getAcceptedAt().toString());
+        }
+        quoteId(trip, payload);
         trip(trip, "TripCancelled", payload);
+    }
+
+    /** Lets pricing-service find the booked price; absent only for trips booked before quotes. */
+    private static void quoteId(Trip trip, Map<String, Object> payload) {
+        if (trip.getFare() != null) {
+            payload.put("quoteId", trip.getFare().quoteId().toString());
+        }
     }
 
     private void trip(Trip trip, String eventType, Map<String, Object> payload) {

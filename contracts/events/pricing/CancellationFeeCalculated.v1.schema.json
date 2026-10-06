@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:CancellationFeeCalculated:v1",
+  "title": "CancellationFeeCalculated v1",
+  "description": "The fee a cancelled trip costs the customer, decided once per trip by a versioned rule (FR-CAN, TBD-07). Published for every cancellation, with fee 0 when nothing is charged, so payment-service never has to guess. Topic pricing.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "CancellationFeeCalculated" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "pricing-service" },
+    "payload": {
+      "type": "object",
+      "required": ["feeId", "tripId", "customerId", "decision", "fee", "currency", "ruleVersion", "cancelledAt",
+                   "calculatedAt"],
+      "properties": {
+        "feeId": { "type": "string", "format": "uuid" },
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+        "decision": {
+          "enum": ["NOT_ASSIGNED", "WITHIN_FREE_WINDOW", "LATE_CANCELLATION", "NO_SHOW", "NOT_CHARGEABLE"]
+        },
+        "fee": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "ruleVersion": { "type": "integer", "minimum": 1 },
+        "cancelledAt": { "type": "string", "format": "date-time" },
+        "calculatedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "eventId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9f11",
+  "eventType": "CancellationFeeCalculated",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-05T08:35:01Z",
+  "correlationId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9eff",
+  "producer": "pricing-service",
+  "aggregateId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+  "aggregateVersion": 0,
+  "payload": {
+    "feeId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e06",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "customerId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e02",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "decision": "LATE_CANCELLATION",
+    "fee": 10000,
+    "currency": "VND",
+    "ruleVersion": 1,
+    "cancelledAt": "2026-10-05T08:35:00Z",
+    "calculatedAt": "2026-10-05T08:35:01Z"
+  }
+}
