@@ -1,0 +1,78 @@
+server:
+  port: 8080
+  shutdown: graceful
+
+spring:
+  application:
+    name: api-gateway
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:16379}
+      timeout: 2s
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${USER_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json
+  cloud:
+    gateway:
+      server:
+        webflux:
+          default-filters:
+            - name: RequestRateLimiter
+              args:
+                key-resolver: "#{@principalOrIpKeyResolver}"
+                # NFR-SEC-007 placeholder budget per caller; tune per route once load targets (TBD-15) are set.
+                redis-rate-limiter.replenishRate: 20
+                redis-rate-limiter.burstCapacity: 40
+          globalcors:
+            cors-configurations:
+              '[/api/**]':
+                allowed-origin-patterns: ${CORS_ALLOWED_ORIGINS:http://localhost:*}
+                allowed-methods: [GET, POST, PUT, PATCH, DELETE, OPTIONS]
+                allowed-headers: [Authorization, Content-Type, Idempotency-Key, X-Correlation-Id]
+                exposed-headers: [X-Correlation-Id]
+                max-age: 3600
+          routes:
+            - id: user-service
+              uri: ${USER_SERVICE_URL:http://localhost:8081}
+              predicates:
+                - Path=/api/v1/auth/**,/api/v1/users/**,/api/v1/drivers/**,/api/v1/admin/users/**,/api/v1/admin/drivers/**
+            - id: location-service
+              uri: ${LOCATION_SERVICE_URL:http://localhost:8082}
+              predicates:
+                - Path=/api/v1/locations/**
+            - id: trip-service
+              uri: ${TRIP_SERVICE_URL:http://localhost:8083}
+              predicates:
+                - Path=/api/v1/trips/**,/api/v1/offers/**,/api/v1/admin/trips/**
+            - id: pricing-service
+              uri: ${PRICING_SERVICE_URL:http://localhost:8084}
+              predicates:
+                - Path=/api/v1/quotes/**,/api/v1/admin/pricing/**
+            - id: payment-service
+              uri: ${PAYMENT_SERVICE_URL:http://localhost:8086}
+              predicates:
+                - Path=/api/v1/payments/**,/api/v1/wallets/**,/api/v1/admin/payments/**
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 10s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+rhl:
+  jwt:
+    issuer: rhl-user-service
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:DriverAvailabilityChanged:v1",
+  "title": "DriverAvailabilityChanged v1",
+  "description": "Driver went online/offline (user-service decides OFFLINE/AVAILABLE). Topic driver.events.v1, key = driverId.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "DriverAvailabilityChanged" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "user-service" },
+    "payload": {
+      "type": "object",
+      "required": ["driverId", "oldStatus", "newStatus", "serviceTypes", "occurredAt"],
+      "properties": {
+        "driverId": { "type": "string", "format": "uuid" },
+        "oldStatus": { "$ref": "#/$defs/availability" },
+        "newStatus": { "$ref": "#/$defs/availability" },
+        "serviceTypes": {
+          "type": "array",
+          "items": { "enum": ["RIDE", "DELIVERY"] },
+          "uniqueItems": true
+        },
+        "vehicleId": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+        "reason": { "anyOf": [{ "type": "null" }, { "type": "string", "maxLength": 200 }] },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "availability": { "enum": ["OFFLINE", "AVAILABLE", "OFFERED", "BUSY"] }
+  }
+}

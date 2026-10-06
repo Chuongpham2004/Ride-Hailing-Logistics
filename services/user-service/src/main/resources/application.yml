@@ -1,0 +1,94 @@
+server:
+  port: 8081
+  shutdown: graceful
+
+spring:
+  application:
+    name: user-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${USER_DB_URL:jdbc:postgresql://localhost:15432/user_db}
+    username: ${USER_DB_USER:user_svc}
+    password: ${USER_DB_PASSWORD:user_svc}
+    hikari:
+      connection-init-sql: SET TIME ZONE 'UTC'
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:16379}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: user-service
+      enable-auto-commit: false
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+rhl:
+  jwt:
+    issuer: rhl-user-service
+    access-token-ttl: 15m
+    refresh-token-ttl: 30d
+    key-id: ${JWT_KEY_ID:dev}
+    private-key: ${JWT_PRIVATE_KEY:}
+    public-key: ${JWT_PUBLIC_KEY:}
+  login:
+    max-failures: 5
+    lock-duration: 15m
+  driver:
+    # TBD-11: final list pending Operations/Legal.
+    required-documents: [NATIONAL_ID, DRIVER_LICENSE]
+    required-vehicle-documents: [VEHICLE_REGISTRATION, VEHICLE_INSURANCE]
+  bootstrap:
+    admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
+    admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}
+  kafka:
+    partitions: 3
+    replicas: 1
+  outbox:
+    poll-interval: 200ms
+    batch-size: 100
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
