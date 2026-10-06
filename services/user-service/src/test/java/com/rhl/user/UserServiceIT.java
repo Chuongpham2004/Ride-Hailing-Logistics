@@ -13,6 +13,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
@@ -25,7 +26,9 @@ import org.testcontainers.kafka.KafkaContainer;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -70,6 +73,9 @@ class UserServiceIT {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    KafkaTemplate<String, String> kafkaTemplate;
 
     @Test
     void driverOnboardingReviewAndGoingOnlinePublishesAnEvent() throws Exception {
@@ -230,7 +236,122 @@ class UserServiceIT {
         call(get("/api/v1/users/me"), token, null).andExpect(status().isUnauthorized());
     }
 
+    /** OFFERED and BUSY come from trip-service events and are republished for location-service (README §4.8). */
+    @Test
+    void tripServiceEventsMoveTheDriverThroughOfferedAndBusy() throws Exception {
+        Map.Entry<String, String> online = onlineDriver();
+        String driverId = online.getKey();
+        String driver = online.getValue();
+        UUID offerId = UUID.randomUUID();
+        UUID tripId = UUID.randomUUID();
+        String customerId = UUID.randomUUID().toString();
+
+        publish("dispatch.offers.v1", driverId, "DriverOfferCreated", offerId, UUID.randomUUID(), Map.of(
+                "offerId", offerId.toString(), "tripId", tripId.toString(), "driverId", driverId,
+                "serviceType", "RIDE", "pickup", Map.of("latitude", 10.77, "longitude", 106.69, "address", "Q1"),
+                "estimatedPickupDistanceMeters", 300, "createdAt", Instant.now().toString(),
+                "expiresAt", Instant.now().plusSeconds(15).toString()));
+        awaitAvailability(driver, "OFFERED");
+        // Cannot go offline while holding an offer.
+        call(post("/api/v1/drivers/me/availability/offline"), driver, null).andExpect(status().isConflict());
+
+        UUID accepted = UUID.randomUUID();
+        Map<String, Object> acceptedPayload = Map.of("tripId", tripId.toString(), "customerId", customerId,
+                "driverId", driverId, "offerId", offerId.toString(), "serviceType", "RIDE",
+                "acceptedAt", Instant.now().toString());
+        publish("trip.events.v1", tripId.toString(), "TripAccepted", tripId, accepted, acceptedPayload);
+        awaitAvailability(driver, "BUSY");
+
+        // A replayed accept (same eventId) and a late offer event change nothing.
+        publish("trip.events.v1", tripId.toString(), "TripAccepted", tripId, accepted, acceptedPayload);
+        publish("dispatch.offers.v1", driverId, "DriverOfferExpired", offerId, UUID.randomUUID(), Map.of(
+                "offerId", offerId.toString(), "tripId", tripId.toString(), "driverId", driverId,
+                "expiredAt", Instant.now().toString()));
+
+        publish("trip.events.v1", tripId.toString(), "TripCompleted", tripId, UUID.randomUUID(), Map.of(
+                "tripId", tripId.toString(), "customerId", customerId, "driverId", driverId, "serviceType", "RIDE",
+                "pickup", Map.of("latitude", 10.77, "longitude", 106.69, "address", "Q1"),
+                "dropoff", Map.of("latitude", 10.76, "longitude", 106.68, "address", "Q5"),
+                "acceptedAt", Instant.now().toString(), "completedAt", Instant.now().toString()));
+        awaitAvailability(driver, "AVAILABLE");
+
+        // The accepted offer's DriverOfferCreated arriving after the whole trip must not bring
+        // OFFERED back (the two topics are not ordered against each other).
+        UUID lateEvent = UUID.randomUUID();
+        publish("dispatch.offers.v1", driverId, "DriverOfferCreated", offerId, lateEvent, Map.of(
+                "offerId", offerId.toString(), "tripId", tripId.toString(), "driverId", driverId,
+                "serviceType", "RIDE", "pickup", Map.of("latitude", 10.77, "longitude", 106.69, "address", "Q1"),
+                "estimatedPickupDistanceMeters", 300, "createdAt", Instant.now().toString(),
+                "expiresAt", Instant.now().plusSeconds(15).toString()));
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM processed_events WHERE event_id = ?", Integer.class, lateEvent)).isEqualTo(1));
+        awaitAvailability(driver, "AVAILABLE");
+
+        // One DriverAvailabilityChanged per real change, in order, for location-service.
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(jdbc.queryForList("""
+                        SELECT envelope->'payload'->>'newStatus' FROM outbox_events
+                        WHERE message_key = ? ORDER BY id
+                        """, String.class, driverId))
+                .containsExactly("AVAILABLE", "OFFERED", "BUSY", "AVAILABLE"));
+        assertThat(jdbc.queryForObject("""
+                        SELECT envelope->'payload'->>'reason' FROM outbox_events
+                        WHERE message_key = ? ORDER BY id DESC LIMIT 1
+                        """, String.class, driverId)).isEqualTo("TRIP_COMPLETED");
+        call(post("/api/v1/drivers/me/availability/offline"), driver, null)
+                .andExpect(jsonPath("$.data.availability").value("OFFLINE"));
+    }
+
     // ---- helpers --------------------------------------------------------------------------
+
+    /** Registers, onboards, approves and puts a driver online; returns (driverId, access token). */
+    private Map.Entry<String, String> onlineDriver() throws Exception {
+        String email = unique("driver");
+        String driverId = register(email, "DRIVER").path("id").asText();
+        String driver = login(email, PASSWORD);
+        call(post("/api/v1/drivers/me/profile"), driver, Map.of(
+                "fullName", "Tran Van Xe", "dateOfBirth", "1990-05-01", "serviceTypes", List.of("RIDE")))
+                .andExpect(status().isCreated());
+        String plate = "59X" + (100000 + (int) (Math.random() * 899999));
+        String vehicleId = data(call(post("/api/v1/drivers/me/vehicles"), driver, Map.of(
+                "type", "MOTORBIKE", "plateNumber", plate, "brand", "Honda", "model", "Wave",
+                "color", "Red", "manufactureYear", 2021)).andExpect(status().isCreated())).path("id").asText();
+        String nextYear = LocalDate.now().plusYears(1).toString();
+        submitDocument(driver, "NATIONAL_ID", null, null);
+        submitDocument(driver, "DRIVER_LICENSE", null, nextYear);
+        submitDocument(driver, "VEHICLE_REGISTRATION", vehicleId, null);
+        submitDocument(driver, "VEHICLE_INSURANCE", vehicleId, nextYear);
+        call(post("/api/v1/drivers/me/profile/submit"), driver, null).andExpect(status().isOk());
+        String admin = login("admin@rhl.test", "admin-password-123");
+        call(post("/api/v1/admin/drivers/" + driverId + "/decisions"), admin,
+                Map.of("verdict", "APPROVE", "profileVersion", 1)).andExpect(status().isOk());
+        call(post("/api/v1/drivers/me/availability/online"), driver,
+                Map.of("vehicleId", vehicleId, "serviceTypes", List.of("RIDE")))
+                .andExpect(jsonPath("$.data.availability").value("AVAILABLE"));
+        return Map.entry(driverId, driver);
+    }
+
+    private void awaitAvailability(String driverToken, String expected) {
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
+                call(get("/api/v1/drivers/me/profile"), driverToken, null)
+                        .andExpect(jsonPath("$.data.availability").value(expected)));
+    }
+
+    /** Publishes an event as trip-service would, including the envelope trip-service's schemas require. */
+    private void publish(String topic, String key, String type, UUID aggregateId, UUID eventId,
+                         Map<String, Object> payload) throws Exception {
+        Map<String, Object> envelope = new LinkedHashMap<>();
+        envelope.put("eventId", eventId.toString());
+        envelope.put("eventType", type);
+        envelope.put("eventVersion", 1);
+        envelope.put("occurredAt", Instant.now().toString());
+        envelope.put("correlationId", UUID.randomUUID().toString());
+        envelope.put("producer", "trip-service");
+        envelope.put("aggregateId", aggregateId.toString());
+        envelope.put("aggregateVersion", 1);
+        envelope.put("payload", payload);
+        kafkaTemplate.send(topic, key, json.writeValueAsString(envelope)).get();
+    }
+
 
     private void submitDocument(String token, String type, String vehicleId, String expiresOn) throws Exception {
         Map<String, Object> body = new java.util.HashMap<>();

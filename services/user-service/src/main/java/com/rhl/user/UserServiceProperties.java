@@ -22,7 +22,13 @@ public record UserServiceProperties(Jwt jwt, Login login, Driver driver, Bootstr
     public record Login(int maxFailures, Duration lockDuration) {
     }
 
-    public record Driver(Set<DocumentType> requiredDocuments, Set<DocumentType> requiredVehicleDocuments) {
+    /**
+     * @param staleOfferGrace         how long past an offer's expiry a driver may still show OFFERED
+     *                                before the sweeper frees them (closing event lost or late)
+     * @param staleOfferCheckInterval how often the sweeper runs
+     */
+    public record Driver(Set<DocumentType> requiredDocuments, Set<DocumentType> requiredVehicleDocuments,
+                         Duration staleOfferGrace, Duration staleOfferCheckInterval) {
     }
 
     /** Creates the first administrator on an empty database. Leave the email empty to skip. */
