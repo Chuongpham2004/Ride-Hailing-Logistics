@@ -1,6 +1,7 @@
 package com.rhl.common.messaging;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -58,10 +59,20 @@ public class MessagingAutoConfiguration {
         backOff.setInitialInterval(500);
         backOff.setMultiplier(2.0);
         backOff.setMaxInterval(10_000);
-        DefaultErrorHandler handler = new DefaultErrorHandler(new DeadLetterPublishingRecoverer(kafka), backOff);
+        // Spring Kafka's default target is "<topic>-dlt"; services declare "<topic>.DLT" (README §4.7)
+        // and the broker does not auto-create topics, so name it explicitly. Same partition as the
+        // failed record, which is why every DLT has as many partitions as its source topic.
+        DeadLetterPublishingRecoverer recoverer = new DeadLetterPublishingRecoverer(kafka,
+                (record, exception) -> new TopicPartition(deadLetterTopic(record.topic()), record.partition()));
+        DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
         handler.addNotRetryableExceptions(InvalidEventException.class,
                 com.fasterxml.jackson.core.JsonProcessingException.class);
         return handler;
+    }
+
+    /** Dead-letter topic of {@code topic}: {@code <topic>.DLT} (README §4.7, FR-EVT-008). */
+    public static String deadLetterTopic(String topic) {
+        return topic + ".DLT";
     }
 
     @Configuration(proxyBeanMethods = false)

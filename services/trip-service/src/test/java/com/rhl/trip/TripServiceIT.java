@@ -194,6 +194,8 @@ class TripServiceIT {
                 "TripAccepted", "TripStatusChanged", "TripStatusChanged", "TripStatusChanged", "TripCompleted");
         assertThat(events).extracting(e -> e.path("aggregateVersion").asLong()).isSorted().doesNotHaveDuplicates();
         assertThat(events.getLast().path("payload").path("driverId").asText()).isEqualTo(near.toString());
+        // pricing-service settles the booked quote from TripCompleted.
+        assertThat(events.getLast().path("payload").path("quoteId").asText()).isEqualTo(quoteId.toString());
 
         List<JsonNode> offers = consume(Topics.DISPATCH_OFFERS, near.toString(), 1);
         assertThat(offers.getFirst().path("eventType").asText()).isEqualTo("DriverOfferCreated");
@@ -264,6 +266,12 @@ class TripServiceIT {
                 .andExpect(jsonPath("$.code").value("OFFER_EXPIRED"));
         assertThat(count("SELECT COUNT(*) FROM outbox_events WHERE message_key = ? AND event_type = 'TripCancelled'",
                 tripId)).isEqualTo(1);
+        // What pricing-service needs for the fee decision.
+        JsonNode cancelledPayload = json.readTree(jdbc.queryForObject("SELECT envelope::text FROM outbox_events "
+                + "WHERE message_key = ? AND event_type = 'TripCancelled'", String.class, tripId)).path("payload");
+        assertThat(cancelledPayload.path("serviceType").asText()).isEqualTo("RIDE");
+        assertThat(cancelledPayload.path("quoteId").asText()).isNotBlank();
+        assertThat(cancelledPayload.has("acceptedAt")).isFalse();
         assertThat(jdbc.queryForObject("SELECT envelope->'payload'->>'reason' FROM outbox_events "
                 + "WHERE message_key = ? AND event_type = 'DriverOfferCancelled'", String.class, driver.toString()))
                 .isEqualTo("TRIP_CANCELLED");

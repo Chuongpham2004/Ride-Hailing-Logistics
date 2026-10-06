@@ -3,6 +3,10 @@ package com.rhl.pricing;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.id.UuidV7;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
+import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -10,6 +14,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.context.TestPropertySource;
@@ -29,6 +34,7 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 
@@ -78,6 +84,9 @@ class PricingServiceIT {
 
     @Autowired
     KafkaTemplate<String, String> kafkaTemplate;
+
+    @Autowired
+    JdbcTemplate jdbc;
 
     @Test
     void customerGetsAPricedQuoteThatOnlyTheyAndTripServiceCanUse() throws Exception {
@@ -209,6 +218,85 @@ class PricingServiceIT {
                 assertThat(redisTemplate.opsForZSet().score(key, busy.toString())).isNull());
     }
 
+    /** README §4.9: TripCompleted -> FareFinalized exactly once, at the booked price (BR-009, BR-007). */
+    @Test
+    void aCompletedTripIsSettledOnceAtTheBookedPrice() throws Exception {
+        UUID customer = UUID.randomUUID();
+        JsonNode quote = data(quote(customer, "DELIVERY", BEN_THANH, DH_KHTN));
+        UUID tripId = UuidV7.random();
+        UUID driver = UUID.randomUUID();
+        Map<String, Object> completed = new LinkedHashMap<>();
+        completed.put("tripId", tripId.toString());
+        completed.put("customerId", customer.toString());
+        completed.put("driverId", driver.toString());
+        completed.put("serviceType", "DELIVERY");
+        completed.put("pickup", BEN_THANH);
+        completed.put("dropoff", DH_KHTN);
+        completed.put("acceptedAt", Instant.now().minusSeconds(900).toString());
+        completed.put("completedAt", Instant.now().toString());
+        completed.put("quoteId", quote.path("id").asText());
+
+        // Redelivered (same eventId) and duplicated (new eventId, same trip): still one fare.
+        UUID eventId = UuidV7.random();
+        publish("trip.events.v1", tripId, eventId, "TripCompleted", "trip-service", 5, completed);
+        publish("trip.events.v1", tripId, eventId, "TripCompleted", "trip-service", 5, completed);
+        publish("trip.events.v1", tripId, UuidV7.random(), "TripCompleted", "trip-service", 5, completed);
+
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_events WHERE message_key = ? AND status = 'SENT'", Integer.class,
+                tripId.toString())).isEqualTo(1));
+        assertThat(jdbc.queryForObject("SELECT total FROM final_fares WHERE trip_id = ?", Long.class, tripId))
+                .isEqualTo(quote.path("total").asLong());
+
+        JsonNode event = consume("pricing.events.v1", tripId.toString());
+        assertThat(event.path("eventType").asText()).isEqualTo("FareFinalized");
+        JsonNode payload = event.path("payload");
+        assertThat(payload.path("method").asText()).isEqualTo("UPFRONT");
+        assertThat(payload.path("total").asLong()).isEqualTo(quote.path("total").asLong());
+        assertThat(payload.path("quoteId").asText()).isEqualTo(quote.path("id").asText());
+        assertThat(payload.path("driverId").asText()).isEqualTo(driver.toString());
+        assertThat(payload.path("breakdown").path("distanceFare").asLong())
+                .isEqualTo(quote.path("breakdown").path("distanceFare").asLong());
+
+        // A trip without a quote cannot be priced: it goes to the DLT, not to a made-up fare.
+        UUID legacy = UuidV7.random();
+        Map<String, Object> noQuote = new LinkedHashMap<>(completed);
+        noQuote.put("tripId", legacy.toString());
+        noQuote.remove("quoteId");
+        publish("trip.events.v1", legacy, UuidV7.random(), "TripCompleted", "trip-service", 5, noQuote);
+        assertThat(consume("trip.events.v1.DLT", legacy.toString()).path("eventType").asText())
+                .isEqualTo("TripCompleted");
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM final_fares WHERE trip_id = ?", Integer.class, legacy))
+                .isZero();
+    }
+
+    @Test
+    void everyCancellationGetsOneFeeDecision() throws Exception {
+        UUID customer = UUID.randomUUID();
+        JsonNode quote = data(quote(customer, "RIDE", BEN_THANH, DH_KHTN));
+        UUID late = UuidV7.random();
+        UUID early = UuidV7.random();
+        Instant now = Instant.now();
+
+        publish("trip.events.v1", late, UuidV7.random(), "TripCancelled", "trip-service", 3,
+                cancelled(late, customer, "ARRIVED", now.minusSeconds(600), now, quote.path("id").asText()));
+        publish("trip.events.v1", early, UuidV7.random(), "TripCancelled", "trip-service", 1,
+                cancelled(early, customer, "MATCHING", null, now, null));
+
+        await().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT COUNT(*) FROM outbox_events WHERE message_key IN (?, ?) AND status = 'SENT'",
+                Integer.class, late.toString(), early.toString())).isEqualTo(2));
+        assertThat(jdbc.queryForMap("SELECT decision, fee, rule_version FROM cancellation_fees WHERE trip_id = ?",
+                late)).containsEntry("decision", "LATE_CANCELLATION").containsEntry("fee", 10_000L)
+                .containsEntry("rule_version", 1);
+        assertThat(jdbc.queryForMap("SELECT decision, fee FROM cancellation_fees WHERE trip_id = ?", early))
+                .containsEntry("decision", "NOT_ASSIGNED").containsEntry("fee", 0L);
+
+        JsonNode event = consume("pricing.events.v1", late.toString());
+        assertThat(event.path("eventType").asText()).isEqualTo("CancellationFeeCalculated");
+        assertThat(event.path("payload").path("fee").asLong()).isEqualTo(10_000);
+    }
+
     @Test
     void quotesValidateTheirInput() throws Exception {
         UUID customer = UUID.randomUUID();
@@ -238,8 +326,13 @@ class PricingServiceIT {
 
     private void publish(String topic, UUID key, String type, String producer, long version,
                          Map<String, Object> payload) throws Exception {
+        publish(topic, key, UuidV7.random(), type, producer, version, payload);
+    }
+
+    private void publish(String topic, UUID key, UUID eventId, String type, String producer, long version,
+                         Map<String, Object> payload) throws Exception {
         Map<String, Object> envelope = new LinkedHashMap<>();
-        envelope.put("eventId", UuidV7.randomString());
+        envelope.put("eventId", eventId.toString());
         envelope.put("eventType", type);
         envelope.put("eventVersion", 1);
         envelope.put("occurredAt", Instant.now().toString());
@@ -274,6 +367,47 @@ class PricingServiceIT {
         return Map.of("tripId", tripId.toString(), "customerId", UUID.randomUUID().toString(), "serviceType", "RIDE",
                 "status", "MATCHING", "pickup", pickup, "dropoff", dropoff,
                 "matchingDeadline", Instant.now().plusSeconds(30).toString(), "occurredAt", Instant.now().toString());
+    }
+
+    private static Map<String, Object> cancelled(UUID tripId, UUID customer, String oldStatus, Instant acceptedAt,
+                                                 Instant cancelledAt, String quoteId) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("tripId", tripId.toString());
+        payload.put("customerId", customer.toString());
+        payload.put("driverId", acceptedAt == null ? null : UUID.randomUUID().toString());
+        payload.put("oldStatus", oldStatus);
+        payload.put("actorType", "CUSTOMER");
+        payload.put("actorId", customer.toString());
+        payload.put("reason", "CHANGED_MIND");
+        payload.put("cancelledAt", cancelledAt.toString());
+        payload.put("serviceType", "RIDE");
+        if (acceptedAt != null) {
+            payload.put("acceptedAt", acceptedAt.toString());
+        }
+        if (quoteId != null) {
+            payload.put("quoteId", quoteId);
+        }
+        return payload;
+    }
+
+    private JsonNode consume(String topic, String key) throws Exception {
+        Properties props = new Properties();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers());
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "it-" + UUID.randomUUID());
+        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        try (KafkaConsumer<String, String> consumer =
+                     new KafkaConsumer<>(props, new StringDeserializer(), new StringDeserializer())) {
+            consumer.subscribe(List.of(topic));
+            long deadline = System.currentTimeMillis() + 20_000;
+            while (System.currentTimeMillis() < deadline) {
+                for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
+                    if (key.equals(record.key())) {
+                        return json.readTree(record.value());
+                    }
+                }
+            }
+        }
+        throw new AssertionError("No record with key " + key + " on " + topic);
     }
 
     private static Map<String, Object> rule(Instant effectiveFrom) {

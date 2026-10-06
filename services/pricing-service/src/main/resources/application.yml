@@ -96,9 +96,10 @@ rhl:
     partitions: 3
     replicas: 1
     location-concurrency: 3
-  # Nothing is published yet; FareFinalized and CancellationFeeCalculated come with final fares.
+  # FareFinalized and CancellationFeeCalculated (pricing.events.v1).
   outbox:
-    enabled: false
+    poll-interval: 200ms
+    batch-size: 100
 
 logging:
   pattern:
