@@ -26,6 +26,7 @@
         <module>services/location-service</module>
         <module>services/trip-service</module>
         <module>services/pricing-service</module>
+        <module>services/payment-service</module>
     </modules>
 
     <properties>

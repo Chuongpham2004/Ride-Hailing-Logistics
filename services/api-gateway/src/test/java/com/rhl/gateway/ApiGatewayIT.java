@@ -50,6 +50,7 @@ class ApiGatewayIT {
         String stub = "http://localhost:" + STUB.getAddress().getPort();
         registry.add("USER_SERVICE_URL", () -> stub);
         registry.add("TRIP_SERVICE_URL", () -> stub);
+        registry.add("PAYMENT_SERVICE_URL", () -> stub);
         // Nothing listens here: simulates a service that is not running.
         registry.add("LOCATION_SERVICE_URL", () -> "http://localhost:" + freePort());
     }
@@ -98,6 +99,21 @@ class ApiGatewayIT {
                 .exchange()
                 .expectStatus().isOk()
                 .expectBody().jsonPath("$.path").isEqualTo("/api/v1/auth/login");
+    }
+
+    /** Provider webhooks carry no user token; payment-service checks their signature instead. */
+    @Test
+    void paymentCallbacksPassWithoutATokenButOtherPaymentRoutesDoNot() {
+        client.post().uri("/api/v1/payments/callbacks/sandbox")
+                .exchange()
+                .expectStatus().isOk()
+                .expectBody().jsonPath("$.path").isEqualTo("/api/v1/payments/callbacks/sandbox");
+        client.get().uri("/api/v1/payments/callbacks/sandbox")
+                .exchange()
+                .expectStatus().isUnauthorized();
+        client.post().uri("/api/v1/payments/00000000-0000-0000-0000-000000000000/retry")
+                .exchange()
+                .expectStatus().isUnauthorized();
     }
 
     @Test

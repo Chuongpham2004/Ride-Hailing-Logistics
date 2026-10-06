@@ -1,0 +1,21 @@
+{
+  "eventId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9f13",
+  "eventType": "PaymentFailed",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-05T08:52:43Z",
+  "correlationId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9eff",
+  "producer": "payment-service",
+  "aggregateId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e07",
+  "aggregateVersion": 1,
+  "payload": {
+    "paymentId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e07",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "customerId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e02",
+    "purpose": "TRIP_FARE",
+    "amount": 27000,
+    "currency": "VND",
+    "attemptNo": 1,
+    "failureCode": "CARD_DECLINED",
+    "failedAt": "2026-10-05T08:52:43Z"
+  }
+}
