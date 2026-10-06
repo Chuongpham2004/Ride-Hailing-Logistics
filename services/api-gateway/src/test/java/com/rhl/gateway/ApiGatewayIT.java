@@ -50,6 +50,8 @@ class ApiGatewayIT {
         String stub = "http://localhost:" + STUB.getAddress().getPort();
         registry.add("USER_SERVICE_URL", () -> stub);
         registry.add("TRIP_SERVICE_URL", () -> stub);
+        // Nothing listens here: simulates a service that is not running.
+        registry.add("LOCATION_SERVICE_URL", () -> "http://localhost:" + freePort());
     }
 
     @AfterAll
@@ -135,7 +137,36 @@ class ApiGatewayIT {
                 .expectStatus().isUnauthorized();
     }
 
+    @Test
+    void downstreamServiceDownIs503WithEnvelope() {
+        client.get().uri("/api/v1/locations/drivers/nearby")
+                .header("Authorization", "Bearer " + token(List.of("CUSTOMER"), UUID.randomUUID().toString()))
+                .header("X-Correlation-Id", "down-1")
+                .exchange()
+                .expectStatus().isEqualTo(503)
+                .expectBody()
+                .jsonPath("$.code").isEqualTo("DEPENDENCY_UNAVAILABLE")
+                .jsonPath("$.correlationId").isEqualTo("down-1");
+    }
+
+    @Test
+    void unknownRouteIs404WithEnvelope() {
+        client.get().uri("/api/v1/nothing-here")
+                .header("Authorization", "Bearer " + token(List.of("CUSTOMER"), UUID.randomUUID().toString()))
+                .exchange()
+                .expectStatus().isNotFound()
+                .expectBody().jsonPath("$.code").isEqualTo("RESOURCE_NOT_FOUND");
+    }
+
     // ---- helpers --------------------------------------------------------------------------
+
+    private static int freePort() {
+        try (java.net.ServerSocket socket = new java.net.ServerSocket(0)) {
+            return socket.getLocalPort();
+        } catch (IOException e) {
+            throw new IllegalStateException(e);
+        }
+    }
 
     private static String token(List<String> roles, String jti) {
         return sign("rhl-user-service", "access", roles, jti);
