@@ -4,7 +4,7 @@
 >
 > **Stack:** Java 21 · Spring Boot · Redis (cache & GEO) · Apache Kafka · PostgreSQL
 >
-> **Trạng thái:** Đang ở giai đoạn phân tích và thiết kế, chưa triển khai code.
+> **Trạng thái:** Đang triển khai. Đã có nền tảng (parent POM, `libs/`, `contracts/`, docker-compose), `api-gateway` và `user-service` — xem [§4.13](#413-chạy-local-và-tiến-độ).
 >
 > Tài liệu nguồn: **SRS-RHL-002 v1.0** (theo IEEE 830-1998). README này tóm tắt SRS để cả nhóm nắm nhanh phạm vi, kiến trúc, quy tắc nghiệp vụ và tiêu chí nghiệm thu. Khi có mâu thuẫn, **SRS là nguồn sự thật**.
 
@@ -95,7 +95,7 @@ RBAC tối thiểu: `Customer`, `Driver`, `Reviewer`, `SupportStaff`, `FinanceSt
 
 | Lớp | Công nghệ | Vai trò trong hệ thống |
 |---|---|---|
-| Ngôn ngữ / framework | **Java 21 (LTS) + Spring Boot 3.x** | Nền tảng cho mọi service |
+| Ngôn ngữ / framework | **Java 21 (LTS) + Spring Boot 3.5 + Spring Cloud 2025.0** | Nền tảng cho mọi service |
 | API Gateway | Spring Cloud Gateway | Định tuyến, xác thực JWT, rate limit, gắn correlation ID |
 | Realtime | Spring WebSocket | Kênh WSS cho telemetry, offer, trạng thái chuyến |
 | Bảo mật | Spring Security (OAuth2 Resource Server, JWT) | AuthN/AuthZ, RBAC, kiểm tra quyền sở hữu tài nguyên |
@@ -425,10 +425,12 @@ com.rhl.<service>/
 
 | Thành phần | Port | Ghi chú |
 |---|---|---|
-| Kafka (KRaft, không Zookeeper) | 9092 | Tự tạo topic bằng `NewTopic` bean hoặc script khởi tạo |
-| Redis | 6379 | Bật AOF tùy chọn; dữ liệu phải tái tạo được |
-| PostgreSQL | 5432 | Một instance, mỗi service một database (`user_db`, `trip_db`, ...) |
+| Kafka (KRaft, không Zookeeper) | 19092 | Tự tạo topic bằng `NewTopic` bean hoặc script khởi tạo |
+| Redis | 16379 | Bật AOF tùy chọn; dữ liệu phải tái tạo được |
+| PostgreSQL | 15432 | Một instance, mỗi service một database (`user_db`, `trip_db`, ...); user `<service>_svc`, mật khẩu trùng tên (chỉ dev) |
 | Kafka UI (tùy chọn) | 8090 | Quan sát topic, DLT |
+
+> Port phía host cố ý tránh mặc định (5432/6379/9092) để không đụng PostgreSQL cài sẵn hay stack khác; đổi bằng `RHL_POSTGRES_PORT`, `RHL_REDIS_PORT`, `RHL_KAFKA_PORT` (khi đổi, đặt thêm `USER_DB_URL`, `REDIS_PORT`, `KAFKA_BOOTSTRAP_SERVERS` cho service).
 
 Các tham số nghiệp vụ được khai báo trong `application.yml` và **không hard-code** trong code (NFR-MNT-005). Ví dụ:
 
@@ -512,6 +514,40 @@ flowchart LR
 4. **Packages:** sau lần publish đầu tiên, liên kết package GHCR với repo và đặt visibility phù hợp.
 
 > **Chưa có bước deploy.** SRS (§1.1) không đưa hạ tầng triển khai vào phạm vi. Khi chọn được môi trường (Kubernetes, VPS + Docker Compose, cloud PaaS, ...), thêm job `deploy` vào `delivery.yml`, gắn GitHub Environments `staging` (từ `develop`) và `production` (từ tag, yêu cầu người duyệt), và deploy theo **digest** đã ký.
+
+
+### 4.13. Chạy local và tiến độ
+
+```bash
+# 1. Hạ tầng: PostgreSQL :15432 (user_db, trip_db, ... + user riêng), Redis :16379, Kafka :19092
+docker compose up -d
+
+# 2. Build + unit test + integration test (Testcontainers, cần Docker đang chạy)
+./mvnw verify
+
+# 3. Cài libs/ vào ~/.m2 để chạy từng service (làm lại mỗi khi sửa libs/)
+./mvnw install -DskipTests -pl libs/common-web,libs/common-security,libs/common-messaging -am
+
+# 4. Chạy service (mỗi lệnh một terminal). Không thêm -am: Maven sẽ cố chạy cả libs/ và báo lỗi thiếu main class.
+BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-123   ./mvnw -pl services/user-service spring-boot:run   # :8081
+./mvnw -pl services/api-gateway spring-boot:run      # :8080, gọi API qua gateway
+```
+
+- **Không tạo bảng bằng tay.** Khi service khởi động, Flyway chạy các file `src/main/resources/db/migration/V{n}__*.sql` chưa chạy (lịch sử trong `flyway_schema_history`), rồi Hibernate chỉ đối chiếu entity với schema (`ddl-auto: validate`). Đổi schema = thêm file `V{n+1}__...sql`; không sửa migration đã chạy ở môi trường nào.
+- Entity dùng Lombok giới hạn: `@Getter` + `@NoArgsConstructor(access = PROTECTED)`; bean Spring dùng `@RequiredArgsConstructor`. `@Data`, `@Setter`, `@EqualsAndHashCode`, `@ToString` bị chặn trong `lombok.config` (proxy Hibernate, lazy loading, lộ PII qua log, bỏ qua quy tắc nghiệp vụ).
+- Admin đầu tiên được tạo khi khởi động nếu đặt `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 ký tự); vai trò nhân viên không tự đăng ký được.
+- Không đặt `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (PEM) thì user-service tự sinh khóa RSA tạm: token mất hiệu lực khi restart. Chỉ dùng cho dev.
+- OpenAPI của user-service: `http://localhost:8081/swagger-ui/index.html`.
+
+| Thành phần | Trạng thái | Ghi chú |
+|---|---|---|
+| `libs/common-web` | ✅ | Envelope `ApiResponse`, mã lỗi §8.3, `CorrelationIdFilter`, xử lý exception, UUIDv7 |
+| `libs/common-security` | ✅ | `Role`, quy ước claim JWT, converter `roles` → `ROLE_*`, `CurrentUser`, handler 401/403 |
+| `libs/common-messaging` | ✅ | Envelope event, Outbox writer + relay (`SKIP LOCKED`), `processed_events`, validate JSON Schema, DLT |
+| `contracts/events` | 🟡 | `envelope.v1`, `DriverAvailabilityChanged.v1`; các event khác thêm cùng service sở hữu |
+| `api-gateway` | ✅ | Định tuyến 5 service, JWT qua JWKS, kiểm tra token thu hồi, rate limit Redis, CORS |
+| `user-service` | 🟡 | Xong: đăng ký/đăng nhập, refresh xoay vòng + phát hiện dùng lại, logout, RBAC, hồ sơ tài xế, xe, giấy tờ, xét duyệt, Online/Offline, audit. Còn: upload file giấy tờ, consumer `trip.events` (OFFERED/BUSY), đặt lại mật khẩu, xác minh email/SĐT |
+| `location`, `trip`, `pricing`, `payment`, `realtime-gateway` | ⬜ | Chưa bắt đầu |
 
 ---
 
