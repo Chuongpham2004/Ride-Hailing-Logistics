@@ -2,8 +2,14 @@ package com.rhl.trip;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rhl.common.web.ApiException;
+import com.rhl.common.web.ErrorCode;
 import com.rhl.trip.domain.DriverCandidate;
+import com.rhl.trip.domain.FareSnapshot;
+import com.rhl.trip.domain.ServiceType;
+import com.rhl.trip.domain.Stop;
 import com.rhl.trip.infrastructure.client.LocationClient;
+import com.rhl.trip.infrastructure.client.PricingClient;
 import com.rhl.trip.infrastructure.messaging.Topics;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -30,8 +36,10 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
 
+import java.math.BigDecimal;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -46,6 +54,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -91,6 +100,9 @@ class TripServiceIT {
     @MockitoBean
     LocationClient location;
 
+    @MockitoBean
+    PricingClient pricing;
+
     @Autowired
     MockMvc mvc;
 
@@ -111,14 +123,19 @@ class TripServiceIT {
         candidates(new DriverCandidate(far, 800, 500), new DriverCandidate(near, 300, 900));
 
         String key = "create-" + UUID.randomUUID();
-        JsonNode trip = data(createTrip(customer, key, PICKUP).andExpect(status().isCreated()));
+        UUID quoteId = quote(customer, "1.00");
+        JsonNode trip = data(book(customer, key, quoteId, null).andExpect(status().isCreated()));
         String tripId = trip.path("id").asText();
         assertThat(trip.path("status").asText()).isEqualTo("MATCHING");
+        // Route and price come from the quote (BR-007).
+        assertThat(trip.path("pickup").path("address").asText()).isEqualTo(PICKUP.get("address"));
+        assertThat(trip.path("fare").path("quoteId").asText()).isEqualTo(quoteId.toString());
+        assertThat(trip.path("fare").path("quotedFare").asLong()).isEqualTo(27_000);
 
         // Retry with the same key returns the same trip; a different body under it is refused (COM-008).
-        assertThat(data(createTrip(customer, key, PICKUP).andExpect(status().isCreated())).path("id").asText())
+        assertThat(data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asText())
                 .isEqualTo(tripId);
-        createTrip(customer, key, DROPOFF)
+        book(customer, key, quote(customer, "1.00"), null)
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.code").value("IDEMPOTENCY_KEY_REUSED"));
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM trips WHERE customer_id = ?", Integer.class, customer))
@@ -177,6 +194,8 @@ class TripServiceIT {
                 "TripAccepted", "TripStatusChanged", "TripStatusChanged", "TripStatusChanged", "TripCompleted");
         assertThat(events).extracting(e -> e.path("aggregateVersion").asLong()).isSorted().doesNotHaveDuplicates();
         assertThat(events.getLast().path("payload").path("driverId").asText()).isEqualTo(near.toString());
+        // pricing-service settles the booked quote from TripCompleted.
+        assertThat(events.getLast().path("payload").path("quoteId").asText()).isEqualTo(quoteId.toString());
 
         List<JsonNode> offers = consume(Topics.DISPATCH_OFFERS, near.toString(), 1);
         assertThat(offers.getFirst().path("eventType").asText()).isEqualTo("DriverOfferCreated");
@@ -189,7 +208,7 @@ class TripServiceIT {
         UUID second = UUID.randomUUID();
         candidates(new DriverCandidate(first, 200, 100), new DriverCandidate(second, 900, 100));
 
-        String tripId = data(createTrip(customer, "decline-" + UUID.randomUUID(), PICKUP)).path("id").asText();
+        String tripId = data(createTrip(customer, "decline-" + UUID.randomUUID())).path("id").asText();
 
         String firstOffer = awaitOffer(first).path("id").asText();
         perform(post("/api/v1/offers/" + firstOffer + "/decline"), driverToken(first))
@@ -227,8 +246,8 @@ class TripServiceIT {
         UUID driver = UUID.randomUUID();
         candidates(new DriverCandidate(driver, 400, 100));
 
-        String tripId = data(createTrip(customer, "cancel-" + UUID.randomUUID(), PICKUP)).path("id").asText();
-        createTrip(customer, "second-" + UUID.randomUUID(), PICKUP)
+        String tripId = data(createTrip(customer, "cancel-" + UUID.randomUUID())).path("id").asText();
+        createTrip(customer, "second-" + UUID.randomUUID())
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATION"));
 
@@ -247,13 +266,19 @@ class TripServiceIT {
                 .andExpect(jsonPath("$.code").value("OFFER_EXPIRED"));
         assertThat(count("SELECT COUNT(*) FROM outbox_events WHERE message_key = ? AND event_type = 'TripCancelled'",
                 tripId)).isEqualTo(1);
+        // What pricing-service needs for the fee decision.
+        JsonNode cancelledPayload = json.readTree(jdbc.queryForObject("SELECT envelope::text FROM outbox_events "
+                + "WHERE message_key = ? AND event_type = 'TripCancelled'", String.class, tripId)).path("payload");
+        assertThat(cancelledPayload.path("serviceType").asText()).isEqualTo("RIDE");
+        assertThat(cancelledPayload.path("quoteId").asText()).isNotBlank();
+        assertThat(cancelledPayload.has("acceptedAt")).isFalse();
         assertThat(jdbc.queryForObject("SELECT envelope->'payload'->>'reason' FROM outbox_events "
                 + "WHERE message_key = ? AND event_type = 'DriverOfferCancelled'", String.class, driver.toString()))
                 .isEqualTo("TRIP_CANCELLED");
         assertThat(redisTemplate.hasKey("dispatch:driver-hold:" + driver)).isFalse();
 
         // The customer is free to book again.
-        String next = data(createTrip(customer, "again-" + UUID.randomUUID(), PICKUP)).path("id").asText();
+        String next = data(createTrip(customer, "again-" + UUID.randomUUID())).path("id").asText();
         awaitOffer(driver);
         perform(post("/api/v1/trips/" + next + "/cancel"), customerToken(customer), cancel).andExpect(status().isOk());
     }
@@ -263,14 +288,14 @@ class TripServiceIT {
         UUID busy = UUID.randomUUID();
         UUID free = UUID.randomUUID();
         candidates(new DriverCandidate(busy, 100, 100));
-        String first = data(createTrip(UUID.randomUUID(), "busy-" + UUID.randomUUID(), PICKUP)).path("id").asText();
+        String first = data(createTrip(UUID.randomUUID(), "busy-" + UUID.randomUUID())).path("id").asText();
         String offerId = awaitOffer(busy).path("id").asText();
         perform(post("/api/v1/offers/" + offerId + "/accept"), driverToken(busy)).andExpect(status().isOk());
 
         // location-service may still list the busy driver (its trip.events consumer lags); trip-service filters.
         candidates(new DriverCandidate(busy, 50, 100), new DriverCandidate(free, 700, 100));
         UUID otherCustomer = UUID.randomUUID();
-        String second = data(createTrip(otherCustomer, "free-" + UUID.randomUUID(), PICKUP)).path("id").asText();
+        String second = data(createTrip(otherCustomer, "free-" + UUID.randomUUID())).path("id").asText();
         assertThat(awaitOffer(free).path("tripId").asText()).isEqualTo(second);
         assertThat(pendingOffers(busy)).isEmpty();
 
@@ -285,37 +310,111 @@ class TripServiceIT {
     @Test
     void endpointsEnforceAuthenticationRolesAndInput() throws Exception {
         mvc.perform(get("/api/v1/trips")).andExpect(status().isUnauthorized());
-        createTrip(UUID.randomUUID(), "x", PICKUP).andExpect(status().isBadRequest());
+        createTrip(UUID.randomUUID(), "x").andExpect(status().isBadRequest());
         mvc.perform(post("/api/v1/trips").with(driverToken(UUID.randomUUID()))
                         .header("Idempotency-Key", "driver-key-123")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(body(PICKUP))))
+                        .content(json.writeValueAsString(Map.of("quoteId", UUID.randomUUID()))))
                 .andExpect(status().isForbidden());
         mvc.perform(post("/api/v1/trips").with(customerToken(UUID.randomUUID()))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(json.writeValueAsString(body(PICKUP))))
+                        .content(json.writeValueAsString(Map.of("quoteId", UUID.randomUUID()))))
                 .andExpect(status().isBadRequest());
-        createTrip(UUID.randomUUID(), "bad-coordinates", Map.of("latitude", 95, "longitude", 106.7, "address", "x"))
+        // The route can no longer be sent by the client: only a quote.
+        mvc.perform(post("/api/v1/trips").with(customerToken(UUID.randomUUID()))
+                        .header("Idempotency-Key", "no-quote-123")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("serviceType", "RIDE", "pickup", PICKUP,
+                                "dropoff", DROPOFF))))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
         perform(get("/api/v1/offers"), customerToken(UUID.randomUUID())).andExpect(status().isForbidden());
     }
 
+    /** BR-006: a surge is booked only at the multiplier the customer confirmed. */
+    @Test
+    void aSurgedQuoteIsBookedOnlyWithItsMultiplierConfirmed() throws Exception {
+        UUID customer = UUID.randomUUID();
+        UUID quoteId = quote(customer, "1.50");
+
+        book(customer, "surge-a-" + UUID.randomUUID(), quoteId, null)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATION"));
+        book(customer, "surge-b-" + UUID.randomUUID(), quoteId, "1.40")
+                .andExpect(status().isUnprocessableEntity());
+        String tripId = data(book(customer, "surge-c-" + UUID.randomUUID(), quoteId, "1.50")
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.fare.surgeMultiplier").value(1.5))).path("id").asText();
+
+        perform(post("/api/v1/trips/" + tripId + "/cancel"), customerToken(customer), Map.of("reason", "OTHER"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void aQuoteBuysOneTripAndPricingAnswersArePassedOn() throws Exception {
+        UUID customer = UUID.randomUUID();
+        UUID quoteId = quote(customer, "1.00");
+        String key = "once-" + UUID.randomUUID();
+        String tripId = data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asText();
+        perform(post("/api/v1/trips/" + tripId + "/cancel"), customerToken(customer), Map.of("reason", "OTHER"))
+                .andExpect(status().isOk());
+
+        // The same quote cannot buy a second trip.
+        book(customer, "twice-" + UUID.randomUUID(), quoteId, null)
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("CONFLICT"));
+
+        // Once the quote has expired a retry with the original key still returns the original trip.
+        when(pricing.validQuote(eq(quoteId), eq(customer)))
+                .thenThrow(new ApiException(ErrorCode.QUOTE_EXPIRED, "The quote expired"));
+        assertThat(data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asText())
+                .isEqualTo(tripId);
+        book(customer, "late-" + UUID.randomUUID(), quoteId, null)
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("QUOTE_EXPIRED"));
+
+        UUID down = UUID.randomUUID();
+        when(pricing.validQuote(eq(down), eq(customer)))
+                .thenThrow(new ApiException(ErrorCode.DEPENDENCY_UNAVAILABLE, "Pricing is down"));
+        book(customer, "down-" + UUID.randomUUID(), down, null)
+                .andExpect(status().isServiceUnavailable());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM trips WHERE customer_id = ?", Integer.class, customer))
+                .isEqualTo(1);
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
+
+    /** Stubs pricing-service: a valid quote for {@code customer} from PICKUP to DROPOFF. */
+    private UUID quote(UUID customer, String surge) {
+        UUID quoteId = UUID.randomUUID();
+        Stop pickup = new Stop((Double) PICKUP.get("latitude"), (Double) PICKUP.get("longitude"),
+                (String) PICKUP.get("address"));
+        Stop dropoff = new Stop((Double) DROPOFF.get("latitude"), (Double) DROPOFF.get("longitude"),
+                (String) DROPOFF.get("address"));
+        when(pricing.validQuote(eq(quoteId), eq(customer))).thenReturn(new PricingClient.Quote(quoteId,
+                ServiceType.RIDE, pickup, dropoff,
+                new FareSnapshot(quoteId, 27_000L, "VND", new BigDecimal(surge), 1, 2_764, 452)));
+        return quoteId;
+    }
+
+    private ResultActions book(UUID customer, String key, UUID quoteId, String acceptedSurge) throws Exception {
+        Map<String, Object> body = new HashMap<>();
+        body.put("quoteId", quoteId.toString());
+        if (acceptedSurge != null) {
+            body.put("acceptedSurgeMultiplier", new BigDecimal(acceptedSurge));
+        }
+        return mvc.perform(post("/api/v1/trips").with(customerToken(customer))
+                .header("Idempotency-Key", key)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json.writeValueAsString(body)));
+    }
 
     private void candidates(DriverCandidate... drivers) {
         when(location.nearby(any(), any(), anyInt(), anyInt())).thenReturn(List.of(drivers));
     }
 
-    private ResultActions createTrip(UUID customer, String key, Map<String, Object> pickup) throws Exception {
-        return mvc.perform(post("/api/v1/trips").with(customerToken(customer))
-                .header("Idempotency-Key", key)
-                .contentType(MediaType.APPLICATION_JSON)
-                .content(json.writeValueAsString(body(pickup))));
-    }
-
-    private static Map<String, Object> body(Map<String, Object> pickup) {
-        return Map.of("serviceType", "RIDE", "pickup", pickup, "dropoff", DROPOFF);
+    private ResultActions createTrip(UUID customer, String key) throws Exception {
+        return book(customer, key, quote(customer, "1.00"), null);
     }
 
     private ResultActions perform(MockHttpServletRequestBuilder request, RequestPostProcessor token)

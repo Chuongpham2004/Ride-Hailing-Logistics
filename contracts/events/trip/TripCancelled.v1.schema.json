@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rhl:event:TripCancelled:v1",
   "title": "TripCancelled v1",
-  "description": "The trip was cancelled. Fee data is added by pricing-service (TBD-07); the free-text note never leaves trip-service. Topic trip.events.v1, key = tripId.",
+  "description": "The trip was cancelled. pricing-service computes the cancellation fee from it (actor, oldStatus, reason, acceptedAt; TBD-07); the free-text note never leaves trip-service. Topic trip.events.v1, key = tripId.",
   "type": "object",
   "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
   "properties": {
@@ -43,7 +43,10 @@
             "OTHER"
           ]
         },
-        "cancelledAt": { "type": "string", "format": "date-time" }
+        "cancelledAt": { "type": "string", "format": "date-time" },
+        "serviceType": { "enum": ["RIDE", "DELIVERY"] },
+        "acceptedAt": { "type": "string", "format": "date-time" },
+        "quoteId": { "type": "string", "format": "uuid" }
       },
       "additionalProperties": true
     }

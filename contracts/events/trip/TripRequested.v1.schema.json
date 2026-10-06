@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rhl:event:TripRequested:v1",
   "title": "TripRequested v1",
-  "description": "A customer created a trip and matching started. Topic trip.events.v1, key = tripId.",
+  "description": "A customer created a trip from a quote and matching started. quoteId, quotedFare, currency and surgeMultiplier are the booked price (optional only for trips created before quotes were required). Topic trip.events.v1, key = tripId.",
   "type": "object",
   "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
   "properties": {
@@ -20,7 +20,11 @@
         "pickup": { "$ref": "#/$defs/stop" },
         "dropoff": { "$ref": "#/$defs/stop" },
         "matchingDeadline": { "type": "string", "format": "date-time" },
-        "occurredAt": { "type": "string", "format": "date-time" }
+        "occurredAt": { "type": "string", "format": "date-time" },
+        "quoteId": { "type": "string", "format": "uuid" },
+        "quotedFare": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "surgeMultiplier": { "type": "number", "minimum": 1 }
       },
       "additionalProperties": true
     }

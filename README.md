@@ -232,9 +232,9 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 | `dispatch:driver-hold:{driverId}` | STRING = offerId | = timeout offer | trip | Giữ tài xế khi gửi offer (`SET NX PX`), tránh offer cạnh tranh |
 | `dispatch:offer-expiry` | ZSET (score = expiresAt) | — | trip | Scheduler quét offer hết hạn |
 | `quote:{quoteId}` | STRING (JSON) | = `expiresAt` | pricing | Cache quote; nguồn sự thật vẫn là bảng `fare_quotes` |
-| `surge:demand:{h3Cell}:{window}` | STRING (INCR) | 2 × window | pricing | Đếm cầu theo ô và cửa sổ thời gian |
-| `surge:supply:{h3Cell}` | ZSET driverId → ts | ngắn | pricing | Đếm cung (tài xế AVAILABLE có vị trí mới) |
-| `surge:multiplier:{h3Cell}` | HASH `value,ruleVersion,computedAt` | ngắn | pricing | Hệ số surge hiện hành |
+| `surge:demand:{serviceType}:{h3Cell}` | ZSET tripId → thời điểm yêu cầu | 2 × cửa sổ | pricing | Đếm cầu theo ô trong cửa sổ trượt; tripId làm member nên event gửi lại không đếm trùng |
+| `surge:supply:{serviceType}:{h3Cell}` | ZSET driverId → thời điểm vị trí | 2 × độ mới | pricing | Đếm cung (tài xế AVAILABLE có vị trí còn mới) |
+| `surge:driver:{driverId}` | HASH `version,status,services,cell,ts` | 1 ngày (gia hạn khi có event) | pricing | Trạng thái và ô hiện tại của tài xế; Lua bỏ event có version/thời điểm cũ. Hệ số surge tính lúc tạo quote (không cache) và ghi lại trên quote cùng số cung/cầu, ô H3, version quy tắc |
 | `route:{hash(from,to,type)}` | STRING | vài phút | pricing | Cache kết quả Map Provider |
 | `ws:session:{userId}` | SET instanceId | theo heartbeat | realtime | Biết phiên đang ở instance nào |
 | `ws:trip-participants:{tripId}` | HASH | đến hết thời gian ân hạn | realtime | Kiểm tra quyền subscribe nhanh (dựng lại từ `trip.events`) |
@@ -265,7 +265,7 @@ Mỗi topic tương ứng một aggregate. **Message key = ID của aggregate** 
 | `pricing.events.v1` | tripId | pricing | payment, trip | `FareFinalized`, `CancellationFeeCalculated` |
 | `payment.events.v1` | tripId | payment | trip, realtime | `PaymentSucceeded`, `PaymentFailed`, `RefundCompleted` |
 | `wallet.events.v1` | driverId | payment | realtime | `DriverEarningPosted`, `WalletAdjusted` |
-| `<topic>.DLT` | như topic gốc | Spring Kafka | admin tool | Event không xử lý được (FR-EVT-008) |
+| `<topic>.DLT` | như topic gốc | Spring Kafka (`common-messaging` đặt tên rõ ràng, cùng partition với bản ghi lỗi) | admin tool | Event không xử lý được (FR-EVT-008) |
 
 Loại event được ghi trong header `eventType` và trong envelope (§9). Topic có hậu tố `.v1`; thay đổi không tương thích sẽ tạo topic `.v2` (NFR-MNT-002).
 
@@ -533,6 +533,7 @@ docker compose up -d
 BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-123   ./mvnw -pl services/user-service spring-boot:run   # :8081
 ./mvnw -pl services/location-service spring-boot:run # :8082
 ./mvnw -pl services/trip-service spring-boot:run     # :8083 (cần location-service để ghép tài xế)
+./mvnw -pl services/pricing-service spring-boot:run  # :8084
 ./mvnw -pl services/api-gateway spring-boot:run      # :8080, gọi API qua gateway
 ```
 
@@ -540,9 +541,10 @@ BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-12
 - Entity dùng Lombok giới hạn: `@Getter` + `@NoArgsConstructor(access = PROTECTED)`; bean Spring dùng `@RequiredArgsConstructor`. `@Data`, `@Setter`, `@EqualsAndHashCode`, `@ToString` bị chặn trong `lombok.config` (proxy Hibernate, lazy loading, lộ PII qua log, bỏ qua quy tắc nghiệp vụ).
 - Admin đầu tiên được tạo khi khởi động nếu đặt `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 ký tự); vai trò nhân viên không tự đăng ký được.
 - Không đặt `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (PEM) thì user-service tự sinh khóa RSA tạm: token mất hiệu lực khi restart. Chỉ dùng cho dev.
-- OpenAPI: user-service `http://localhost:8081/swagger-ui/index.html`, location-service `http://localhost:8082/swagger-ui/index.html`, trip-service `http://localhost:8083/swagger-ui/index.html`.
+- OpenAPI: user-service `http://localhost:8081/swagger-ui/index.html`, location-service `http://localhost:8082/swagger-ui/index.html`, trip-service `http://localhost:8083/swagger-ui/index.html`, pricing-service `http://localhost:8084/swagger-ui/index.html`.
 - location-service: tài xế gửi vị trí qua `POST /api/v1/locations/me` (HTTP dự phòng, cùng luồng xử lý với `location.telemetry.raw.v1` từ realtime-gateway) và xem lại bằng `GET /api/v1/locations/me`. trip-service gọi `GET /internal/v1/drivers/nearby?latitude&longitude&serviceType[&radiusMeters&limit]` và `GET /internal/v1/drivers/{id}/location`. Gateway không định tuyến `/internal/**` (trả 403); chưa có cơ chế xác thực giữa các service nên không được mở cổng 8082 ra ngoài.
-- trip-service: khách tạo chuyến bằng `POST /api/v1/trips` (bắt buộc header `Idempotency-Key`; gửi lại cùng khóa trả về cùng chuyến, khác nội dung → `409 IDEMPOTENCY_KEY_REUSED`), xem `GET /api/v1/trips`, `/{id}`, `/{id}/history`, hủy bằng `POST /api/v1/trips/{id}/cancel`. Tài xế xem offer `GET /api/v1/offers`, `POST /api/v1/offers/{id}/accept|decline`, rồi `POST /api/v1/trips/{id}/start-pickup|arrive|start|complete`. Bộ ghép chạy ngay sau khi tạo chuyến và theo nhịp `rhl.matching.tick-interval`: mỗi lần mời một tài xế (gần nhất, giữ bằng `dispatch:driver-hold:*`), hết hạn/từ chối thì mời người kế tiếp, hết ứng viên thì nới bán kính, quá `matching-timeout` → `NO_DRIVER`.
+- trip-service: khách lấy quote ở pricing-service rồi tạo chuyến bằng `POST /api/v1/trips` với `{"quoteId"}` (bắt buộc header `Idempotency-Key`; gửi lại cùng khóa trả về cùng chuyến, khác nội dung → `409 IDEMPOTENCY_KEY_REUSED`). Điểm đón/đến, loại dịch vụ và giá lấy từ quote, không lấy từ client; mỗi quote chỉ dùng cho một chuyến (`409`); quote có surge > 1 (`surgeConfirmationRequired`) phải gửi kèm `acceptedSurgeMultiplier` đúng bằng hệ số đã hiển thị (BR-006). Pricing-service không trả lời → `503 DEPENDENCY_UNAVAILABLE`. Tiếp theo xem `GET /api/v1/trips`, `/{id}`, `/{id}/history`, hủy bằng `POST /api/v1/trips/{id}/cancel`. Tài xế xem offer `GET /api/v1/offers`, `POST /api/v1/offers/{id}/accept|decline`, rồi `POST /api/v1/trips/{id}/start-pickup|arrive|start|complete`. Bộ ghép chạy ngay sau khi tạo chuyến và theo nhịp `rhl.matching.tick-interval`: mỗi lần mời một tài xế (gần nhất, giữ bằng `dispatch:driver-hold:*`), hết hạn/từ chối thì mời người kế tiếp, hết ứng viên thì nới bán kính, quá `matching-timeout` → `NO_DRIVER`.
+- pricing-service: khách lấy báo giá bằng `POST /api/v1/quotes` (`serviceType`, `pickup`, `dropoff`) và xem lại bằng `GET /api/v1/quotes/{id}`; quote gắn với khách, có hạn `rhl.quote.ttl` (5 phút), ghi rõ thành phần giá (luôn cộng đúng bằng tổng), hệ số surge, `ruleVersion`, nguồn tuyến. trip-service kiểm tra quote qua `GET /internal/v1/quotes/{id}?customerId&serviceType` (404 nếu không phải của khách, 422 `QUOTE_EXPIRED` nếu hết hạn). Admin xem và lên lịch bảng giá mới bằng `GET|POST /api/v1/admin/pricing/rules`: bảng giá không sửa được, mỗi lần đổi là một version mới có hiệu lực từ thời điểm trong tương lai, version trước tự đóng lại; quote cũ giữ nguyên giá. Tuyến đường tạm ước tính (đường chim bay × 1.35, 22 km/h) cho tới khi chốt Map Provider (TBD-02).
 
 | Thành phần | Trạng thái | Ghi chú |
 |---|---|---|
@@ -553,8 +555,9 @@ BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-12
 | `api-gateway` | ✅ | Định tuyến 5 service, JWT qua JWKS, kiểm tra token thu hồi, rate limit Redis, CORS |
 | `user-service` | 🟡 | Xong: đăng ký/đăng nhập, refresh xoay vòng + phát hiện dùng lại, logout, RBAC, hồ sơ tài xế, xe, giấy tờ, xét duyệt, Online/Offline, audit, consumer `dispatch.offers` + `trip.events` (OFFERED/BUSY, phát lại `DriverAvailabilityChanged`). Còn: upload file giấy tờ, đặt lại mật khẩu, xác minh email/SĐT |
 | `location-service` | 🟡 | Xong: consume `DriverAvailabilityChanged` (projection `driver_presence`, bỏ event cũ theo `aggregateVersion`), validate telemetry (phạm vi, thời gian, accuracy, nhảy vị trí bất khả thi, gửi bù), Lua cập nhật vị trí + GEO nguyên tử, dọn GEO quá hạn, `telemetry_history` phân vùng theo ngày, publish `DriverLocationUpdated`, API tìm tài xế gần; tài xế `OFFERED`/`BUSY` (qua `DriverAvailabilityChanged` từ user-service) giữ vị trí nhưng rời GEO. Còn: xác thực giữa các service cho `/internal/**` |
-| `trip-service` | 🟡 | Xong: tạo chuyến idempotent, state machine tường minh, lịch sử trạng thái bất biến (trigger chặn sửa/xóa), matching (location-service + giữ tài xế bằng Redis + nới bán kính + `NO_DRIVER`), offer có hạn, accept nguyên tử (khóa dòng + unique partial index), hủy chuyến, 9 event qua outbox. Còn: xác thực quote với pricing-service (BR-005/006, tạm thời khách gửi thẳng điểm đón/đến), dữ liệu giao hàng + bằng chứng giao, OTP bắt đầu chuyến, phí hủy (TBD-07), API tra cứu cho admin, audit hủy ngoại lệ, Resilience4j cho lời gọi location-service |
-| `pricing`, `payment`, `realtime-gateway` | ⬜ | Chưa bắt đầu |
+| `trip-service` | 🟡 | Xong: tạo chuyến idempotent, state machine tường minh, lịch sử trạng thái bất biến (trigger chặn sửa/xóa), matching (location-service + giữ tài xế bằng Redis + nới bán kính + `NO_DRIVER`), offer có hạn, accept nguyên tử (khóa dòng + unique partial index), hủy chuyến, 9 event qua outbox. Xong thêm: tạo chuyến từ quote (kiểm tra qua pricing-service, snapshot giá trên chuyến, mỗi quote một chuyến, khách xác nhận surge). Còn: dữ liệu giao hàng + bằng chứng giao, OTP bắt đầu chuyến, phí hủy (TBD-07), API tra cứu cho admin, audit hủy ngoại lệ, Resilience4j cho lời gọi location-service |
+| `pricing-service` | 🟡 | Xong: bảng giá có version + thời gian hiệu lực (chặn chồng lấn bằng exclusion constraint), công thức cước tất định (tiền `long` VND, thành phần cộng đúng tổng, làm tròn lên bước 1.000), ước tính tuyến, quote gắn khách + hết hạn + cache Redis, API nội bộ kiểm tra quote. Xong thêm: surge theo cung/cầu ô H3 (consume `TripRequested`, `DriverAvailabilityChanged`, `DriverLocationUpdated`; quy tắc surge có version; Redis lỗi → 1.00 và ghi `UNAVAILABLE`). Xong thêm: cước cuối theo giá chốt trước (`TripCompleted` → `final_fares` → `FareFinalized`, đúng một lần mỗi chuyến), phí hủy theo quy tắc có version (`TripCancelled` → `cancellation_fees` → `CancellationFeeCalculated`, phát cả khi phí 0). Còn: hiển thị phí hủy cho khách trước khi xác nhận hủy, cước tính theo quãng đường thực tế (TBD-05), Map Provider thật (TBD-02), audit thay đổi bảng giá, API admin cho quy tắc surge, dựng lại bộ đếm cung khi mất Redis (hiện chờ tài xế đổi trạng thái) |
+| `payment`, `realtime-gateway` | ⬜ | Chưa bắt đầu |
 
 ---
 

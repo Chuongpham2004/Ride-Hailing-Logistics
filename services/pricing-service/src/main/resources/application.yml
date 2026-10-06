@@ -1,0 +1,106 @@
+server:
+  port: 8084
+  shutdown: graceful
+
+spring:
+  application:
+    name: pricing-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${PRICING_DB_URL:jdbc:postgresql://localhost:15432/pricing_db}
+    username: ${PRICING_DB_USER:pricing_svc}
+    password: ${PRICING_DB_PASSWORD:pricing_svc}
+    hikari:
+      connection-init-sql: SET TIME ZONE 'UTC'
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:16379}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+    consumer:
+      group-id: pricing-service
+      enable-auto-commit: false
+      # From the start: drivers already online must be known for supply. Replays are harmless
+      # (versions compared in Redis, requests outside the demand window skipped).
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${USER_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+rhl:
+  jwt:
+    issuer: rhl-user-service
+  region-code: DEFAULT
+  # Placeholders until TBD-05 (quote validity) and TBD-03 (rounding) are decided.
+  quote:
+    ttl: 5m
+    rounding-step: 1000
+    min-distance-meters: 200
+    max-distance-meters: 100000
+  # Straight-line estimate until a Map Provider is chosen (TBD-02).
+  route:
+    road-factor: 1.35
+    average-speed-kmh: 22
+    min-duration-seconds: 60
+  # Placeholders until TBD-04 (area size, window) is decided; the formula is in surge_rules.
+  surge:
+    h3-resolution: 8
+    ring-size: 1
+    demand-window: 5m
+    supply-freshness: 60s
+  kafka:
+    partitions: 3
+    replicas: 1
+    location-concurrency: 3
+  # FareFinalized and CancellationFeeCalculated (pricing.events.v1).
+  outbox:
+    poll-interval: 200ms
+    batch-size: 100
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

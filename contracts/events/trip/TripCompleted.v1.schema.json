@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rhl:event:TripCompleted:v1",
   "title": "TripCompleted v1",
-  "description": "The driver completed the trip (IN_TRIP -> COMPLETED); published once per trip (BR-009) and triggers the final fare and payment. Topic trip.events.v1, key = tripId.",
+  "description": "The driver completed the trip (IN_TRIP -> COMPLETED); published once per trip (BR-009) and triggers the final fare and payment; quoteId is the booked quote (absent only for trips booked before quotes). Topic trip.events.v1, key = tripId.",
   "type": "object",
   "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
   "properties": {
@@ -20,7 +20,8 @@
         "pickup": { "$ref": "#/$defs/stop" },
         "dropoff": { "$ref": "#/$defs/stop" },
         "acceptedAt": { "type": "string", "format": "date-time" },
-        "completedAt": { "type": "string", "format": "date-time" }
+        "completedAt": { "type": "string", "format": "date-time" },
+        "quoteId": { "type": "string", "format": "uuid" }
       },
       "additionalProperties": true
     }

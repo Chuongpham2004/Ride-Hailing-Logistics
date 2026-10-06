@@ -15,6 +15,9 @@
     "actorType": "CUSTOMER",
     "actorId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e02",
     "reason": "CHANGED_MIND",
-    "cancelledAt": "2026-10-05T08:32:00Z"
+    "cancelledAt": "2026-10-05T08:32:00Z",
+    "serviceType": "RIDE",
+    "acceptedAt": "2026-10-05T08:31:05Z",
+    "quoteId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e04"
   }
 }

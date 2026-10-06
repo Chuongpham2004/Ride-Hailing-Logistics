@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:FareFinalized:v1",
+  "title": "FareFinalized v1",
+  "description": "The final fare of a completed trip, settled once per trip (BR-009). method UPFRONT charges the booked quote exactly, so no surge other than the one the customer accepted is ever applied. Components add up to total. Topic pricing.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "FareFinalized" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "pricing-service" },
+    "payload": {
+      "type": "object",
+      "required": ["fareId", "tripId", "customerId", "driverId", "quoteId", "method", "breakdown", "total", "currency",
+                   "surgeMultiplier", "pricingRuleVersion", "completedAt", "finalizedAt"],
+      "properties": {
+        "fareId": { "type": "string", "format": "uuid" },
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "type": "string", "format": "uuid" },
+        "quoteId": { "type": "string", "format": "uuid" },
+        "method": { "enum": ["UPFRONT"] },
+        "breakdown": {
+          "type": "object",
+          "required": ["baseFare", "distanceFare", "timeFare", "minimumFareAdjustment", "surgeAmount",
+                       "roundingAdjustment"],
+          "properties": {
+            "baseFare": { "type": "integer", "minimum": 0 },
+            "distanceFare": { "type": "integer", "minimum": 0 },
+            "timeFare": { "type": "integer", "minimum": 0 },
+            "minimumFareAdjustment": { "type": "integer", "minimum": 0 },
+            "surgeAmount": { "type": "integer", "minimum": 0 },
+            "roundingAdjustment": { "type": "integer", "minimum": 0 }
+          },
+          "additionalProperties": true
+        },
+        "total": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "surgeMultiplier": { "type": "number", "minimum": 1 },
+        "pricingRuleVersion": { "type": "integer", "minimum": 1 },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "finalizedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

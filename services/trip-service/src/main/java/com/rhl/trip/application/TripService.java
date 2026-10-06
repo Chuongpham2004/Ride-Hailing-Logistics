@@ -9,12 +9,11 @@ import com.rhl.trip.domain.Actor;
 import com.rhl.trip.domain.CancelReason;
 import com.rhl.trip.domain.DomainException;
 import com.rhl.trip.domain.MatchingPolicy;
-import com.rhl.trip.domain.ServiceType;
-import com.rhl.trip.domain.Stop;
 import com.rhl.trip.domain.Transition;
 import com.rhl.trip.domain.Trip;
 import com.rhl.trip.domain.TripStatus;
 import com.rhl.trip.domain.TripStatusChange;
+import com.rhl.trip.infrastructure.client.PricingClient;
 import com.rhl.trip.infrastructure.persistence.DriverOfferRepository;
 import com.rhl.trip.infrastructure.persistence.IdempotencyKeyRepository;
 import com.rhl.trip.infrastructure.persistence.TripRepository;
@@ -23,10 +22,13 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /** Trip use cases for customers, assigned drivers and staff (FR-TRIP, FR-CAN). */
@@ -44,39 +46,61 @@ public class TripService {
     private final TripEventPublisher events;
     private final ApplicationEventPublisher afterCommit;
     private final MatchingPolicy policy;
+    private final PricingClient pricing;
+    private final TransactionTemplate tx;
     private final Clock clock;
 
-    public record CreateCommand(ServiceType serviceType, Stop pickup, Stop dropoff) {
+    /** @param acceptedSurgeMultiplier the surge the customer confirmed (BR-006), {@code null} if none shown */
+    public record CreateCommand(UUID quoteId, BigDecimal acceptedSurgeMultiplier) {
     }
 
     /**
-     * Creates the trip and starts matching (FR-TRIP-001). The same key with the same request
-     * returns the trip created the first time; with a different request it is refused.
-     *
-     * <p>Quote validation (BR-005, BR-006) is added together with pricing-service.
+     * Creates the trip from a quote and starts matching (FR-TRIP-001). Route, service and price
+     * all come from the quote, never from the client (BR-005, BR-007); a quote buys one trip.
+     * The same key with the same request returns the trip created the first time, even after
+     * the quote expired; with a different request it is refused.
      */
-    @Transactional
     public TripViews.TripView create(UUID customerId, String idempotencyKey, String requestHash,
                                      CreateCommand command) {
-        Instant now = clock.instant();
         String scope = "trip.create:" + customerId;
-        UUID tripId = UuidV7.random();
-        if (!idempotencyKeys.claim(scope, idempotencyKey, requestHash, tripId, now)) {
-            IdempotencyKeyRepository.Entry entry = idempotencyKeys.find(scope, idempotencyKey)
-                    .orElseThrow(() -> new IllegalStateException("Idempotency key vanished"));
+        Optional<TripViews.TripView> replay = tx.execute(status -> replay(scope, idempotencyKey, requestHash));
+        if (replay != null && replay.isPresent()) {
+            return replay.get();
+        }
+        // Remote call outside any transaction; the claim below settles races between retries.
+        PricingClient.Quote quote = pricing.validQuote(command.quoteId(), customerId);
+        quote.fare().requireSurgeConsent(command.acceptedSurgeMultiplier());
+        return tx.execute(status -> book(scope, idempotencyKey, requestHash, customerId, quote));
+    }
+
+    private Optional<TripViews.TripView> replay(String scope, String idempotencyKey, String requestHash) {
+        return idempotencyKeys.find(scope, idempotencyKey).map(entry -> {
             if (!entry.requestHash().equals(requestHash)) {
                 throw new ApiException(ErrorCode.IDEMPOTENCY_KEY_REUSED,
                         "This Idempotency-Key was already used for a different request");
             }
             return TripViews.TripView.of(trips.findById(entry.resourceId()).orElseThrow());
+        });
+    }
+
+    private TripViews.TripView book(String scope, String idempotencyKey, String requestHash, UUID customerId,
+                                    PricingClient.Quote quote) {
+        Instant now = clock.instant();
+        UUID tripId = UuidV7.random();
+        if (!idempotencyKeys.claim(scope, idempotencyKey, requestHash, tripId, now)) {
+            // A concurrent retry with the same key committed first.
+            return replay(scope, idempotencyKey, requestHash).orElseThrow();
         }
-        // The partial unique index enforces this too, for requests racing with different keys.
+        // The partial unique indexes enforce both of these too, for requests racing with different keys.
         if (trips.hasActiveTrip(customerId)) {
             throw DomainException.rule("You already have an active trip");
         }
+        if (trips.isQuoteUsed(quote.id())) {
+            throw ApiException.conflict("This quote was already used for a trip; ask for a new one");
+        }
 
-        Trip trip = Trip.create(tripId, customerId, command.serviceType(), command.pickup(), command.dropoff(),
-                policy, now);
+        Trip trip = Trip.create(tripId, customerId, quote.serviceType(), quote.pickup(), quote.dropoff(),
+                quote.fare(), policy, now);
         Transition created = new Transition(tripId, null, TripStatus.CREATED, Actor.customer(customerId), null, now);
         Transition matching = trip.startMatching(now);
         trips.saveAndFlush(trip);

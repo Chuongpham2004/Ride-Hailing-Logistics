@@ -3,6 +3,7 @@ package com.rhl.trip.application;
 import com.rhl.trip.domain.ActorType;
 import com.rhl.trip.domain.CancelReason;
 import com.rhl.trip.domain.DriverOffer;
+import com.rhl.trip.domain.FareSnapshot;
 import com.rhl.trip.domain.OfferStatus;
 import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Stop;
@@ -20,16 +21,20 @@ public final class TripViews {
     private TripViews() {
     }
 
-    /** {@code version} lets clients drop stale realtime updates after a REST snapshot (FR-RT, UC-07). */
+    /**
+     * {@code version} lets clients drop stale realtime updates after a REST snapshot (FR-RT, UC-07).
+     * {@code fare} is the booked price (quote snapshot); {@code null} for trips booked before quotes.
+     */
     public record TripView(UUID id, UUID customerId, UUID driverId, ServiceType serviceType, TripStatus status,
-                           Stop pickup, Stop dropoff, Instant matchingDeadline, CancelReason cancelReason,
-                           ActorType cancelledBy, Instant createdAt, Instant acceptedAt, Instant completedAt,
-                           Instant cancelledAt, long version) {
+                           Stop pickup, Stop dropoff, FareSnapshot fare, Instant matchingDeadline,
+                           CancelReason cancelReason, ActorType cancelledBy, Instant createdAt, Instant acceptedAt,
+                           Instant completedAt, Instant cancelledAt, long version) {
 
         static TripView of(Trip t) {
             return new TripView(t.getId(), t.getCustomerId(), t.getDriverId(), t.getServiceType(), t.getStatus(),
-                    t.getPickup(), t.getDropoff(), t.getMatchingDeadline(), t.getCancelReason(), t.getCancelledBy(),
-                    t.getCreatedAt(), t.getAcceptedAt(), t.getCompletedAt(), t.getCancelledAt(), t.getVersion());
+                    t.getPickup(), t.getDropoff(), t.getFare(), t.getMatchingDeadline(), t.getCancelReason(),
+                    t.getCancelledBy(), t.getCreatedAt(), t.getAcceptedAt(), t.getCompletedAt(), t.getCancelledAt(),
+                    t.getVersion());
         }
     }
 
