@@ -95,6 +95,8 @@ jobs:
           image-ref: ${{ steps.image.outputs.name }}@${{ steps.build.outputs.digest }}
           severity: CRITICAL,HIGH
           ignore-unfixed: true
+          # Accepted CVEs, each with a reason and an expiry date.
+          trivyignores: .trivyignore
           format: table
           exit-code: '1'
 
