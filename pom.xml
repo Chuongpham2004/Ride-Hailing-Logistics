@@ -21,6 +21,7 @@
         <module>libs/common-web</module>
         <module>libs/common-security</module>
         <module>libs/common-messaging</module>
+        <module>services/user-service</module>
     </modules>
 
     <properties>
