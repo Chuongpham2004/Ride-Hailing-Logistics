@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:DriverLocationReported:v1",
+  "title": "DriverLocationReported v1",
+  "description": "Raw DRIVER_LOCATION_UPDATED message from a driver's WebSocket session, not yet validated. driverId is taken from the authenticated session, never from the client payload. Topic location.telemetry.raw.v1, key = driverId, aggregateVersion = sequence. Published directly, not through an outbox.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "DriverLocationReported" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "realtime-gateway" },
+    "payload": {
+      "type": "object",
+      "required": ["driverId", "messageId", "sequence", "latitude", "longitude", "accuracyMeters", "deviceTimestamp", "receivedAt"],
+      "properties": {
+        "driverId": { "type": "string", "format": "uuid" },
+        "messageId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "accuracyMeters": { "type": "number" },
+        "headingDegrees": { "anyOf": [{ "type": "null" }, { "type": "number", "minimum": 0, "maximum": 360 }] },
+        "speedMetersPerSecond": { "anyOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }] },
+        "deviceTimestamp": { "type": "string", "format": "date-time" },
+        "receivedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}
