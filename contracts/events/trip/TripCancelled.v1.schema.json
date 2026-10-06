@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:TripCancelled:v1",
+  "title": "TripCancelled v1",
+  "description": "The trip was cancelled. Fee data is added by pricing-service (TBD-07); the free-text note never leaves trip-service. Topic trip.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
+  "properties": {
+    "eventType": { "const": "TripCancelled" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "trip-service" },
+    "payload": {
+      "type": "object",
+      "required": ["tripId", "customerId", "oldStatus", "actorType", "reason", "cancelledAt"],
+      "properties": {
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "anyOf": [{"type": "null"}, {"type": "string", "format": "uuid"}] },
+        "oldStatus": {
+          "enum": [
+            "CREATED",
+            "MATCHING",
+            "ACCEPTED",
+            "PICKING_UP",
+            "ARRIVED",
+            "IN_TRIP",
+            "COMPLETED",
+            "CANCELLED",
+            "NO_DRIVER"
+          ]
+        },
+        "actorType": { "enum": ["CUSTOMER", "DRIVER", "STAFF", "SYSTEM"] },
+        "actorId": { "anyOf": [{"type": "null"}, {"type": "string", "format": "uuid"}] },
+        "reason": {
+          "enum": [
+            "CHANGED_MIND",
+            "WAIT_TOO_LONG",
+            "DRIVER_NOT_MOVING",
+            "CUSTOMER_NO_SHOW",
+            "WRONG_PICKUP",
+            "VEHICLE_ISSUE",
+            "SAFETY_CONCERN",
+            "OTHER"
+          ]
+        },
+        "cancelledAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

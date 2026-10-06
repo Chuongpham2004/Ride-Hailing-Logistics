@@ -1,0 +1,91 @@
+server:
+  port: 8083
+  shutdown: graceful
+
+spring:
+  application:
+    name: trip-service
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${TRIP_DB_URL:jdbc:postgresql://localhost:15432/trip_db}
+    username: ${TRIP_DB_USER:trip_svc}
+    password: ${TRIP_DB_PASSWORD:trip_svc}
+    hikari:
+      connection-init-sql: SET TIME ZONE 'UTC'
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:16379}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${USER_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+
+rhl:
+  jwt:
+    issuer: rhl-user-service
+  # Placeholders until TBD-06 (radius, rounds, offer timeout, ranking) is decided.
+  matching:
+    initial-radius-meters: 2000
+    radius-step-meters: 1000
+    max-radius-meters: 8000
+    offer-timeout: 15s
+    matching-timeout: 30s
+    candidate-limit: 10
+    hold-grace: 5s
+    tick-interval: 1s
+    batch-size: 50
+  location:
+    base-url: ${LOCATION_SERVICE_URL:http://localhost:8082}
+    connect-timeout: 500ms
+    read-timeout: 1s
+  kafka:
+    partitions: 3
+    replicas: 1
+  outbox:
+    poll-interval: 200ms
+    batch-size: 100
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "
