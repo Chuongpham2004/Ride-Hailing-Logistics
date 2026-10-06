@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:DriverLocationUpdated:v1",
+  "title": "DriverLocationUpdated v1",
+  "description": "A validated report became the driver's current position. Precise coordinates: consumers may only show them to trip participants (BR-013). Topic location.updates.v1, key = driverId, aggregateVersion = sequence. Published directly, not through an outbox.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "DriverLocationUpdated" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "location-service" },
+    "payload": {
+      "type": "object",
+      "required": ["driverId", "sequence", "latitude", "longitude", "accuracyMeters", "deviceTimestamp", "serverTimestamp"],
+      "properties": {
+        "driverId": { "type": "string", "format": "uuid" },
+        "sequence": { "type": "integer", "minimum": 0 },
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "accuracyMeters": { "type": "number", "minimum": 0 },
+        "headingDegrees": { "anyOf": [{ "type": "null" }, { "type": "number", "minimum": 0, "maximum": 360 }] },
+        "speedMetersPerSecond": { "anyOf": [{ "type": "null" }, { "type": "number", "minimum": 0 }] },
+        "deviceTimestamp": { "type": "string", "format": "date-time" },
+        "serverTimestamp": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

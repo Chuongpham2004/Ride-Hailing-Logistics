@@ -1,0 +1,22 @@
+{
+  "eventId": "0199b3a8-6a10-7c22-8e4f-1a2b3c4d5e60",
+  "eventType": "DriverLocationReported",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-05T08:30:00.120Z",
+  "correlationId": "0199b3a8-6a10-7c22-8e4f-1a2b3c4d5e61",
+  "producer": "realtime-gateway",
+  "aggregateId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+  "aggregateVersion": 1842,
+  "payload": {
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "messageId": "0199b3a8-6a0f-7d10-9a3b-5c6d7e8f9a01",
+    "sequence": 1842,
+    "latitude": 10.7769,
+    "longitude": 106.7009,
+    "accuracyMeters": 8.5,
+    "headingDegrees": 125,
+    "speedMetersPerSecond": 7.2,
+    "deviceTimestamp": "2026-10-05T08:29:59Z",
+    "receivedAt": "2026-10-05T08:30:00.120Z"
+  }
+}
