@@ -17,6 +17,7 @@
     "currency": "VND",
     "ruleVersion": 1,
     "cancelledAt": "2026-10-05T08:35:00Z",
-    "calculatedAt": "2026-10-05T08:35:01Z"
+    "calculatedAt": "2026-10-05T08:35:01Z",
+    "serviceType": "RIDE"
   }
 }

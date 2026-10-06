@@ -25,7 +25,8 @@
         "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
         "ruleVersion": { "type": "integer", "minimum": 1 },
         "cancelledAt": { "type": "string", "format": "date-time" },
-        "calculatedAt": { "type": "string", "format": "date-time" }
+        "calculatedAt": { "type": "string", "format": "date-time" },
+        "serviceType": { "enum": ["RIDE", "DELIVERY"] }
       },
       "additionalProperties": true
     }

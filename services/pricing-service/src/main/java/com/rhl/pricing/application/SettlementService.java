@@ -75,8 +75,9 @@ public class SettlementService {
             throw new InvalidEventException(e.getMessage());
         }
         finalFares.save(fare);
-        outbox.append(Topics.PRICING_EVENTS, tripId.toString(), "FareFinalized", 1, tripId.toString(), 0,
-                fareFinalized(fare));
+        Map<String, Object> payload = fareFinalized(fare);
+        payload.put("serviceType", quote.getServiceType().name());
+        outbox.append(Topics.PRICING_EVENTS, tripId.toString(), "FareFinalized", 1, tripId.toString(), 0, payload);
     }
 
     @Transactional
@@ -105,8 +106,10 @@ public class SettlementService {
         CancellationFee fee = CancellationFee.decide(UuidV7.random(), tripId, id(p, "customerId"),
                 p.hasNonNull("driverId") ? id(p, "driverId") : null, quoteId, rule, cancellation, clock.instant());
         fees.save(fee);
+        Map<String, Object> payload = cancellationFeeCalculated(fee);
+        payload.put("serviceType", serviceType.name());
         outbox.append(Topics.PRICING_EVENTS, tripId.toString(), "CancellationFeeCalculated", 1, tripId.toString(),
-                0, cancellationFeeCalculated(fee));
+                0, payload);
     }
 
     private static Map<String, Object> fareFinalized(FinalFare fare) {
