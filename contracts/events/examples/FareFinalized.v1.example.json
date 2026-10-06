@@ -27,6 +27,7 @@
     "surgeMultiplier": 1.0,
     "pricingRuleVersion": 1,
     "completedAt": "2026-10-05T08:52:40Z",
-    "finalizedAt": "2026-10-05T08:52:41Z"
+    "finalizedAt": "2026-10-05T08:52:41Z",
+    "serviceType": "RIDE"
   }
 }

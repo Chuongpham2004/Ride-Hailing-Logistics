@@ -39,7 +39,8 @@
         "surgeMultiplier": { "type": "number", "minimum": 1 },
         "pricingRuleVersion": { "type": "integer", "minimum": 1 },
         "completedAt": { "type": "string", "format": "date-time" },
-        "finalizedAt": { "type": "string", "format": "date-time" }
+        "finalizedAt": { "type": "string", "format": "date-time" },
+        "serviceType": { "enum": ["RIDE", "DELIVERY"] }
       },
       "additionalProperties": true
     }

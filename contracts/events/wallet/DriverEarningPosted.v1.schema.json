@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:DriverEarningPosted:v1",
+  "title": "DriverEarningPosted v1",
+  "description": "A driver's earning and the platform commission were written to the wallet ledger, once per payment (BR-011, BR-012). netEarning = grossAmount - commission; balance is the wallet balance right after these entries. Topic wallet.events.v1, key = driverId.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "DriverEarningPosted" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "payment-service" },
+    "payload": {
+      "type": "object",
+      "required": ["walletId", "driverId", "tripId", "paymentId", "grossAmount", "commission", "netEarning", "currency",
+                   "commissionRuleVersion", "balance", "postedAt"],
+      "properties": {
+        "walletId": { "type": "string", "format": "uuid" },
+        "driverId": { "type": "string", "format": "uuid" },
+        "tripId": { "type": "string", "format": "uuid" },
+        "paymentId": { "type": "string", "format": "uuid" },
+        "grossAmount": { "type": "integer", "minimum": 0 },
+        "commission": { "type": "integer", "minimum": 0 },
+        "netEarning": { "type": "integer", "minimum": 0 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "commissionRuleVersion": { "type": "integer", "minimum": 1 },
+        "balance": { "type": "integer", "minimum": 0 },
+        "postedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

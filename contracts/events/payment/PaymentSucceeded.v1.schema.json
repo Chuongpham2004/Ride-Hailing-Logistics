@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:PaymentSucceeded:v1",
+  "title": "PaymentSucceeded v1",
+  "description": "The provider confirmed a charge. Published once per payment (BR-015); the amount is the final fare or cancellation fee set by pricing-service, never a client value. Topic payment.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "PaymentSucceeded" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "payment-service" },
+    "payload": {
+      "type": "object",
+      "required": ["paymentId", "tripId", "customerId", "purpose", "amount", "currency", "provider", "providerRef",
+                   "attemptNo", "succeededAt"],
+      "properties": {
+        "paymentId": { "type": "string", "format": "uuid" },
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+        "purpose": { "enum": ["TRIP_FARE", "CANCELLATION_FEE"] },
+        "amount": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "providerRef": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "attemptNo": { "type": "integer", "minimum": 1 },
+        "succeededAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

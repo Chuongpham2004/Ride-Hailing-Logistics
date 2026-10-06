@@ -1,0 +1,23 @@
+{
+  "eventId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9f14",
+  "eventType": "DriverEarningPosted",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-05T08:52:44Z",
+  "correlationId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9eff",
+  "producer": "payment-service",
+  "aggregateId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e08",
+  "aggregateVersion": 1,
+  "payload": {
+    "walletId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e08",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "paymentId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e07",
+    "grossAmount": 27000,
+    "commission": 5400,
+    "netEarning": 21600,
+    "currency": "VND",
+    "commissionRuleVersion": 1,
+    "balance": 21600,
+    "postedAt": "2026-10-05T08:52:44Z"
+  }
+}
