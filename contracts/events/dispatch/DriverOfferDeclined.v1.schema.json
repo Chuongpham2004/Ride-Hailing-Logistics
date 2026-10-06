@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:DriverOfferDeclined:v1",
+  "title": "DriverOfferDeclined v1",
+  "description": "The driver declined the offer; the driver is AVAILABLE again. Topic dispatch.offers.v1, key = driverId.",
+  "type": "object",
+  "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
+  "properties": {
+    "eventType": { "const": "DriverOfferDeclined" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "trip-service" },
+    "payload": {
+      "type": "object",
+      "required": ["offerId", "tripId", "driverId", "declinedAt"],
+      "properties": {
+        "offerId": { "type": "string", "format": "uuid" },
+        "tripId": { "type": "string", "format": "uuid" },
+        "driverId": { "type": "string", "format": "uuid" },
+        "declinedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

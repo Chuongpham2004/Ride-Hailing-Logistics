@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:TripStatusChanged:v1",
+  "title": "TripStatusChanged v1",
+  "description": "Any other status change (PICKING_UP, ARRIVED, IN_TRIP, NO_DRIVER). ACCEPTED, COMPLETED and CANCELLED have their own events, so each transition is announced exactly once. Topic trip.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
+  "properties": {
+    "eventType": { "const": "TripStatusChanged" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "trip-service" },
+    "payload": {
+      "type": "object",
+      "required": ["tripId", "customerId", "oldStatus", "newStatus", "actorType", "occurredAt"],
+      "properties": {
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "anyOf": [{"type": "null"}, {"type": "string", "format": "uuid"}] },
+        "oldStatus": {
+          "enum": [
+            "CREATED",
+            "MATCHING",
+            "ACCEPTED",
+            "PICKING_UP",
+            "ARRIVED",
+            "IN_TRIP",
+            "COMPLETED",
+            "CANCELLED",
+            "NO_DRIVER"
+          ]
+        },
+        "newStatus": {
+          "enum": [
+            "CREATED",
+            "MATCHING",
+            "ACCEPTED",
+            "PICKING_UP",
+            "ARRIVED",
+            "IN_TRIP",
+            "COMPLETED",
+            "CANCELLED",
+            "NO_DRIVER"
+          ]
+        },
+        "actorType": { "enum": ["CUSTOMER", "DRIVER", "STAFF", "SYSTEM"] },
+        "actorId": { "anyOf": [{"type": "null"}, {"type": "string", "format": "uuid"}] },
+        "reason": { "anyOf": [{"type": "null"}, {"type": "string", "maxLength": 300}] },
+        "occurredAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:TripCompleted:v1",
+  "title": "TripCompleted v1",
+  "description": "The driver completed the trip (IN_TRIP -> COMPLETED); published once per trip (BR-009) and triggers the final fare and payment. Topic trip.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{"$ref": "urn:rhl:event:envelope:v1"}],
+  "properties": {
+    "eventType": { "const": "TripCompleted" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "trip-service" },
+    "payload": {
+      "type": "object",
+      "required": ["tripId", "customerId", "driverId", "serviceType", "pickup", "dropoff", "acceptedAt", "completedAt"],
+      "properties": {
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "type": "string", "format": "uuid" },
+        "serviceType": { "enum": ["RIDE", "DELIVERY"] },
+        "pickup": { "$ref": "#/$defs/stop" },
+        "dropoff": { "$ref": "#/$defs/stop" },
+        "acceptedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "stop": {
+      "type": "object",
+      "required": ["latitude", "longitude", "address"],
+      "properties": {
+        "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+        "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+        "address": { "type": "string", "minLength": 1, "maxLength": 300 }
+      },
+      "additionalProperties": true
+    }
+  }
+}
