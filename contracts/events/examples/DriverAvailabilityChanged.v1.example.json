@@ -1,0 +1,19 @@
+{
+  "eventId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a10",
+  "eventType": "DriverAvailabilityChanged",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-05T08:30:00Z",
+  "correlationId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a11",
+  "producer": "user-service",
+  "aggregateId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+  "aggregateVersion": 3,
+  "payload": {
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "oldStatus": "OFFLINE",
+    "newStatus": "AVAILABLE",
+    "serviceTypes": ["RIDE"],
+    "vehicleId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a13",
+    "reason": null,
+    "occurredAt": "2026-10-05T08:30:00Z"
+  }
+}
