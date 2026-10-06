@@ -23,6 +23,7 @@
         <module>libs/common-messaging</module>
         <module>services/api-gateway</module>
         <module>services/user-service</module>
+        <module>services/location-service</module>
     </modules>
 
     <properties>

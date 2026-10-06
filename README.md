@@ -227,7 +227,8 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 | `geo:drivers:{serviceType}` | GEO (sorted set) | — (dọn định kỳ) | location | Tài xế `AVAILABLE` cho matching: `GEOSEARCH ... BYRADIUS ... ASC WITHDIST` |
 | `geo:lastseen:{serviceType}` | ZSET (score = serverTs) | — | location | Job dọn định kỳ xóa member quá hạn khỏi GEO (FR-LOC-008) |
 | `loc:driver:{driverId}` | HASH `lat,lng,acc,heading,speed,seq,serverTs` | 30 s (cấu hình) | location | Vị trí mới nhất để đẩy realtime và kiểm tra độ mới |
-| `loc:seq:{driverId}` | STRING | theo phiên | location | Chặn bản tin trùng hoặc cũ (sequence ≤ giá trị đang lưu thì bỏ) |
+| `loc:seq:{driverId}` | STRING | theo phiên | location | Chặn bản tin trùng hoặc cũ (sequence ≤ giá trị đang lưu thì bỏ); xóa khi tài xế bắt đầu phiên Online mới |
+| `loc:avail:{driverId}` | HASH `serviceTypes,vehicleId` | — | location | Chỉ có khi tài xế `AVAILABLE`; Lua đọc key này để quyết định có `GEOADD` hay không, nên cập nhật vị trí và đổi trạng thái không giẫm lên nhau. Dựng lại từ `driver_presence` khi khởi động |
 | `dispatch:driver-hold:{driverId}` | STRING = offerId | = timeout offer | trip | Giữ tài xế khi gửi offer (`SET NX PX`), tránh offer cạnh tranh |
 | `dispatch:offer-expiry` | ZSET (score = expiresAt) | — | trip | Scheduler quét offer hết hạn |
 | `quote:{quoteId}` | STRING (JSON) | = `expiresAt` | pricing | Cache quote; nguồn sự thật vẫn là bảng `fare_quotes` |
@@ -530,6 +531,7 @@ docker compose up -d
 
 # 4. Chạy service (mỗi lệnh một terminal). Không thêm -am: Maven sẽ cố chạy cả libs/ và báo lỗi thiếu main class.
 BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-123   ./mvnw -pl services/user-service spring-boot:run   # :8081
+./mvnw -pl services/location-service spring-boot:run # :8082
 ./mvnw -pl services/api-gateway spring-boot:run      # :8080, gọi API qua gateway
 ```
 
@@ -537,17 +539,19 @@ BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-12
 - Entity dùng Lombok giới hạn: `@Getter` + `@NoArgsConstructor(access = PROTECTED)`; bean Spring dùng `@RequiredArgsConstructor`. `@Data`, `@Setter`, `@EqualsAndHashCode`, `@ToString` bị chặn trong `lombok.config` (proxy Hibernate, lazy loading, lộ PII qua log, bỏ qua quy tắc nghiệp vụ).
 - Admin đầu tiên được tạo khi khởi động nếu đặt `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 ký tự); vai trò nhân viên không tự đăng ký được.
 - Không đặt `JWT_PRIVATE_KEY`/`JWT_PUBLIC_KEY` (PEM) thì user-service tự sinh khóa RSA tạm: token mất hiệu lực khi restart. Chỉ dùng cho dev.
-- OpenAPI của user-service: `http://localhost:8081/swagger-ui/index.html`.
+- OpenAPI: user-service `http://localhost:8081/swagger-ui/index.html`, location-service `http://localhost:8082/swagger-ui/index.html`.
+- location-service: tài xế gửi vị trí qua `POST /api/v1/locations/me` (HTTP dự phòng, cùng luồng xử lý với `location.telemetry.raw.v1` từ realtime-gateway) và xem lại bằng `GET /api/v1/locations/me`. trip-service gọi `GET /internal/v1/drivers/nearby?latitude&longitude&serviceType[&radiusMeters&limit]` và `GET /internal/v1/drivers/{id}/location`. Gateway không định tuyến `/internal/**` (trả 403); chưa có cơ chế xác thực giữa các service nên không được mở cổng 8082 ra ngoài.
 
 | Thành phần | Trạng thái | Ghi chú |
 |---|---|---|
 | `libs/common-web` | ✅ | Envelope `ApiResponse`, mã lỗi §8.3, `CorrelationIdFilter`, xử lý exception, UUIDv7 |
 | `libs/common-security` | ✅ | `Role`, quy ước claim JWT, converter `roles` → `ROLE_*`, `CurrentUser`, handler 401/403 |
 | `libs/common-messaging` | ✅ | Envelope event, Outbox writer + relay (`SKIP LOCKED`), `processed_events`, validate JSON Schema, DLT |
-| `contracts/events` | 🟡 | `envelope.v1`, `DriverAvailabilityChanged.v1`; các event khác thêm cùng service sở hữu |
+| `contracts/events` | 🟡 | `envelope.v1`, `DriverAvailabilityChanged.v1`, `DriverLocationReported.v1`, `DriverLocationUpdated.v1`; các event khác thêm cùng service sở hữu |
 | `api-gateway` | ✅ | Định tuyến 5 service, JWT qua JWKS, kiểm tra token thu hồi, rate limit Redis, CORS |
 | `user-service` | 🟡 | Xong: đăng ký/đăng nhập, refresh xoay vòng + phát hiện dùng lại, logout, RBAC, hồ sơ tài xế, xe, giấy tờ, xét duyệt, Online/Offline, audit. Còn: upload file giấy tờ, consumer `trip.events` (OFFERED/BUSY), đặt lại mật khẩu, xác minh email/SĐT |
-| `location`, `trip`, `pricing`, `payment`, `realtime-gateway` | ⬜ | Chưa bắt đầu |
+| `location-service` | 🟡 | Xong: consume `DriverAvailabilityChanged` (projection `driver_presence`, bỏ event cũ theo `aggregateVersion`), validate telemetry (phạm vi, thời gian, accuracy, nhảy vị trí bất khả thi, gửi bù), Lua cập nhật vị trí + GEO nguyên tử, dọn GEO quá hạn, `telemetry_history` phân vùng theo ngày, publish `DriverLocationUpdated`, API tìm tài xế gần. Còn: consumer `trip.events` (chờ trip-service), xác thực giữa các service cho `/internal/**` |
+| `trip`, `pricing`, `payment`, `realtime-gateway` | ⬜ | Chưa bắt đầu |
 
 ---
 
