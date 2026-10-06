@@ -36,6 +36,8 @@ public class SecurityConfiguration {
     @Bean
     public SecurityWebFilterChain securityWebFilterChain(ServerHttpSecurity http, JsonErrorWriter errors) {
         return http
+                // Bearer tokens only, no cookies or sessions: a cross-site request cannot attach the
+                // Authorization header, so CSRF does not apply (CodeQL alerts #2/#3 dismissed for this).
                 .csrf(ServerHttpSecurity.CsrfSpec::disable)
                 .httpBasic(ServerHttpSecurity.HttpBasicSpec::disable)
                 .formLogin(ServerHttpSecurity.FormLoginSpec::disable)

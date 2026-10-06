@@ -26,7 +26,7 @@ public class SecurityConfiguration {
     public SecurityFilterChain securityFilterChain(HttpSecurity http, ObjectMapper objectMapper) throws Exception {
         JsonSecurityErrorHandler errors = new JsonSecurityErrorHandler(objectMapper);
         return http
-                // Bearer tokens only, no cookies: CSRF does not apply.
+                // Bearer tokens only, no cookies or sessions: CSRF does not apply (CodeQL alert #4 dismissed for this).
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
