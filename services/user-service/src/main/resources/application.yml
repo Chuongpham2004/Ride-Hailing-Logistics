@@ -79,6 +79,9 @@ rhl:
     # TBD-11: final list pending Operations/Legal.
     required-documents: [NATIONAL_ID, DRIVER_LICENSE]
     required-vehicle-documents: [VEHICLE_REGISTRATION, VEHICLE_INSURANCE]
+    # trip-service closes every offer within its timeout; this only covers lost or late events.
+    stale-offer-grace: 30s
+    stale-offer-check-interval: 10s
   bootstrap:
     admin-email: ${BOOTSTRAP_ADMIN_EMAIL:}
     admin-password: ${BOOTSTRAP_ADMIN_PASSWORD:}

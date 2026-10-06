@@ -245,7 +245,7 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 **Lưu ý:**
 
 - Redis GEO không có TTL cho từng member, nên độ mới được bảo đảm theo hai lớp: (1) job dọn dựa trên `geo:lastseen`, (2) khi truy vấn, kiểm tra lại `loc:driver:{id}` còn tồn tại và `serverTs` còn trong ngưỡng.
-- Tài xế chỉ có mặt trong `geo:drivers:*` khi `AVAILABLE`. Location service cập nhật tập này khi nhận `DriverAvailabilityChanged`, `TripAccepted`, `TripCompleted` và `TripCancelled`.
+- Tài xế chỉ có mặt trong `geo:drivers:*` khi `AVAILABLE`. Location service cập nhật tập này chỉ từ `DriverAvailabilityChanged`: `user-service` chuyển các event offer/chuyến của trip-service thành `OFFERED`/`BUSY`/`AVAILABLE` rồi phát lại, nên trạng thái tài xế chỉ có một nguồn và một dãy `aggregateVersion`.
 - Cập nhật vị trí và kiểm tra sequence chạy trong **một Lua script** để nguyên tử: so sánh `seq`, ghi `HSET`, `GEOADD`, `ZADD`.
 - Không lưu số dư ví, trạng thái chuyến hay kết quả thanh toán **chỉ** trong Redis.
 
@@ -260,7 +260,7 @@ Mỗi topic tương ứng một aggregate. **Message key = ID của aggregate** 
 | `driver.events.v1` | driverId | user-service | location, trip, pricing, realtime | `DriverAvailabilityChanged`, `DriverApproved`, `DriverSuspended` |
 | `location.telemetry.raw.v1` | driverId | realtime-gateway | location | Bản tin `DRIVER_LOCATION_UPDATED` thô từ tài xế |
 | `location.updates.v1` | driverId | location | realtime, pricing | `DriverLocationUpdated` (đã validate) |
-| `trip.events.v1` | tripId | trip | realtime, pricing, payment, location, user | `TripRequested`, `TripAccepted`, `TripStatusChanged`, `TripCompleted`, `TripCancelled` |
+| `trip.events.v1` | tripId | trip | realtime, pricing, payment, user | `TripRequested`, `TripAccepted`, `TripStatusChanged`, `TripCompleted`, `TripCancelled` |
 | `dispatch.offers.v1` | driverId | trip | realtime, user | `DriverOfferCreated`, `DriverOfferExpired`, `DriverOfferDeclined`, `DriverOfferCancelled` |
 | `pricing.events.v1` | tripId | pricing | payment, trip | `FareFinalized`, `CancellationFeeCalculated` |
 | `payment.events.v1` | tripId | payment | trip, realtime | `PaymentSucceeded`, `PaymentFailed`, `RefundCompleted` |
@@ -364,7 +364,7 @@ sequenceDiagram
 
 - **PostgreSQL là chốt chặn cuối:** conditional update và unique partial index bảo đảm đúng ngay cả khi khóa Redis hết hạn hoặc Redis gặp sự cố.
 - Offer hết hạn được quét từ `dispatch:offer-expiry` (có đối chiếu DB), sau đó giải phóng khóa giữ, phát `DriverOfferExpired` và chuyển sang ứng viên kế tiếp.
-- **Trạng thái tài xế:** `OFFLINE` và `AVAILABLE` do `user-service` quyết định (kiểm tra điều kiện Online). `OFFERED` và `BUSY` được quyết định nguyên tử tại `trip-service`, nơi diễn ra giao dịch accept. `user-service` cập nhật projection trạng thái qua `trip.events` / `dispatch.offers`.
+- **Trạng thái tài xế:** `OFFLINE` và `AVAILABLE` do `user-service` quyết định (kiểm tra điều kiện Online). `OFFERED` và `BUSY` được quyết định nguyên tử tại `trip-service`, nơi diễn ra giao dịch accept. `user-service` cập nhật projection trạng thái qua `trip.events` / `dispatch.offers` (gắn với đúng `offerId`/`tripId` vì hai topic không có thứ tự với nhau) và phát `DriverAvailabilityChanged` cho location-service.
 
 ### 4.9. Luồng dữ liệu tài chính qua Kafka
 
@@ -551,8 +551,8 @@ BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-12
 | `libs/common-messaging` | ✅ | Envelope event, Outbox writer + relay (`SKIP LOCKED`), `processed_events`, validate JSON Schema, DLT |
 | `contracts/events` | 🟡 | `envelope.v1`, `DriverAvailabilityChanged.v1`, `DriverLocationReported.v1`, `DriverLocationUpdated.v1`, 5 event `trip/*` và 4 event `dispatch/*`; pricing/payment/wallet thêm cùng service sở hữu |
 | `api-gateway` | ✅ | Định tuyến 5 service, JWT qua JWKS, kiểm tra token thu hồi, rate limit Redis, CORS |
-| `user-service` | 🟡 | Xong: đăng ký/đăng nhập, refresh xoay vòng + phát hiện dùng lại, logout, RBAC, hồ sơ tài xế, xe, giấy tờ, xét duyệt, Online/Offline, audit. Còn: upload file giấy tờ, consumer `trip.events` (OFFERED/BUSY), đặt lại mật khẩu, xác minh email/SĐT |
-| `location-service` | 🟡 | Xong: consume `DriverAvailabilityChanged` (projection `driver_presence`, bỏ event cũ theo `aggregateVersion`), validate telemetry (phạm vi, thời gian, accuracy, nhảy vị trí bất khả thi, gửi bù), Lua cập nhật vị trí + GEO nguyên tử, dọn GEO quá hạn, `telemetry_history` phân vùng theo ngày, publish `DriverLocationUpdated`, API tìm tài xế gần. Còn: consumer `trip.events` (chờ trip-service), xác thực giữa các service cho `/internal/**` |
+| `user-service` | 🟡 | Xong: đăng ký/đăng nhập, refresh xoay vòng + phát hiện dùng lại, logout, RBAC, hồ sơ tài xế, xe, giấy tờ, xét duyệt, Online/Offline, audit, consumer `dispatch.offers` + `trip.events` (OFFERED/BUSY, phát lại `DriverAvailabilityChanged`). Còn: upload file giấy tờ, đặt lại mật khẩu, xác minh email/SĐT |
+| `location-service` | 🟡 | Xong: consume `DriverAvailabilityChanged` (projection `driver_presence`, bỏ event cũ theo `aggregateVersion`), validate telemetry (phạm vi, thời gian, accuracy, nhảy vị trí bất khả thi, gửi bù), Lua cập nhật vị trí + GEO nguyên tử, dọn GEO quá hạn, `telemetry_history` phân vùng theo ngày, publish `DriverLocationUpdated`, API tìm tài xế gần; tài xế `OFFERED`/`BUSY` (qua `DriverAvailabilityChanged` từ user-service) giữ vị trí nhưng rời GEO. Còn: xác thực giữa các service cho `/internal/**` |
 | `trip-service` | 🟡 | Xong: tạo chuyến idempotent, state machine tường minh, lịch sử trạng thái bất biến (trigger chặn sửa/xóa), matching (location-service + giữ tài xế bằng Redis + nới bán kính + `NO_DRIVER`), offer có hạn, accept nguyên tử (khóa dòng + unique partial index), hủy chuyến, 9 event qua outbox. Còn: xác thực quote với pricing-service (BR-005/006, tạm thời khách gửi thẳng điểm đón/đến), dữ liệu giao hàng + bằng chứng giao, OTP bắt đầu chuyến, phí hủy (TBD-07), API tra cứu cho admin, audit hủy ngoại lệ, Resilience4j cho lời gọi location-service |
 | `pricing`, `payment`, `realtime-gateway` | ⬜ | Chưa bắt đầu |
 
@@ -898,10 +898,10 @@ Bảng dưới là hợp đồng event tối thiểu theo SRS §5.6, đã ánh x
 | `DriverAvailabilityChanged` | user-service | `driver.events.v1` (driverId) | location, trip, pricing | driverId, old/new status, occurredAt |
 | `TripRequested` | trip-service | `trip.events.v1` (tripId) | dispatch (nội bộ trip-service), pricing (đếm cầu) | tripId, serviceType, pickup, requirements, quoteRef |
 | `DriverOfferCreated` | trip-service (dispatch) | `dispatch.offers.v1` (driverId) | realtime-gateway | offerId, tripId, driverId, expiresAt |
-| `TripAccepted` | trip-service | `trip.events.v1` (tripId) | realtime, pricing, location, user | tripId, driverId, acceptedAt |
+| `TripAccepted` | trip-service | `trip.events.v1` (tripId) | realtime, pricing, user | tripId, driverId, acceptedAt |
 | `TripStatusChanged` | trip-service | `trip.events.v1` (tripId) | realtime | tripId, old/new status, actor, occurredAt |
-| `TripCompleted` | trip-service | `trip.events.v1` (tripId) | pricing, payment, location, user | tripId, customerId, driverId, route summary, completedAt |
-| `TripCancelled` | trip-service | `trip.events.v1` (tripId) | payment, realtime, location, user | tripId, actor, reason, fee data |
+| `TripCompleted` | trip-service | `trip.events.v1` (tripId) | pricing, payment, user | tripId, customerId, driverId, route summary, completedAt |
+| `TripCancelled` | trip-service | `trip.events.v1` (tripId) | payment, realtime, user | tripId, actor, reason, fee data |
 | `FareFinalized` | pricing-service | `pricing.events.v1` (tripId) | payment, trip | tripId, breakdown, total, currency, rule version |
 | `PaymentSucceeded` | payment-service | `payment.events.v1` (tripId) | trip, wallet (nội bộ payment-service), realtime | paymentId, tripId, amount, currency |
 | `DriverEarningPosted` | payment-service (wallet) | `wallet.events.v1` (driverId) | realtime → Driver App | tripId, walletId, net earning, balance reference |

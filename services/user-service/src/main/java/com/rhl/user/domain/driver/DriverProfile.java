@@ -3,6 +3,7 @@ package com.rhl.user.domain.driver;
 import com.rhl.user.domain.DomainException;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.ElementCollection;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,6 +17,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
@@ -27,8 +29,9 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Driver profile aggregate: review lifecycle (FR-DRV) and the OFFLINE ↔ AVAILABLE part of
- * availability (README §5.3). The driver ID equals the user ID of the driver account.
+ * Driver profile aggregate: review lifecycle (FR-DRV) and availability (README §5.3). OFFLINE ↔
+ * AVAILABLE is decided here; OFFERED and BUSY are decided by trip-service and projected from its
+ * events. The driver ID equals the user ID of the driver account.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
@@ -75,6 +78,26 @@ public class DriverProfile {
 
     @Column(name = "availability_changed_at")
     private Instant availabilityChangedAt;
+
+    /** Services chosen when going online; restored when a trip or offer ends. */
+    @Convert(converter = ServiceTypesConverter.class)
+    @Column(name = "online_service_types")
+    private Set<ServiceType> onlineServiceTypes = EnumSet.noneOf(ServiceType.class);
+
+    /** The open offer that made the driver OFFERED; other offers' events are ignored. */
+    @Column(name = "current_offer_id")
+    private UUID currentOfferId;
+
+    @Column(name = "current_offer_expires_at")
+    private Instant currentOfferExpiresAt;
+
+    /** The offer behind the current or last trip; its late DriverOfferCreated is ignored. */
+    @Column(name = "accepted_offer_id")
+    private UUID acceptedOfferId;
+
+    /** The trip that made the driver BUSY; other trips' events are ignored. */
+    @Column(name = "current_trip_id")
+    private UUID currentTripId;
 
     @Version
     private long version;
@@ -196,7 +219,8 @@ public class DriverProfile {
             throw DomainException.rule("The vehicle cannot serve the requested services");
         }
         requireNoProblems(workProblems);
-        return changeAvailability(Availability.AVAILABLE, vehicle.getId(), null, now, requested);
+        onlineServiceTypes = EnumSet.copyOf(requested);
+        return changeAvailability(Availability.AVAILABLE, vehicle.getId(), null, now);
     }
 
     /** Idempotent: going offline when already offline changes nothing. */
@@ -210,21 +234,101 @@ public class DriverProfile {
         return Optional.of(changeAvailability(Availability.OFFLINE, null, reason, now));
     }
 
-    // ---- internals ----------------------------------------------------------------------
+    // ---- projected from trip-service (README §4.8) ---------------------------------------
+    // dispatch.offers.v1 and trip.events.v1 are not ordered against each other, so each step
+    // checks the offer or trip it belongs to; events that do not fit change nothing.
 
-    private AvailabilityChange changeAvailability(Availability target, UUID vehicleId, String reason, Instant now) {
-        return changeAvailability(target, vehicleId, reason, now, serviceTypes);
+    /**
+     * DriverOfferCreated: only an AVAILABLE, approved driver becomes OFFERED, and only for an offer
+     * that is still open and is not the one already accepted (it can arrive after TripAccepted,
+     * or after the whole trip).
+     */
+    public Optional<AvailabilityChange> offered(UUID offerId, Instant expiresAt, Instant now) {
+        if (availability != Availability.AVAILABLE || reviewStatus != ReviewStatus.APPROVED
+                || !expiresAt.isAfter(now) || offerId.equals(acceptedOfferId)) {
+            return Optional.empty();
+        }
+        currentOfferId = offerId;
+        currentOfferExpiresAt = expiresAt;
+        return Optional.of(changeAvailability(Availability.OFFERED, activeVehicleId, null, now));
     }
 
-    private AvailabilityChange changeAvailability(Availability target, UUID vehicleId, String reason, Instant now,
-                                                  Set<ServiceType> services) {
+    /** DriverOfferExpired / Declined / Cancelled for the offer the driver currently holds. */
+    public Optional<AvailabilityChange> offerClosed(UUID offerId, String reason, Instant now) {
+        if (availability != Availability.OFFERED || !offerId.equals(currentOfferId)) {
+            return Optional.empty();
+        }
+        clearOffer();
+        return Optional.of(backToWork(reason, now));
+    }
+
+    /**
+     * Safety net for a closing event that never arrives: a driver still OFFERED {@code grace}
+     * after the offer ran out is free again. Offers without a recorded expiry count as stale.
+     */
+    public Optional<AvailabilityChange> releaseStaleOffer(Duration grace, Instant now) {
+        if (availability != Availability.OFFERED
+                || (currentOfferExpiresAt != null && !currentOfferExpiresAt.plus(grace).isBefore(now))) {
+            return Optional.empty();
+        }
+        clearOffer();
+        return Optional.of(backToWork("OFFER_STALE", now));
+    }
+
+    /**
+     * TripAccepted: the driver is BUSY whatever this service thought before, because the
+     * assignment already happened in trip-service. A replay of the same trip changes nothing.
+     */
+    public Optional<AvailabilityChange> tripAssigned(UUID tripId, UUID offerId, Instant now) {
+        if (availability == Availability.BUSY && tripId.equals(currentTripId)) {
+            return Optional.empty();
+        }
+        clearOffer();
+        acceptedOfferId = offerId;
+        currentTripId = tripId;
+        return Optional.of(changeAvailability(Availability.BUSY, activeVehicleId, null, now));
+    }
+
+    /** TripCompleted / TripCancelled for the driver's current trip. */
+    public Optional<AvailabilityChange> tripEnded(UUID tripId, String reason, Instant now) {
+        if (availability != Availability.BUSY || !tripId.equals(currentTripId)) {
+            return Optional.empty();
+        }
+        currentTripId = null;
+        return Optional.of(backToWork(reason, now));
+    }
+
+    // ---- internals ----------------------------------------------------------------------
+
+    private void clearOffer() {
+        currentOfferId = null;
+        currentOfferExpiresAt = null;
+    }
+
+    /** AVAILABLE again, or OFFLINE if the driver was suspended meanwhile or has no active vehicle. */
+    private AvailabilityChange backToWork(String reason, Instant now) {
+        boolean canWork = reviewStatus == ReviewStatus.APPROVED && activeVehicleId != null;
+        return canWork
+                ? changeAvailability(Availability.AVAILABLE, activeVehicleId, reason, now)
+                : changeAvailability(Availability.OFFLINE, null, reason, now);
+    }
+
+    private AvailabilityChange changeAvailability(Availability target, UUID vehicleId, String reason, Instant now) {
         Availability old = availability;
         UUID vehicle = vehicleId != null ? vehicleId : activeVehicleId;
         availability = target;
         activeVehicleId = target == Availability.OFFLINE ? null : vehicleId;
         availabilityChangedAt = now;
         updatedAt = now;
-        return new AvailabilityChange(driverId, old, target, Set.copyOf(services), vehicle, reason, now);
+        // Drivers online before online_service_types existed fall back to the profile's services.
+        Set<ServiceType> services = onlineServiceTypes.isEmpty() ? serviceTypes : onlineServiceTypes;
+        AvailabilityChange change = new AvailabilityChange(driverId, old, target, Set.copyOf(services), vehicle,
+                reason, now);
+        if (target == Availability.OFFLINE) {
+            // Replaced, not cleared: an in-place change on a converted attribute may go unnoticed.
+            onlineServiceTypes = EnumSet.noneOf(ServiceType.class);
+        }
+        return change;
     }
 
     private void applyDetails(String fullName, LocalDate dateOfBirth, Set<ServiceType> serviceTypes, Instant now) {
