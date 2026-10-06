@@ -75,6 +75,16 @@ public class PaymentAttempt {
         return status == PaymentStatus.PENDING;
     }
 
+    /** Still pending: the provider took the charge and will call back with the outcome. */
+    void accepted(String reference) {
+        requirePending();
+        providerRef = reference;
+    }
+
+    public boolean isAwaitingCallback() {
+        return status == PaymentStatus.PENDING && providerRef != null;
+    }
+
     void succeed(String reference, Instant now) {
         requirePending();
         status = PaymentStatus.SUCCEEDED;

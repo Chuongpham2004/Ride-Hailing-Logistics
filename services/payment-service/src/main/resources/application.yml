@@ -75,8 +75,15 @@ rhl:
   charge:
     # An attempt with no recorded outcome after this long is sent again with the same key.
     resolve-after: 30s
+    # Accepted by the provider: wait this long for its callback before asking again.
+    callback-timeout: 15m
     resolve-every: 10s
     resolve-batch: 50
+    max-attempts: 5
+  provider:
+    # Shared with the provider; set PAYMENT_WEBHOOK_SECRET outside local development.
+    webhook-secret: ${PAYMENT_WEBHOOK_SECRET:dev-only-webhook-secret-change-me}
+    signature-tolerance: 5m
   kafka:
     partitions: 3
     replicas: 1

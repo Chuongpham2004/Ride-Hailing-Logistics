@@ -1,5 +1,6 @@
 package com.rhl.payment.application;
 
+import com.rhl.common.security.CurrentUser;
 import com.rhl.payment.PaymentServiceProperties;
 import com.rhl.payment.infrastructure.persistence.PaymentAttemptRepository;
 import lombok.RequiredArgsConstructor;
@@ -9,6 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
+import java.time.Instant;
 import java.util.UUID;
 
 /**
@@ -22,6 +24,7 @@ import java.util.UUID;
 public class PaymentProcessor {
 
     private final PaymentSteps steps;
+    private final PaymentQueries queries;
     private final PaymentProvider provider;
     private final PaymentAttemptRepository attempts;
     private final PaymentServiceProperties properties;
@@ -40,12 +43,19 @@ public class PaymentProcessor {
         });
     }
 
+    /** Customer-requested retry of a failed payment; the result is visible on the returned payment. */
+    public PaymentQueries.PaymentView retry(CurrentUser customer, UUID paymentId) {
+        steps.retry(customer.id(), paymentId, properties.charge().maxAttempts()).ifPresent(this::charge);
+        return queries.payment(customer, paymentId);
+    }
+
     @Scheduled(fixedDelayString = "${rhl.charge.resolve-every}")
     public void resolveUnknownOutcomes() {
         PaymentServiceProperties.Charge config = properties.charge();
         try {
-            for (UUID attemptId : attempts.findUnresolved(clock.instant().minus(config.resolveAfter()),
-                    config.resolveBatch())) {
+            Instant now = clock.instant();
+            for (UUID attemptId : attempts.findUnresolved(now.minus(config.resolveAfter()),
+                    now.minus(config.callbackTimeout()), config.resolveBatch())) {
                 try {
                     charge(attemptId);
                 } catch (RuntimeException e) {

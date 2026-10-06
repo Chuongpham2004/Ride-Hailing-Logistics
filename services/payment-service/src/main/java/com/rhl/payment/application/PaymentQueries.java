@@ -4,10 +4,12 @@ import com.rhl.common.security.CurrentUser;
 import com.rhl.common.security.Role;
 import com.rhl.common.web.ApiException;
 import com.rhl.payment.domain.Payment;
+import com.rhl.payment.domain.PaymentAttempt;
 import com.rhl.payment.domain.PaymentPurpose;
 import com.rhl.payment.domain.PaymentStatus;
 import com.rhl.payment.domain.Wallet;
 import com.rhl.payment.domain.WalletEntry;
+import com.rhl.payment.infrastructure.persistence.PaymentAttemptRepository;
 import com.rhl.payment.infrastructure.persistence.PaymentRepository;
 import com.rhl.payment.infrastructure.persistence.WalletEntryRepository;
 import com.rhl.payment.infrastructure.persistence.WalletRepository;
@@ -29,6 +31,7 @@ public class PaymentQueries {
     private static final Role[] FINANCE = {Role.FINANCE_STAFF, Role.ADMINISTRATOR};
 
     private final PaymentRepository payments;
+    private final PaymentAttemptRepository attempts;
     private final WalletRepository wallets;
     private final WalletEntryRepository entries;
 
@@ -72,6 +75,35 @@ public class PaymentQueries {
                 .filter(p -> p.getCustomerId().equals(user.id()) || user.hasAny(FINANCE))
                 .map(PaymentView::of)
                 .toList();
+    }
+
+    public record AttemptView(int attemptNo, PaymentStatus status, String provider, String providerRef,
+                              String failureCode, Instant createdAt, Instant completedAt) {
+
+        static AttemptView of(PaymentAttempt a) {
+            return new AttemptView(a.getAttemptNo(), a.getStatus(), a.getProvider(), a.getProviderRef(),
+                    a.getFailureCode(), a.getCreatedAt(), a.getCompletedAt());
+        }
+    }
+
+    public record PaymentPage(List<PaymentView> items, UUID nextBefore) {
+    }
+
+    /** Finance staff: every payment, newest first, optionally only one status (FR-ADM, NFR-PERF-008). */
+    @Transactional(readOnly = true)
+    public PaymentPage list(PaymentStatus status, UUID before, int limit) {
+        List<Payment> page = payments.findPage(status == null ? null : status.name(), before, limit);
+        UUID next = page.size() == limit ? page.getLast().getId() : null;
+        return new PaymentPage(page.stream().map(PaymentView::of).toList(), next);
+    }
+
+    /** Finance staff: every provider attempt of a payment, oldest first. */
+    @Transactional(readOnly = true)
+    public List<AttemptView> attempts(UUID paymentId) {
+        if (!payments.existsById(paymentId)) {
+            throw ApiException.notFound("Payment");
+        }
+        return attempts.findByPaymentIdOrderByAttemptNo(paymentId).stream().map(AttemptView::of).toList();
     }
 
     /** The caller's own wallet, newest ledger lines first; an empty wallet before the first earning. */

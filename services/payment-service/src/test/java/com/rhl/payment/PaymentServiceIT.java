@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.id.UuidV7;
 import com.rhl.payment.application.PaymentProvider;
+import com.rhl.payment.infrastructure.provider.WebhookSignature;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -48,6 +50,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -59,8 +62,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks.json",
         "rhl.charge.resolve-after=1s",
         "rhl.charge.resolve-every=300ms",
-        "rhl.outbox.poll-interval=50ms"})
+        "rhl.outbox.poll-interval=50ms",
+        "rhl.charge.max-attempts=3",
+        "rhl.provider.webhook-secret=" + PaymentServiceIT.SECRET})
 class PaymentServiceIT {
+
+    static final String SECRET = "it-webhook-secret-0123456789";
 
     @Container
     @ServiceConnection
@@ -216,7 +223,142 @@ class PaymentServiceIT {
         assertThat(count("SELECT COUNT(*) FROM payments WHERE trip_id = ?", free)).isZero();
     }
 
+    /** FR-PAY: asynchronous outcomes arrive as signed callbacks; repeats and replays change nothing. */
+    @Test
+    void signedCallbacksSettleAcceptedChargesExactlyOnce() throws Exception {
+        UUID trip = UuidV7.random();
+        UUID driver = UUID.randomUUID();
+        doReturn(PaymentProvider.ChargeResult.pending("prov_123")).when(provider).charge(any());
+
+        publish(trip, UuidV7.random(), "FareFinalized", fareFinalized(trip, UUID.randomUUID(), driver, 27_000));
+        await().ignoreExceptions().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT a.provider_ref FROM payment_attempts a JOIN payments p ON p.id = a.payment_id "
+                        + "WHERE p.trip_id = ?", String.class, trip)).isEqualTo("prov_123"));
+        String key = jdbc.queryForObject("SELECT a.idempotency_key FROM payment_attempts a JOIN payments p "
+                + "ON p.id = a.payment_id WHERE p.trip_id = ?", String.class, trip);
+        assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE trip_id = ?", String.class, trip))
+                .isEqualTo("PENDING");
+
+        String succeeded = callback("evt_" + trip, "charge.succeeded", key, 27_000, "VND");
+        // Wrong secret, then a signature from 10 minutes ago: refused before anything is read.
+        mvc.perform(post("/api/v1/payments/callbacks/sandbox").contentType(MediaType.APPLICATION_JSON)
+                        .header(WebhookSignature.HEADER, WebhookSignature.header("wrong-secret-0123456789",
+                                Instant.now(), succeeded))
+                        .content(succeeded))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/api/v1/payments/callbacks/sandbox").contentType(MediaType.APPLICATION_JSON)
+                        .header(WebhookSignature.HEADER, WebhookSignature.header(SECRET,
+                                Instant.now().minus(Duration.ofMinutes(10)), succeeded))
+                        .content(succeeded))
+                .andExpect(status().isUnauthorized());
+
+        sendCallback(succeeded).andExpect(jsonPath("$.data.outcome").value("APPLIED"));
+        sendCallback(succeeded).andExpect(jsonPath("$.data.outcome").value("DUPLICATE"));
+        // A later, conflicting outcome for the same attempt (new event ID) is recorded but not applied.
+        sendCallback(callback("evt_late_" + trip, "charge.failed", key, 27_000, "VND"))
+                .andExpect(jsonPath("$.data.outcome").value("ALREADY_RESOLVED"));
+
+        assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE trip_id = ?", String.class, trip))
+                .isEqualTo("SUCCEEDED");
+        await().ignoreExceptions().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT balance FROM wallets WHERE driver_id = ?", Long.class, driver)).isEqualTo(21_600));
+        assertThat(count("SELECT COUNT(*) FROM wallet_entries e JOIN wallets w ON w.id = e.wallet_id "
+                + "WHERE w.driver_id = ?", driver)).isEqualTo(2);
+
+        // Wrong amount or unknown attempt: recorded, never applied.
+        sendCallback(callback("evt_unknown_" + trip, "charge.succeeded", "nope:1", 27_000, "VND"))
+                .andExpect(jsonPath("$.data.outcome").value("REJECTED"));
+        UUID other = UuidV7.random();
+        publish(other, UuidV7.random(), "FareFinalized", fareFinalized(other, UUID.randomUUID(), driver, 15_000));
+        await().ignoreExceptions().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT a.provider_ref FROM payment_attempts a JOIN payments p ON p.id = a.payment_id "
+                        + "WHERE p.trip_id = ?", String.class, other)).isEqualTo("prov_123"));
+        String otherKey = jdbc.queryForObject("SELECT a.idempotency_key FROM payment_attempts a JOIN payments p "
+                + "ON p.id = a.payment_id WHERE p.trip_id = ?", String.class, other);
+        sendCallback(callback("evt_amount_" + other, "charge.succeeded", otherKey, 1, "VND"))
+                .andExpect(jsonPath("$.data.outcome").value("REJECTED"));
+        assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE trip_id = ?", String.class, other))
+                .isEqualTo("PENDING");
+        assertThat(jdbc.queryForObject("SELECT reason FROM provider_callbacks WHERE provider_event_id = ?",
+                String.class, "evt_amount_" + other)).isEqualTo("AMOUNT_MISMATCH");
+    }
+
+    @Test
+    void customersRetryFailedPaymentsUpToTheLimit() throws Exception {
+        UUID trip = UuidV7.random();
+        UUID customer = UUID.randomUUID();
+        doReturn(PaymentProvider.ChargeResult.declined("CARD_DECLINED")).when(provider).charge(any());
+        publish(trip, UuidV7.random(), "FareFinalized", fareFinalized(trip, customer, UUID.randomUUID(), 27_000));
+        await().ignoreExceptions().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT status FROM payments WHERE trip_id = ?", String.class, trip)).isEqualTo("FAILED"));
+        String paymentId = jdbc.queryForObject("SELECT id::text FROM payments WHERE trip_id = ?", String.class, trip);
+
+        mvc.perform(post("/api/v1/payments/" + paymentId + "/retry").with(token(UUID.randomUUID(), "CUSTOMER")))
+                .andExpect(status().isNotFound());
+        mvc.perform(post("/api/v1/payments/" + paymentId + "/retry").with(token(customer, "CUSTOMER")))
+                .andExpect(jsonPath("$.data.status").value("FAILED"))
+                .andExpect(jsonPath("$.data.attemptCount").value(2));
+        mvc.perform(post("/api/v1/payments/" + paymentId + "/retry").with(token(customer, "CUSTOMER")))
+                .andExpect(jsonPath("$.data.attemptCount").value(3));
+        // rhl.charge.max-attempts=3
+        mvc.perform(post("/api/v1/payments/" + paymentId + "/retry").with(token(customer, "CUSTOMER")))
+                .andExpect(status().isUnprocessableEntity());
+
+        // Finance staff see the history; customers cannot use the finance API.
+        mvc.perform(get("/api/v1/admin/payments/" + paymentId + "/attempts").with(token(UUID.randomUUID(),
+                        "FINANCE_STAFF")))
+                .andExpect(jsonPath("$.data.length()").value(3))
+                .andExpect(jsonPath("$.data[2].failureCode").value("CARD_DECLINED"));
+        mvc.perform(get("/api/v1/admin/payments").param("status", "FAILED").with(token(UUID.randomUUID(),
+                        "FINANCE_STAFF")))
+                .andExpect(jsonPath("$.data.items[?(@.id == '" + paymentId + "')]").exists());
+        mvc.perform(get("/api/v1/admin/payments").with(token(customer, "CUSTOMER"))).andExpect(status().isForbidden());
+    }
+
+    @Test
+    void aRetryAfterADeclineCanSucceed() throws Exception {
+        UUID trip = UuidV7.random();
+        UUID customer = UUID.randomUUID();
+        UUID driver = UUID.randomUUID();
+        doReturn(PaymentProvider.ChargeResult.declined("INSUFFICIENT_FUNDS")).when(provider).charge(any());
+        publish(trip, UuidV7.random(), "FareFinalized", fareFinalized(trip, customer, driver, 27_000));
+        await().ignoreExceptions().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(jdbc.queryForObject(
+                "SELECT status FROM payments WHERE trip_id = ?", String.class, trip)).isEqualTo("FAILED"));
+        String paymentId = jdbc.queryForObject("SELECT id::text FROM payments WHERE trip_id = ?", String.class, trip);
+
+        doReturn(PaymentProvider.ChargeResult.success("sbx_retry")).when(provider).charge(any());
+        mvc.perform(post("/api/v1/payments/" + paymentId + "/retry").with(token(customer, "CUSTOMER")))
+                .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
+                .andExpect(jsonPath("$.data.providerRef").value("sbx_retry"));
+        // Paid: retrying again is a no-op, not a second charge.
+        mvc.perform(post("/api/v1/payments/" + paymentId + "/retry").with(token(customer, "CUSTOMER")))
+                .andExpect(jsonPath("$.data.attemptCount").value(2));
+        assertThat(jdbc.queryForObject("SELECT balance FROM wallets WHERE driver_id = ?", Long.class, driver))
+                .isEqualTo(21_600);
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
+
+    private String callback(String eventId, String type, String key, long amount, String currency) throws Exception {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("eventId", eventId);
+        body.put("type", type);
+        body.put("idempotencyKey", key);
+        body.put("reference", "prov_123");
+        body.put("amount", amount);
+        body.put("currency", currency);
+        if ("charge.failed".equals(type)) {
+            body.put("failureCode", "CARD_DECLINED");
+        }
+        return json.writeValueAsString(body);
+    }
+
+    private ResultActions sendCallback(String body) throws Exception {
+        return mvc.perform(post("/api/v1/payments/callbacks/sandbox").contentType(MediaType.APPLICATION_JSON)
+                        .header(WebhookSignature.HEADER, WebhookSignature.header(SECRET, Instant.now(), body))
+                        .content(body))
+                .andExpect(status().isOk());
+    }
 
     private static Map<String, Object> fareFinalized(UUID trip, UUID customer, UUID driver, long total) {
         Map<String, Object> p = new LinkedHashMap<>();

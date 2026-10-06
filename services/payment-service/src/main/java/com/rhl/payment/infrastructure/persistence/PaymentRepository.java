@@ -22,4 +22,14 @@ public interface PaymentRepository extends JpaRepository<Payment, UUID> {
     boolean existsByTripIdAndPurpose(UUID tripId, PaymentPurpose purpose);
 
     List<Payment> findByTripIdOrderByCreatedAt(UUID tripId);
+
+    /** Finance listing, newest first, optional status filter; keyset pagination on the UUIDv7 id. */
+    @Query(value = """
+            SELECT * FROM payments
+            WHERE (CAST(:status AS VARCHAR) IS NULL OR status = CAST(:status AS VARCHAR))
+              AND (CAST(:before AS UUID) IS NULL OR id < CAST(:before AS UUID))
+            ORDER BY id DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Payment> findPage(@Param("status") String status, @Param("before") UUID before, @Param("limit") int limit);
 }
