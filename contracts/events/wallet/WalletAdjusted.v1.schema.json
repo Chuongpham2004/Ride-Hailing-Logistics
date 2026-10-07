@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:WalletAdjusted:v1",
+  "title": "WalletAdjusted v1",
+  "description": "Finance staff posted a compensating ADJUSTMENT entry to a driver's wallet (BR-011, BR-012). amount is signed (positive credits the driver); balance is the wallet balance right after the entry and is never negative (FR-WAL-009). Topic wallet.events.v1, key = driverId.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "WalletAdjusted" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "payment-service" },
+    "payload": {
+      "type": "object",
+      "required": ["adjustmentId", "walletId", "driverId", "amount", "currency", "reason", "balance", "postedAt"],
+      "properties": {
+        "adjustmentId": { "type": "string", "format": "uuid" },
+        "walletId": { "type": "string", "format": "uuid" },
+        "driverId": { "type": "string", "format": "uuid" },
+        "amount": { "type": "integer", "not": { "const": 0 } },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "tripId": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+        "refundId": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+        "balance": { "type": "integer", "minimum": 0 },
+        "postedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

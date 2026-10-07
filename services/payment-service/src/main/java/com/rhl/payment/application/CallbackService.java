@@ -8,9 +8,11 @@ import com.rhl.common.web.ApiException;
 import com.rhl.common.web.ErrorCode;
 import com.rhl.payment.PaymentServiceProperties;
 import com.rhl.payment.domain.Payment;
+import com.rhl.payment.domain.Refund;
 import com.rhl.payment.infrastructure.persistence.PaymentAttemptRepository;
 import com.rhl.payment.infrastructure.persistence.PaymentRepository;
 import com.rhl.payment.infrastructure.persistence.ProviderCallbackRepository;
+import com.rhl.payment.infrastructure.persistence.RefundRepository;
 import com.rhl.payment.infrastructure.provider.WebhookSignature;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,8 +27,9 @@ import java.util.UUID;
 /**
  * Provider webhooks (FR-PAY): the signature and its timestamp are verified before anything is
  * read, every event ID is recorded once (replays and redeliveries are recognised), the amount
- * and currency must match the payment, and the outcome goes through the same idempotent step as
- * synchronous answers, so a repeated or late callback never charges or credits twice.
+ * and currency must match the payment (or refund), and the outcome goes through the same
+ * idempotent step as synchronous answers, so a repeated or late callback never charges, refunds
+ * or credits twice.
  */
 @Slf4j
 @Service
@@ -35,12 +38,16 @@ public class CallbackService {
 
     public static final String SUCCEEDED = "charge.succeeded";
     public static final String FAILED = "charge.failed";
+    public static final String REFUND_SUCCEEDED = "refund.succeeded";
+    public static final String REFUND_FAILED = "refund.failed";
 
     private final ObjectMapper objectMapper;
     private final ProviderCallbackRepository callbacks;
     private final PaymentAttemptRepository attempts;
     private final PaymentRepository payments;
     private final PaymentSteps steps;
+    private final RefundRepository refundRepository;
+    private final RefundSteps refundSteps;
     private final PaymentProvider provider;
     private final PaymentServiceProperties properties;
     private final TransactionTemplate tx;
@@ -84,30 +91,59 @@ public class CallbackService {
         if (!callbacks.receive(callbackId, provider.name(), eventId, type, key, body, signedAt, now)) {
             return new Ack("DUPLICATE");
         }
-        if (!SUCCEEDED.equals(type) && !FAILED.equals(type)) {
-            return reject(callbackId, null, "UNSUPPORTED_TYPE");
-        }
+        return switch (type) {
+            case SUCCEEDED, FAILED -> applyCharge(callbackId, json, eventId, type, key);
+            case REFUND_SUCCEEDED, REFUND_FAILED -> applyRefund(callbackId, json, eventId, type, key);
+            default -> reject(callbackId, null, null, "UNSUPPORTED_TYPE");
+        };
+    }
+
+    private Ack applyCharge(UUID callbackId, JsonNode json, String eventId, String type, String key) {
         Optional<UUID> attemptId = attempts.findIdByKey(key, provider.name());
         if (attemptId.isEmpty()) {
-            return reject(callbackId, null, "UNKNOWN_ATTEMPT");
+            return reject(callbackId, null, null, "UNKNOWN_ATTEMPT");
         }
         UUID paymentId = attempts.findPaymentId(attemptId.get()).orElseThrow();
         Payment payment = payments.findByIdForUpdate(paymentId).orElseThrow();
-        if (json.path("amount").asLong(-1) != payment.getAmount()
-                || !payment.getCurrency().equals(json.path("currency").asText())) {
+        if (!matches(json, payment.getAmount(), payment.getCurrency())) {
             log.error("Provider callback {} does not match payment {} amount/currency", eventId, paymentId);
-            return reject(callbackId, paymentId, "AMOUNT_MISMATCH");
+            return reject(callbackId, paymentId, null, "AMOUNT_MISMATCH");
         }
-        PaymentProvider.ChargeResult result = SUCCEEDED.equals(type)
-                ? PaymentProvider.ChargeResult.success(json.path("reference").asText(key))
-                : PaymentProvider.ChargeResult.declined(json.path("failureCode").asText("DECLINED"));
-        String outcome = steps.complete(attemptId.get(), result) ? "APPLIED" : "ALREADY_RESOLVED";
-        callbacks.resolve(callbackId, outcome, paymentId, null);
+        String outcome = steps.complete(attemptId.get(), result(json, type, key)) ? "APPLIED" : "ALREADY_RESOLVED";
+        callbacks.resolve(callbackId, outcome, paymentId, null, null);
         return new Ack(outcome);
     }
 
-    private Ack reject(UUID callbackId, UUID paymentId, String reason) {
-        callbacks.resolve(callbackId, "REJECTED", paymentId, reason);
+    private Ack applyRefund(UUID callbackId, JsonNode json, String eventId, String type, String key) {
+        Optional<UUID> refundId = refundRepository.findIdByKey(key, provider.name());
+        if (refundId.isEmpty()) {
+            return reject(callbackId, null, null, "UNKNOWN_REFUND");
+        }
+        UUID paymentId = refundRepository.findPaymentId(refundId.get()).orElseThrow();
+        payments.findByIdForUpdate(paymentId).orElseThrow();
+        Refund refund = refundRepository.findById(refundId.get()).orElseThrow();
+        if (!matches(json, refund.getAmount(), refund.getCurrency())) {
+            log.error("Provider callback {} does not match refund {} amount/currency", eventId, refund.getId());
+            return reject(callbackId, paymentId, refund.getId(), "AMOUNT_MISMATCH");
+        }
+        String outcome = refundSteps.complete(refund.getId(), result(json, type, key))
+                ? "APPLIED" : "ALREADY_RESOLVED";
+        callbacks.resolve(callbackId, outcome, paymentId, refund.getId(), null);
+        return new Ack(outcome);
+    }
+
+    private static boolean matches(JsonNode json, long amount, String currency) {
+        return json.path("amount").asLong(-1) == amount && currency.equals(json.path("currency").asText());
+    }
+
+    private static PaymentProvider.ChargeResult result(JsonNode json, String type, String key) {
+        return SUCCEEDED.equals(type) || REFUND_SUCCEEDED.equals(type)
+                ? PaymentProvider.ChargeResult.success(json.path("reference").asText(key))
+                : PaymentProvider.ChargeResult.declined(json.path("failureCode").asText("DECLINED"));
+    }
+
+    private Ack reject(UUID callbackId, UUID paymentId, UUID refundId, String reason) {
+        callbacks.resolve(callbackId, "REJECTED", paymentId, refundId, reason);
         return new Ack("REJECTED");
     }
 }

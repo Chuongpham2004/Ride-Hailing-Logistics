@@ -28,7 +28,9 @@ import java.util.function.Supplier;
 @Table(name = "wallets")
 public class Wallet {
 
+    /** Ledger reference types: what a line was posted for. */
     public static final String PAYMENT = "PAYMENT";
+    public static final String ADJUSTMENT = "ADJUSTMENT";
 
     @Id
     private UUID id;
@@ -81,14 +83,48 @@ public class Wallet {
         return entries;
     }
 
+    /** A posted correction: the adjustment record and the ledger line that moves the money. */
+    public record Adjusted(WalletAdjustment adjustment, WalletEntry entry) {
+    }
+
+    /**
+     * A finance correction (BR-011, BR-012): a compensating {@code ADJUSTMENT} line, never an
+     * edit of an earlier one.
+     *
+     * @throws IllegalArgumentException when the amount is zero
+     * @throws NegativeBalanceException when a debit is larger than the balance (FR-WAL-009)
+     */
+    public Adjusted adjust(UUID adjustmentId, UUID entryId, long amount, AdjustmentReason reason, String note,
+                           UUID tripId, UUID refundId, String requestKey, String requestHash, UUID requestedBy,
+                           Instant now) {
+        if (amount == 0) {
+            throw new IllegalArgumentException("An adjustment cannot be zero");
+        }
+        WalletAdjustment adjustment = WalletAdjustment.of(adjustmentId, this, amount, reason, note, tripId, refundId,
+                requestKey, requestHash, requestedBy, now);
+        WalletEntry entry = post(entryId, WalletEntry.ADJUSTMENT, amount, ADJUSTMENT, adjustmentId, tripId, null, now);
+        return new Adjusted(adjustment, entry);
+    }
+
+    public static class NegativeBalanceException extends IllegalStateException {
+
+        NegativeBalanceException() {
+            super("Wallet balance cannot go negative");
+        }
+    }
+
     private WalletEntry post(UUID entryId, String type, long amount, Payment payment, int ruleVersion, Instant now) {
+        return post(entryId, type, amount, PAYMENT, payment.getId(), payment.getTripId(), ruleVersion, now);
+    }
+
+    private WalletEntry post(UUID entryId, String type, long amount, String referenceType, UUID referenceId,
+                             UUID tripId, Integer ruleVersion, Instant now) {
         long after = Math.addExact(balance, amount);
         if (after < 0) {
-            throw new IllegalStateException("Wallet balance cannot go negative");
+            throw new NegativeBalanceException();
         }
         balance = after;
         updatedAt = now;
-        return WalletEntry.of(entryId, id, type, amount, after, PAYMENT, payment.getId(), payment.getTripId(),
-                ruleVersion, now);
+        return WalletEntry.of(entryId, id, type, amount, after, referenceType, referenceId, tripId, ruleVersion, now);
     }
 }

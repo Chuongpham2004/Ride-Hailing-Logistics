@@ -73,6 +73,10 @@ public class Payment {
     @Column(name = "failure_code")
     private String failureCode;
 
+    /** Sum of succeeded refunds; never above {@link #amount} (BR-010, also a database check). */
+    @Column(name = "refunded_amount", nullable = false)
+    private long refundedAmount;
+
     /** {@code null} until persisted, so Spring Data inserts instead of merging. */
     @Version
     private Long version;
@@ -112,7 +116,7 @@ public class Payment {
      * longer in flight; its outcome must be known before another one is started.
      */
     public PaymentAttempt startAttempt(UUID attemptId, String providerName, Instant now) {
-        if (status == PaymentStatus.SUCCEEDED) {
+        if (status.isCaptured()) {
             throw new IllegalStateException("Payment " + id + " is already paid");
         }
         attemptCount++;
@@ -146,6 +150,54 @@ public class Payment {
         provider = attempt.getProvider();
         failureCode = code;
         updatedAt = now;
+    }
+
+    /** What can still be refunded: the captured amount minus succeeded refunds. */
+    public long refundable() {
+        return status.isCaptured() ? amount - refundedAmount : 0;
+    }
+
+    /**
+     * Opens a refund of {@code refundAmount} (FR-PAY, BR-010). One refund at a time: the next one
+     * is accepted only once the provider has settled this one, so the refundable amount is exact.
+     *
+     * @throws IllegalStateException    when the payment was never captured or a refund is in flight
+     * @throws IllegalArgumentException when the amount is not positive or above {@link #refundable()}
+     */
+    public Refund startRefund(UUID refundId, long refundAmount, RefundReason reason, String note, String providerName,
+                              String requestKey, String requestHash, UUID requestedBy, Instant now) {
+        if (status != PaymentStatus.SUCCEEDED && status != PaymentStatus.PARTIALLY_REFUNDED) {
+            throw new IllegalStateException("Payment " + id + " cannot be refunded while " + status);
+        }
+        if (refundAmount <= 0 || refundAmount > refundable()) {
+            throw new IllegalArgumentException("Refund amount must be between 1 and " + refundable());
+        }
+        status = PaymentStatus.REFUND_PENDING;
+        updatedAt = now;
+        return Refund.open(refundId, this, refundAmount, reason, note, providerName, requestKey, requestHash,
+                requestedBy, now);
+    }
+
+    public void refunded(Refund refund, String reference, Instant now) {
+        requireInFlight(refund);
+        refund.succeed(reference, now);
+        refundedAmount = Math.addExact(refundedAmount, refund.getAmount());
+        status = refundedAmount == amount ? PaymentStatus.REFUNDED : PaymentStatus.PARTIALLY_REFUNDED;
+        updatedAt = now;
+    }
+
+    /** The provider refused the refund: the payment is back to what it was before it. */
+    public void refundFailed(Refund refund, String code, Instant now) {
+        requireInFlight(refund);
+        refund.fail(code, now);
+        status = refundedAmount == 0 ? PaymentStatus.SUCCEEDED : PaymentStatus.PARTIALLY_REFUNDED;
+        updatedAt = now;
+    }
+
+    private void requireInFlight(Refund refund) {
+        if (!refund.getPaymentId().equals(id) || status != PaymentStatus.REFUND_PENDING) {
+            throw new IllegalStateException("Refund " + refund.getId() + " is not in flight for payment " + id);
+        }
     }
 
     private void requireCurrent(PaymentAttempt attempt) {
