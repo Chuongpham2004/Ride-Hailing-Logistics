@@ -45,6 +45,15 @@
           equal or newer version. Found by Trivy in the v0.1.0 image scan.
         -->
         <bouncycastle.version>1.86</bouncycastle.version>
+        <!--
+          Overrides newer than what Spring Boot 4.0.8 ships; the BOM brings Jackson 2.21.5 and
+          Tomcat 11.0.24, which the v0.1.0 image scan flagged (CVE-2026-89407/89425/68497/91776/91777
+          on both com.fasterxml.jackson.core and tools.jackson.core, plus Tomcat 11.0.24 had
+          CVE-2026-65182 CRITICAL, 65905, 68525). Drop once Spring Boot ships equal or newer.
+        -->
+        <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
+        <jackson-bom.version>3.2.3</jackson-bom.version>
+        <tomcat.version>11.0.26</tomcat.version>
         <!-- Raised per module once real coverage exists; 0 keeps the gate wired but non-blocking. -->
         <jacoco.minimum.line.coverage>0.00</jacoco.minimum.line.coverage>
     </properties>
