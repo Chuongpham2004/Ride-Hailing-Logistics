@@ -84,8 +84,9 @@
         </dependency>
 
         <!--
-          S3 client for document files. Only the JDK HTTP client: the Netty and Apache clients the
-          SDK brings by default are excluded, which keeps the image small and its CVE surface low.
+          S3 client for document files. Only the JDK HTTP client: the Netty and Apache (4 and 5)
+          clients the SDK brings by default are excluded, which keeps the image small and its CVE
+          surface low.
         -->
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
@@ -98,6 +99,11 @@
                 <exclusion>
                     <groupId>software.amazon.awssdk</groupId>
                     <artifactId>apache-client</artifactId>
+                </exclusion>
+                <!-- The default since SDK 2.3x; brings Apache HttpCore 5 (HIGH CVEs in 5.3.x). -->
+                <exclusion>
+                    <groupId>software.amazon.awssdk</groupId>
+                    <artifactId>apache5-client</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
