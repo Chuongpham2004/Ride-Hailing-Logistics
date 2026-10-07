@@ -52,8 +52,12 @@ public class DriverDocument {
     private LocalDate expiresOn;
 
     /** Reference to the file in protected storage, never a public URL. */
+    /** Documents submitted before uploads existed; new documents use {@link #fileId}. */
     @Column(name = "file_ref")
     private String fileRef;
+
+    @Column(name = "file_id")
+    private UUID fileId;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -63,7 +67,7 @@ public class DriverDocument {
     private Instant createdAt;
 
     public static DriverDocument submit(UUID driverId, UUID vehicleId, DocumentType type, String documentNumber,
-                                        LocalDate issuedOn, LocalDate expiresOn, String fileRef, Instant now) {
+                                        LocalDate issuedOn, LocalDate expiresOn, UUID fileId, Instant now) {
         if (type.isVehicleScoped() != (vehicleId != null)) {
             throw DomainException.rule(type.isVehicleScoped()
                     ? type + " must reference a vehicle"
@@ -80,7 +84,7 @@ public class DriverDocument {
         document.documentNumber = documentNumber.strip();
         document.issuedOn = issuedOn;
         document.expiresOn = expiresOn;
-        document.fileRef = fileRef;
+        document.fileId = fileId;
         document.status = Status.ACTIVE;
         document.createdAt = now;
         return document;

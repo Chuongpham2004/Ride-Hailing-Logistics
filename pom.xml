@@ -38,6 +38,7 @@
         <springdoc.version>2.8.17</springdoc.version>
         <json-schema-validator.version>1.5.9</json-schema-validator.version>
         <h3.version>4.5.0</h3.version>
+        <awssdk.version>2.55.12</awssdk.version>
         <jacoco.version>0.8.15</jacoco.version>
         <!--
           Security patches newer than what Spring Boot 3.5.16 manages; drop each override once a
@@ -58,6 +59,14 @@
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
                 <version>${spring-cloud.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- S3 API for driver document files (MinIO in development). -->
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>${awssdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>

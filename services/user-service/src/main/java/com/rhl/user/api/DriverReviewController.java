@@ -2,6 +2,7 @@ package com.rhl.user.api;
 
 import com.rhl.common.security.CurrentUser;
 import com.rhl.common.web.ApiResponse;
+import com.rhl.user.application.driver.DocumentFileService;
 import com.rhl.user.application.driver.DriverReviewService;
 import com.rhl.user.application.driver.DriverViews;
 import com.rhl.user.domain.driver.ReviewStatus;
@@ -12,6 +13,7 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -31,6 +33,7 @@ import java.util.UUID;
 public class DriverReviewController {
 
     private final DriverReviewService reviews;
+    private final DocumentFileService documentFiles;
 
     public record DecisionRequest(@NotNull DriverReviewService.Verdict verdict, @Min(1) int profileVersion,
                                   @Size(max = 500) String reason) {
@@ -50,6 +53,12 @@ public class DriverReviewController {
     @GetMapping("/{driverId}")
     public ApiResponse<DriverViews.ReviewView> get(@PathVariable UUID driverId) {
         return ApiResponse.ok(reviews.get(CurrentUser.get().id(), driverId));
+    }
+
+    /** A driver's document file for review; each view is audited (BR-014). */
+    @GetMapping("/{driverId}/documents/{documentId}/file")
+    public ResponseEntity<byte[]> documentFile(@PathVariable UUID driverId, @PathVariable UUID documentId) {
+        return FileResponses.attachment(documentFiles.forReviewer(CurrentUser.get().id(), driverId, documentId));
     }
 
     @PostMapping("/{driverId}/decisions")

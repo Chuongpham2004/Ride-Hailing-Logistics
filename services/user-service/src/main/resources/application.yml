@@ -24,6 +24,11 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+  servlet:
+    multipart:
+      # A little above rhl.documents.max-file-size, so slightly larger files get the clear error.
+      max-file-size: 6MB
+      max-request-size: 7MB
   flyway:
     enabled: true
   data:
@@ -89,6 +94,20 @@ rhl:
     # Only "log" exists until an email/SMS provider is chosen: it writes codes to the log and is for
     # local development only. Anything else refuses to start.
     sender: ${NOTIFICATION_SENDER:log}
+  documents:
+    max-file-size: 5MB
+    max-pixels: 40000000
+    uploads-per-hour: 20
+  storage:
+    endpoint: ${S3_ENDPOINT:http://localhost:19000}
+    region: ${S3_REGION:us-east-1}
+    bucket: ${DOCUMENTS_BUCKET:rhl-driver-documents}
+    # Dev credentials of the MinIO in docker-compose; set real ones outside local development.
+    access-key: ${S3_ACCESS_KEY:rhl-dev}
+    secret-key: ${S3_SECRET_KEY:rhl-dev-secret}
+    path-style: ${S3_PATH_STYLE:true}
+    create-bucket: ${S3_CREATE_BUCKET:true}
+    server-side-encryption: ${S3_SSE:false}
   driver:
     # TBD-11: final list pending Operations/Legal.
     required-documents: [NATIONAL_ID, DRIVER_LICENSE]

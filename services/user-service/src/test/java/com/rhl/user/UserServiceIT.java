@@ -7,7 +7,15 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import com.rhl.user.application.notification.NotificationSender;
+import com.rhl.user.domain.driver.UploadInspectorTest;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.MinIOContainer;
+import org.testcontainers.utility.DockerImageName;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -43,6 +51,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeastOnce;
@@ -78,6 +88,21 @@ class UserServiceIT {
     @Container
     @ServiceConnection
     static KafkaContainer kafka = new KafkaContainer("apache/kafka:3.9.1");
+
+    /** MinIO as published by Chainguard (MinIO no longer ships public images); runs as root for /data. */
+    @Container
+    static MinIOContainer minio = new MinIOContainer(DockerImageName.parse("cgr.dev/chainguard/minio:latest")
+            .asCompatibleSubstituteFor("minio/minio"))
+            .withUserName("rhl-it")
+            .withPassword("rhl-it-secret-123")
+            .withCreateContainerCmdModifier(cmd -> cmd.withUser("0"));
+
+    @DynamicPropertySource
+    static void storage(DynamicPropertyRegistry registry) {
+        registry.add("rhl.storage.endpoint", minio::getS3URL);
+        registry.add("rhl.storage.access-key", minio::getUserName);
+        registry.add("rhl.storage.secret-key", minio::getPassword);
+    }
 
     @Autowired
     MockMvc mvc;
@@ -437,7 +462,80 @@ class UserServiceIT {
                 .andExpect(status().isAccepted());
     }
 
+    /** FR-DRV, README §9: checked uploads, one document per file, private downloads, audited reviews. */
+    @Test
+    void documentFilesAreCheckedStoredPrivatelyAndAuditedWhenReviewed() throws Exception {
+        String email = unique("files");
+        String driverId = register(email, "DRIVER").path("id").asText();
+        String driver = login(email, PASSWORD);
+        call(post("/api/v1/drivers/me/profile"), driver, Map.of(
+                "fullName", "Le Van File", "dateOfBirth", "1990-05-01", "serviceTypes", List.of("RIDE")))
+                .andExpect(status().isCreated());
+        String otherEmail = unique("other");
+        register(otherEmail, "DRIVER");
+        String other = login(otherEmail, PASSWORD);
+        call(post("/api/v1/drivers/me/profile"), other, Map.of(
+                "fullName", "Pham Van Khac", "dateOfBirth", "1991-05-01", "serviceTypes", List.of("RIDE")))
+                .andExpect(status().isCreated());
+
+        byte[] photo = UploadInspectorTest.pngWithText("GPSLatitude", "10.7769");
+        JsonNode uploaded = data(upload(driver, "license.png", photo)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.contentType").value("image/png")));
+        String fileId = uploaded.path("fileId").asText();
+
+        // Refused: not an image whatever its name, name not matching content, wrong role.
+        upload(driver, "license.png", "MZ\u0090 not an image".getBytes(StandardCharsets.ISO_8859_1))
+                .andExpect(status().isUnprocessableEntity());
+        upload(driver, "license.pdf", photo).andExpect(status().isUnprocessableEntity());
+        String customerEmail = unique("cust");
+        register(customerEmail, "CUSTOMER");
+        upload(login(customerEmail, PASSWORD), "license.png", photo).andExpect(status().isForbidden());
+
+        // The file backs one document of its own driver.
+        Map<String, Object> licence = new java.util.HashMap<>(Map.of("type", "DRIVER_LICENSE",
+                "documentNumber", "B2-123456", "expiresOn", LocalDate.now().plusYears(2).toString(), "fileId", fileId));
+        call(post("/api/v1/drivers/me/documents"), other, licence).andExpect(status().isNotFound());
+        String documentId = data(call(post("/api/v1/drivers/me/documents"), driver, licence)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.hasFile").value(true))).path("id").asText();
+        licence.put("type", "NATIONAL_ID");
+        licence.remove("expiresOn");
+        call(post("/api/v1/drivers/me/documents"), driver, licence).andExpect(status().isConflict());
+
+        // Downloads: the driver and reviewers only, always as an attachment, metadata gone.
+        byte[] stored = mvc.perform(get("/api/v1/drivers/me/documents/" + documentId + "/file")
+                        .header("Authorization", "Bearer " + driver))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/png"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.startsWith("attachment")))
+                .andReturn().getResponse().getContentAsByteArray();
+        assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain("GPSLatitude");
+        assertThat(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(stored)))
+                .isEqualTo(uploaded.path("sha256").asText());
+        call(get("/api/v1/drivers/me/documents/" + documentId + "/file"), other, null)
+                .andExpect(status().isNotFound());
+        String admin = login("admin@rhl.test", "admin-password-123");
+        mvc.perform(get("/api/v1/admin/drivers/" + driverId + "/documents/" + documentId + "/file")
+                        .header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk());
+        call(get("/api/v1/admin/drivers/" + driverId + "/documents/" + documentId + "/file"), driver, null)
+                .andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_records WHERE action = 'DOCUMENT_FILE_VIEWED' "
+                + "AND target_id = ?", Integer.class, documentId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT object_key FROM document_files WHERE id = ?::uuid", String.class,
+                fileId)).isEqualTo("drivers/" + driverId + "/" + fileId);
+    }
+
     // ---- helpers --------------------------------------------------------------------------
+
+    private ResultActions upload(String token, String name, byte[] content) throws Exception {
+        return mvc.perform(multipart("/api/v1/drivers/me/documents/files")
+                .file(new MockMultipartFile("file", name, "application/octet-stream", content))
+                .header("Authorization", "Bearer " + token));
+    }
 
     private void verifyEmail(String token, String email) throws Exception {
         call(post("/api/v1/users/me/contacts/email/verification"), token, null).andExpect(status().isAccepted());
