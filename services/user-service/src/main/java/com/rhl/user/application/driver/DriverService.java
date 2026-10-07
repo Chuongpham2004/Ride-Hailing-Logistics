@@ -12,6 +12,7 @@ import com.rhl.user.domain.driver.ServiceType;
 import com.rhl.user.domain.driver.Vehicle;
 import com.rhl.user.domain.driver.VehicleType;
 import com.rhl.user.domain.user.User;
+import com.rhl.user.infrastructure.persistence.DocumentFileRepository;
 import com.rhl.user.infrastructure.persistence.DriverDocumentRepository;
 import com.rhl.user.infrastructure.persistence.DriverProfileRepository;
 import com.rhl.user.infrastructure.persistence.UserRepository;
@@ -46,6 +47,7 @@ public class DriverService {
     private final DriverProfileRepository profiles;
     private final VehicleRepository vehicles;
     private final DriverDocumentRepository documents;
+    private final DocumentFileRepository files;
     private final UserRepository users;
     private final DocumentRequirements requirements;
     private final DriverEventPublisher events;
@@ -60,7 +62,7 @@ public class DriverService {
     }
 
     public record DocumentCommand(DocumentType type, UUID vehicleId, String documentNumber, LocalDate issuedOn,
-                                  LocalDate expiresOn, String fileRef) {
+                                  LocalDate expiresOn, UUID fileId) {
     }
 
     @Transactional
@@ -126,8 +128,14 @@ public class DriverService {
             throw ApiException.notFound("Vehicle");
         }
         Instant now = clock.instant();
+        if (cmd.fileId() != null) {
+            // Same driver only; a file backs one document, checked under a row lock.
+            files.findForAttach(cmd.fileId(), driverId)
+                    .orElseThrow(() -> ApiException.notFound("File"))
+                    .attach(driverId, now);
+        }
         DriverDocument document = DriverDocument.submit(driverId, cmd.vehicleId(), cmd.type(), cmd.documentNumber(),
-                cmd.issuedOn(), cmd.expiresOn(), cmd.fileRef(), now);
+                cmd.issuedOn(), cmd.expiresOn(), cmd.fileId(), now);
         List<DriverDocument> previous = documents.findByDriverIdAndTypeAndStatus(driverId, cmd.type(),
                         DriverDocument.Status.ACTIVE).stream()
                 .filter(d -> Objects.equals(d.getVehicleId(), cmd.vehicleId()))

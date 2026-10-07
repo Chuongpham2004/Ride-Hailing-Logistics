@@ -1,8 +1,8 @@
 # Dev infrastructure (README §4.11). Services run from the IDE or ./mvnw spring-boot:run.
-#   docker compose up -d                 # Postgres, Redis, Kafka
+#   docker compose up -d                 # Postgres, Redis, Kafka, MinIO
 #   docker compose --profile tools up -d # + Kafka UI on :8090
 # Host ports avoid the defaults (5432/6379/9092) so a local PostgreSQL or another stack can
-# keep running; override with RHL_POSTGRES_PORT / RHL_REDIS_PORT / RHL_KAFKA_PORT.
+# keep running; override with RHL_POSTGRES_PORT / RHL_REDIS_PORT / RHL_KAFKA_PORT / RHL_MINIO_PORT.
 name: rhl
 
 services:
@@ -63,6 +63,23 @@ services:
       timeout: 10s
       retries: 20
 
+  # S3-compatible object store for driver document files (user-service). The bucket is private
+  # and created by user-service on start-up; console on :19001 (dev credentials below).
+  # MinIO no longer publishes images on Docker Hub or quay.io; Chainguard builds it from source.
+  # The image runs as a non-root user that cannot write a fresh volume, hence user 0 (dev only).
+  minio:
+    image: cgr.dev/chainguard/minio:latest
+    user: "0"
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: rhl-dev
+      MINIO_ROOT_PASSWORD: rhl-dev-secret
+    ports:
+      - "${RHL_MINIO_PORT:-19000}:9000"
+      - "${RHL_MINIO_CONSOLE_PORT:-19001}:9001"
+    volumes:
+      - minio-data:/data
+
   kafka-ui:
     profiles: [tools]
     image: provectuslabs/kafka-ui:v0.7.2
@@ -79,3 +96,4 @@ volumes:
   postgres-data:
   redis-data:
   kafka-data:
+  minio-data:

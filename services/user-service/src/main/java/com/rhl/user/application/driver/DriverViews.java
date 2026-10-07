@@ -48,7 +48,7 @@ public final class DriverViews {
         static DocumentView of(DriverDocument d, boolean revealNumber) {
             return new DocumentView(d.getId(), d.getType(), d.getVehicleId(),
                     revealNumber ? d.getDocumentNumber() : mask(d.getDocumentNumber()),
-                    d.getIssuedOn(), d.getExpiresOn(), d.getFileRef() != null, d.getStatus());
+                    d.getIssuedOn(), d.getExpiresOn(), d.getFileId() != null || d.getFileRef() != null, d.getStatus());
         }
 
         static String mask(String number) {
