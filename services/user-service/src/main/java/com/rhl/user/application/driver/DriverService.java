@@ -25,6 +25,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -38,6 +39,9 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 public class DriverService {
+
+    /** Interim policy until TBD-11: a driver proves an email or phone before applying. */
+    public static final String CONTACT_NOT_VERIFIED = "Verify your email or phone number first";
 
     private final DriverProfileRepository profiles;
     private final VehicleRepository vehicles;
@@ -141,8 +145,8 @@ public class DriverService {
     @Transactional
     public DriverViews.ProfileView submitForReview(UUID driverId) {
         DriverProfile profile = load(driverId);
-        profile.submit(requirements.profileProblems(currentDocuments(driverId),
-                vehicles.findByDriverIdOrderByCreatedAt(driverId), today()), clock.instant());
+        profile.submit(submissionProblems(driverId, currentDocuments(driverId),
+                vehicles.findByDriverIdOrderByCreatedAt(driverId)), clock.instant());
         audit.success(driverId, "DRIVER_PROFILE_SUBMITTED", "DRIVER_PROFILE", driverId,
                 Map.of("profileVersion", profile.getProfileVersion()));
         return view(profile, false);
@@ -191,7 +195,16 @@ public class DriverService {
                 profile.getSubmittedAt(), profile.getAvailability(), profile.getActiveVehicleId(),
                 driverVehicles.stream().map(DriverViews.VehicleView::of).toList(),
                 docs.stream().map(d -> DriverViews.DocumentView.of(d, revealDocumentNumbers)).toList(),
-                requirements.profileProblems(docs, driverVehicles, today()));
+                submissionProblems(driverId, docs, driverVehicles));
+    }
+
+    /** What blocks submitting the profile for review: documents, vehicles and a verified contact. */
+    private List<String> submissionProblems(UUID driverId, List<DriverDocument> docs, List<Vehicle> driverVehicles) {
+        List<String> problems = new ArrayList<>(requirements.profileProblems(docs, driverVehicles, today()));
+        if (!users.findById(driverId).map(User::hasVerifiedContact).orElse(false)) {
+            problems.add(CONTACT_NOT_VERIFIED);
+        }
+        return problems;
     }
 
     DriverProfile load(UUID driverId) {

@@ -45,7 +45,8 @@ public class SecurityConfiguration {
                 .authorizeExchange(auth -> auth
                         .pathMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .pathMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
-                                "/api/v1/auth/refresh").permitAll()
+                                "/api/v1/auth/refresh", "/api/v1/auth/password-reset",
+                                "/api/v1/auth/password-reset/confirm").permitAll()
                         // Payment provider webhooks carry no user token; payment-service verifies their
                         // HMAC signature, timestamp and event ID instead (FR-PAY).
                         .pathMatchers(HttpMethod.POST, "/api/v1/payments/callbacks/**").permitAll()

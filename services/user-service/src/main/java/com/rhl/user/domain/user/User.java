@@ -63,6 +63,15 @@ public class User {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    @Column(name = "email_verified_at")
+    private Instant emailVerifiedAt;
+
+    @Column(name = "phone_verified_at")
+    private Instant phoneVerifiedAt;
+
+    @Column(name = "password_changed_at")
+    private Instant passwordChangedAt;
+
     /**
      * @param email normalized email or {@code null}
      * @param phone normalized phone or {@code null}; at least one identifier is required
@@ -108,6 +117,42 @@ public class User {
 
     public boolean isActive() {
         return status == UserStatus.ACTIVE;
+    }
+
+    /** The account's address on {@code channel}, {@code null} when it has none. */
+    public String contact(ContactChannel channel) {
+        return channel == ContactChannel.EMAIL ? email : phone;
+    }
+
+    public boolean isVerified(ContactChannel channel) {
+        return (channel == ContactChannel.EMAIL ? emailVerifiedAt : phoneVerifiedAt) != null;
+    }
+
+    /** At least one contact was proven to reach this person (required before a driver applies). */
+    public boolean hasVerifiedContact() {
+        return emailVerifiedAt != null || phoneVerifiedAt != null;
+    }
+
+    public void markVerified(ContactChannel channel, Instant now) {
+        if (contact(channel) == null) {
+            throw DomainException.rule("The account has no " + channel.name().toLowerCase() + " to verify");
+        }
+        if (channel == ContactChannel.EMAIL) {
+            emailVerifiedAt = now;
+        } else {
+            phoneVerifiedAt = now;
+        }
+        updatedAt = now;
+    }
+
+    /**
+     * A reset proves control of the email or phone the code was sent to, so that contact counts
+     * as verified too.
+     */
+    public void resetPassword(String newPasswordHash, ContactChannel provenBy, Instant now) {
+        passwordHash = newPasswordHash;
+        passwordChangedAt = now;
+        markVerified(provenBy, now);
     }
 
     public boolean has(Role role) {

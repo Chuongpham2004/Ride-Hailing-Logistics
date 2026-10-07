@@ -8,7 +8,8 @@ import java.util.Set;
 
 /** Business and security parameters (NFR-MNT-005: nothing here is hard-coded). */
 @ConfigurationProperties("rhl")
-public record UserServiceProperties(Jwt jwt, Login login, Driver driver, Bootstrap bootstrap, Kafka kafka) {
+public record UserServiceProperties(Jwt jwt, Login login, Verification verification, RateLimits rateLimits,
+                                    Driver driver, Bootstrap bootstrap, Kafka kafka) {
 
     /**
      * @param privateKey PKCS#8 PEM; when both keys are empty an ephemeral key pair is generated (dev only)
@@ -20,6 +21,24 @@ public record UserServiceProperties(Jwt jwt, Login login, Driver driver, Bootstr
 
     /** FR-IAM-006: after {@code maxFailures} wrong passwords the identifier is blocked for {@code lockDuration}. */
     public record Login(int maxFailures, Duration lockDuration) {
+    }
+
+    /**
+     * One-time codes for contact verification and password reset (FR-IAM).
+     *
+     * @param codeTtl         a code is valid this long; a new code replaces the previous one
+     * @param maxAttempts     wrong entries before the code is discarded
+     * @param resendCooldown  smallest gap between two codes to the same address and purpose
+     * @param maxSendsPerHour codes per address and purpose per hour
+     */
+    public record Verification(Duration codeTtl, int maxAttempts, Duration resendCooldown, int maxSendsPerHour) {
+    }
+
+    /**
+     * Per client IP, against bulk sign-ups and account probing (NFR-SEC-007). The IP is the
+     * client address the gateway forwards; only private-network proxies are trusted to set it.
+     */
+    public record RateLimits(int registrationsPerHour, int passwordResetsPerHour) {
     }
 
     /**

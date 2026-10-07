@@ -95,10 +95,20 @@ class ApiGatewayIT {
 
     @Test
     void publicAuthEndpointsNeedNoToken() {
-        client.post().uri("/api/v1/auth/login")
+        for (String path : List.of("/api/v1/auth/login", "/api/v1/auth/password-reset",
+                "/api/v1/auth/password-reset/confirm")) {
+            client.post().uri(path)
+                    .exchange()
+                    .expectStatus().isOk()
+                    .expectBody()
+                    .jsonPath("$.path").isEqualTo(path)
+                    // user-service rate-limits sign-ups and resets by this client address.
+                    .jsonPath("$.forwardedFor").value(ip ->
+                            org.assertj.core.api.Assertions.assertThat((String) ip).isNotIn("null", ""));
+        }
+        client.get().uri("/api/v1/auth/password-reset")
                 .exchange()
-                .expectStatus().isOk()
-                .expectBody().jsonPath("$.path").isEqualTo("/api/v1/auth/login");
+                .expectStatus().isUnauthorized();
     }
 
     /** Provider webhooks carry no user token; payment-service checks their signature instead. */
@@ -231,7 +241,8 @@ class ApiGatewayIT {
                 String body = path.equals("/.well-known/jwks.json")
                         ? jwks
                         : "{\"path\":\"" + path + "\",\"correlationId\":\""
-                        + exchange.getRequestHeaders().getFirst("X-Correlation-Id") + "\"}";
+                        + exchange.getRequestHeaders().getFirst("X-Correlation-Id") + "\",\"forwardedFor\":\""
+                        + exchange.getRequestHeaders().getFirst("X-Forwarded-For") + "\"}";
                 byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
                 exchange.getResponseHeaders().add("Content-Type", "application/json");
                 exchange.sendResponseHeaders(200, bytes.length);

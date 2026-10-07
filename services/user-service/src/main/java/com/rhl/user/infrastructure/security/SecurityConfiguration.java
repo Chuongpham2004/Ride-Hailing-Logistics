@@ -31,7 +31,8 @@ public class SecurityConfiguration {
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/register", "/api/v1/auth/login",
-                                "/api/v1/auth/refresh").permitAll()
+                                "/api/v1/auth/refresh", "/api/v1/auth/password-reset",
+                                "/api/v1/auth/password-reset/confirm").permitAll()
                         .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
