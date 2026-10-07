@@ -1,6 +1,5 @@
 package com.rhl.location.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.ProcessedEvents;
 import com.rhl.location.domain.Availability;
@@ -14,6 +13,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -48,14 +48,14 @@ public class PresenceService {
             return;
         }
         JsonNode payload = event.payload();
-        Availability oldStatus = Availability.valueOf(payload.path("oldStatus").asText());
+        Availability oldStatus = Availability.valueOf(payload.path("oldStatus").asString());
         DriverPresence presence = new DriverPresence(
-                UUID.fromString(payload.path("driverId").asText()),
-                Availability.valueOf(payload.path("newStatus").asText()),
+                UUID.fromString(payload.path("driverId").asString()),
+                Availability.valueOf(payload.path("newStatus").asString()),
                 serviceTypes(payload.path("serviceTypes")),
-                payload.hasNonNull("vehicleId") ? UUID.fromString(payload.path("vehicleId").asText()) : null,
+                payload.hasNonNull("vehicleId") ? UUID.fromString(payload.path("vehicleId").asString()) : null,
                 event.aggregateVersion(),
-                Instant.parse(payload.path("occurredAt").asText()));
+                Instant.parse(payload.path("occurredAt").asString()));
 
         if (!presences.saveIfNewer(presence, clock.instant())) {
             log.debug("Ignored stale availability version {} for a driver", event.aggregateVersion());
@@ -82,7 +82,7 @@ public class PresenceService {
 
     private static Set<ServiceType> serviceTypes(JsonNode node) {
         Set<ServiceType> types = EnumSet.noneOf(ServiceType.class);
-        node.forEach(type -> types.add(ServiceType.valueOf(type.asText())));
+        node.forEach(type -> types.add(ServiceType.valueOf(type.asString())));
         return types;
     }
 }

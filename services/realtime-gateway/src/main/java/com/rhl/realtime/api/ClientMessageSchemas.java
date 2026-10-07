@@ -1,23 +1,23 @@
 package com.rhl.realtime.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.Error;
+import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
-import com.networknt.schema.SchemaValidatorsConfig;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
-import com.networknt.schema.resource.InputStreamSource;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SchemaRegistryConfig;
+import com.networknt.schema.SpecificationVersion;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -33,7 +33,7 @@ public class ClientMessageSchemas {
     private static final String LOCATION = "classpath*:contracts/websocket/**/*.schema.json";
     private static final String CLIENT_TYPES = "/contracts/websocket/client/";
 
-    private final Map<String, JsonSchema> byType = new HashMap<>();
+    private final Map<String, Schema> byType = new HashMap<>();
 
     public ClientMessageSchemas(ObjectMapper objectMapper) {
         Map<String, byte[]> byId = new HashMap<>();
@@ -45,10 +45,10 @@ public class ClientMessageSchemas {
                     content = in.readAllBytes();
                 }
                 JsonNode schema = objectMapper.readTree(content);
-                String id = schema.path("$id").asText();
+                String id = schema.path("$id").asString();
                 byId.put(id, content);
                 if (resource.getURL().toString().contains(CLIENT_TYPES)) {
-                    clientTypeToId.put(schema.path("properties").path("type").path("const").asText(), id);
+                    clientTypeToId.put(schema.path("properties").path("type").path("const").asString(), id);
                 }
             }
         } catch (IOException e) {
@@ -57,13 +57,12 @@ public class ClientMessageSchemas {
         if (clientTypeToId.isEmpty()) {
             throw new IllegalStateException("No client message schemas found at " + LOCATION);
         }
-        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012, builder -> builder
-                .schemaLoaders(loaders -> loaders.add(iri -> {
-                    byte[] content = byId.get(iri.toString());
-                    return content == null ? null : (InputStreamSource) () -> new ByteArrayInputStream(content);
-                })));
-        SchemaValidatorsConfig config = SchemaValidatorsConfig.builder().formatAssertionsEnabled(true).build();
-        clientTypeToId.forEach((type, id) -> byType.put(type, factory.getSchema(SchemaLocation.of(id), config)));
+        Map<String, String> sources = new HashMap<>();
+        byId.forEach((id, content) -> sources.put(id, new String(content, StandardCharsets.UTF_8)));
+        SchemaRegistry registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12, builder -> builder
+                .schemas(Map.copyOf(sources))
+                .schemaRegistryConfig(SchemaRegistryConfig.builder().formatAssertionsEnabled(true).build()));
+        clientTypeToId.forEach((type, id) -> byType.put(type, registry.getSchema(SchemaLocation.of(id))));
     }
 
     public Set<String> types() {
@@ -72,15 +71,15 @@ public class ClientMessageSchemas {
 
     /** @throws InvalidMessageException when the type is unknown or the message does not match it */
     public void validate(JsonNode message) {
-        String type = message.path("type").asText();
-        JsonSchema schema = byType.get(type);
+        String type = message.path("type").asString();
+        Schema schema = byType.get(type);
         if (schema == null) {
             throw new InvalidMessageException("Unsupported message type '" + abbreviate(type) + "'");
         }
-        Set<ValidationMessage> errors = schema.validate(message);
+        List<Error> errors = schema.validate(message);
         if (!errors.isEmpty()) {
             throw new InvalidMessageException(errors.stream()
-                    .map(ValidationMessage::getMessage)
+                    .map(Error::toString)
                     .sorted()
                     .collect(Collectors.joining("; ")));
         }

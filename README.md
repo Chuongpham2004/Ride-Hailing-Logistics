@@ -95,7 +95,7 @@ RBAC tối thiểu: `Customer`, `Driver`, `Reviewer`, `SupportStaff`, `FinanceSt
 
 | Lớp | Công nghệ | Vai trò trong hệ thống |
 |---|---|---|
-| Ngôn ngữ / framework | **Java 21 (LTS) + Spring Boot 3.5 + Spring Cloud 2025.0** | Nền tảng cho mọi service |
+| Ngôn ngữ / framework | **Java 21 (LTS) + Spring Boot 4.0 (Spring Framework 7) + Spring Cloud 2025.1, Jackson 3** | Nền tảng cho mọi service |
 | API Gateway | Spring Cloud Gateway | Định tuyến, xác thực JWT, rate limit, gắn correlation ID |
 | Realtime | Spring WebSocket | Kênh WSS cho telemetry, offer, trạng thái chuyến |
 | Bảo mật | Spring Security (OAuth2 Resource Server, JWT) | AuthN/AuthZ, RBAC, kiểm tra quyền sở hữu tài nguyên |

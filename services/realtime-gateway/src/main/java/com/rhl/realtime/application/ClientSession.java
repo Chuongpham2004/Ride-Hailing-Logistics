@@ -1,8 +1,5 @@
 package com.rhl.realtime.application;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rhl.common.security.Role;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -10,6 +7,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.time.Duration;
@@ -109,7 +109,7 @@ public final class ClientSession {
             try {
                 socket.sendMessage(new TextMessage(objectMapper.writeValueAsString(envelope)));
                 return true;
-            } catch (JsonProcessingException e) {
+            } catch (JacksonException e) {
                 throw new IllegalStateException("Cannot serialize message", e);
             } catch (IOException | IllegalStateException e) {
                 log.debug("Could not send to session {}: {}", id(), e.getMessage());

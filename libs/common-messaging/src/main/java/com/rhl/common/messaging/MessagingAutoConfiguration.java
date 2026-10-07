@@ -1,15 +1,11 @@
 package com.rhl.common.messaging;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.common.TopicPartition;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.boot.autoconfigure.jdbc.JdbcTemplateAutoConfiguration;
-import org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration;
-import org.springframework.boot.autoconfigure.transaction.TransactionAutoConfiguration;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -22,6 +18,7 @@ import org.springframework.kafka.listener.DefaultErrorHandler;
 import org.springframework.kafka.support.ExponentialBackOffWithMaxRetries;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 
@@ -29,8 +26,9 @@ import java.time.Clock;
  * Wires the outbox, idempotent consumer and Kafka error handling into any service that has a
  * DataSource and Kafka on the classpath.
  */
-@AutoConfiguration(after = {KafkaAutoConfiguration.class, JdbcTemplateAutoConfiguration.class,
-        TransactionAutoConfiguration.class})
+@AutoConfiguration(afterName = {"org.springframework.boot.kafka.autoconfigure.KafkaAutoConfiguration",
+        "org.springframework.boot.jdbc.autoconfigure.JdbcTemplateAutoConfiguration",
+        "org.springframework.boot.transaction.autoconfigure.TransactionAutoConfiguration"})
 @EnableConfigurationProperties(OutboxProperties.class)
 public class MessagingAutoConfiguration {
 
@@ -66,7 +64,7 @@ public class MessagingAutoConfiguration {
                 (record, exception) -> new TopicPartition(deadLetterTopic(record.topic()), record.partition()));
         DefaultErrorHandler handler = new DefaultErrorHandler(recoverer, backOff);
         handler.addNotRetryableExceptions(InvalidEventException.class,
-                com.fasterxml.jackson.core.JsonProcessingException.class);
+                tools.jackson.core.JacksonException.class);
         return handler;
     }
 

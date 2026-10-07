@@ -1,24 +1,23 @@
 package com.rhl.common.messaging;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.networknt.schema.resource.InputStreamSource;
-import com.networknt.schema.JsonSchema;
-import com.networknt.schema.JsonSchemaFactory;
+import com.networknt.schema.Error;
+import com.networknt.schema.Schema;
 import com.networknt.schema.SchemaLocation;
-import com.networknt.schema.SchemaValidatorsConfig;
-import com.networknt.schema.SpecVersion;
-import com.networknt.schema.ValidationMessage;
+import com.networknt.schema.SchemaRegistry;
+import com.networknt.schema.SchemaRegistryConfig;
+import com.networknt.schema.SpecificationVersion;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
-import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -32,18 +31,16 @@ public class EventSchemaValidator {
     private static final String LOCATION = "classpath*:contracts/events/**/*.schema.json";
 
     private final Map<String, byte[]> schemasById;
-    private final JsonSchemaFactory factory;
-    private final SchemaValidatorsConfig config;
-    private final Map<String, JsonSchema> compiled = new ConcurrentHashMap<>();
+    private final SchemaRegistry registry;
+    private final Map<String, Schema> compiled = new ConcurrentHashMap<>();
 
     public EventSchemaValidator(ObjectMapper objectMapper) {
         this.schemasById = loadSchemas(objectMapper);
-        this.factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V202012, builder -> builder
-                .schemaLoaders(loaders -> loaders.add(iri -> {
-                    byte[] content = schemasById.get(iri.toString());
-                    return content == null ? null : (InputStreamSource) () -> new ByteArrayInputStream(content);
-                })));
-        this.config = SchemaValidatorsConfig.builder().formatAssertionsEnabled(true).build();
+        Map<String, String> sources = new HashMap<>();
+        schemasById.forEach((id, content) -> sources.put(id, new String(content, StandardCharsets.UTF_8)));
+        this.registry = SchemaRegistry.withDefaultDialect(SpecificationVersion.DRAFT_2020_12, builder -> builder
+                .schemas(Map.copyOf(sources))
+                .schemaRegistryConfig(SchemaRegistryConfig.builder().formatAssertionsEnabled(true).build()));
     }
 
     public static String schemaId(String eventType, int eventVersion) {
@@ -60,11 +57,11 @@ public class EventSchemaValidator {
         if (!schemasById.containsKey(id)) {
             throw new InvalidEventException("No schema registered for " + id);
         }
-        JsonSchema schema = compiled.computeIfAbsent(id, key -> factory.getSchema(SchemaLocation.of(key), config));
-        Set<ValidationMessage> errors = schema.validate(envelope);
+        Schema schema = compiled.computeIfAbsent(id, key -> registry.getSchema(SchemaLocation.of(key)));
+        List<Error> errors = schema.validate(envelope);
         if (!errors.isEmpty()) {
             throw new InvalidEventException(id + " violated: " + errors.stream()
-                    .map(ValidationMessage::getMessage)
+                    .map(Error::toString)
                     .sorted()
                     .collect(Collectors.joining("; ")));
         }
@@ -79,11 +76,11 @@ public class EventSchemaValidator {
                     content = in.readAllBytes();
                 }
                 JsonNode id = objectMapper.readTree(content).get("$id");
-                if (id == null || !id.isTextual()) {
+                if (id == null || !id.isString()) {
                     throw new IllegalStateException("Schema without $id: " + resource.getDescription());
                 }
-                if (byId.put(id.asText(), content) != null) {
-                    throw new IllegalStateException("Duplicate schema $id " + id.asText());
+                if (byId.put(id.asString(), content) != null) {
+                    throw new IllegalStateException("Duplicate schema $id " + id.asString());
                 }
             }
         } catch (IOException e) {

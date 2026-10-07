@@ -1,6 +1,5 @@
 package com.rhl.common.security.servlet;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.web.ApiResponse;
 import com.rhl.common.web.ErrorCode;
 import jakarta.servlet.http.HttpServletRequest;
@@ -10,6 +9,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.security.web.access.AccessDeniedHandler;
+import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.List;

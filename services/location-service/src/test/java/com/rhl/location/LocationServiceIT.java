@@ -1,7 +1,5 @@
 package com.rhl.location;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.id.UuidV7;
 import com.rhl.location.infrastructure.messaging.Topics;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
@@ -10,9 +8,9 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,6 +25,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -102,12 +102,12 @@ class LocationServiceIT {
         JsonNode hit = find(nearby, driver);
         assertThat(hit).isNotNull();
         assertThat(hit.path("distanceMeters").asLong()).isBetween(250L, 350L);
-        assertThat(hit.path("availability").asText()).isEqualTo("AVAILABLE");
-        assertThat(hit.path("vehicleId").asText()).isEqualTo(vehicle.toString());
+        assertThat(hit.path("availability").asString()).isEqualTo("AVAILABLE");
+        assertThat(hit.path("vehicleId").asString()).isEqualTo(vehicle.toString());
 
         ConsumerRecord<String, String> published = consumeOne(Topics.LOCATION_UPDATES, driver.toString());
         JsonNode event = json.readTree(published.value());
-        assertThat(event.path("eventType").asText()).isEqualTo("DriverLocationUpdated");
+        assertThat(event.path("eventType").asString()).isEqualTo("DriverLocationUpdated");
         assertThat(event.path("payload").path("sequence").asLong()).isEqualTo(1);
 
         assertThat(jdbc.queryForObject("SELECT quality FROM telemetry_history WHERE driver_id = ?", String.class,
@@ -303,7 +303,7 @@ class LocationServiceIT {
 
     private static JsonNode find(JsonNode list, UUID driver) {
         for (JsonNode item : list) {
-            if (item.path("driverId").asText().equals(driver.toString())) {
+            if (item.path("driverId").asString().equals(driver.toString())) {
                 return item;
             }
         }

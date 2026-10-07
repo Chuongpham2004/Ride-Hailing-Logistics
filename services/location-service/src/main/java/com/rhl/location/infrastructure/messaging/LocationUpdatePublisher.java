@@ -1,8 +1,5 @@
 package com.rhl.location.infrastructure.messaging;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.id.UuidV7;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.EventHeaders;
@@ -14,6 +11,9 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -80,7 +80,7 @@ public class LocationUpdatePublisher {
     private String write(JsonNode json) {
         try {
             return objectMapper.writeValueAsString(json);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Cannot serialize " + EVENT_TYPE, e);
         }
     }

@@ -1,6 +1,5 @@
 package com.rhl.user.application.driver;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.ProcessedEvents;
 import com.rhl.user.domain.driver.AvailabilityChange;
@@ -10,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -47,7 +47,7 @@ public class TripAvailabilityProjection {
         if (!payload.hasNonNull("driverId")) {
             return; // e.g. a trip cancelled before any driver was assigned
         }
-        UUID driverId = UUID.fromString(payload.path("driverId").asText());
+        UUID driverId = UUID.fromString(payload.path("driverId").asString());
         Optional<DriverProfile> found = profiles.findById(driverId);
         if (found.isEmpty()) {
             log.warn("{} {} names a driver without a profile", event.eventType(), event.eventId());
@@ -57,7 +57,7 @@ public class TripAvailabilityProjection {
         Instant now = clock.instant();
         Optional<AvailabilityChange> change = switch (event.eventType()) {
             case "DriverOfferCreated" -> profile.offered(id(payload, "offerId"),
-                    Instant.parse(payload.path("expiresAt").asText()), now);
+                    Instant.parse(payload.path("expiresAt").asString()), now);
             case "DriverOfferExpired" -> profile.offerClosed(id(payload, "offerId"), "OFFER_EXPIRED", now);
             case "DriverOfferDeclined" -> profile.offerClosed(id(payload, "offerId"), "OFFER_DECLINED", now);
             case "DriverOfferCancelled" -> profile.offerClosed(id(payload, "offerId"), "OFFER_CANCELLED", now);
@@ -82,6 +82,6 @@ public class TripAvailabilityProjection {
     }
 
     private static UUID id(JsonNode payload, String field) {
-        return UUID.fromString(payload.path(field).asText());
+        return UUID.fromString(payload.path(field).asString());
     }
 }

@@ -1,6 +1,5 @@
 package com.rhl.pricing.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.pricing.domain.ServiceType;
 import com.rhl.pricing.infrastructure.cache.SurgeAreas;
@@ -8,6 +7,7 @@ import com.rhl.pricing.infrastructure.cache.SurgeCounters;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -32,30 +32,30 @@ public class SurgeSignals {
 
     public void onTripRequested(EventEnvelope event) {
         JsonNode payload = event.payload();
-        Instant requestedAt = Instant.parse(payload.path("occurredAt").asText());
+        Instant requestedAt = Instant.parse(payload.path("occurredAt").asString());
         if (requestedAt.isBefore(clock.instant().minus(counters.demandWindow()))) {
             return; // already outside every window that will be read
         }
         JsonNode pickup = payload.path("pickup");
-        counters.recordDemand(ServiceType.valueOf(payload.path("serviceType").asText()),
+        counters.recordDemand(ServiceType.valueOf(payload.path("serviceType").asString()),
                 areas.cellOf(pickup.path("latitude").asDouble(), pickup.path("longitude").asDouble()),
-                UUID.fromString(payload.path("tripId").asText()), requestedAt);
+                UUID.fromString(payload.path("tripId").asString()), requestedAt);
     }
 
     public void onAvailabilityChanged(EventEnvelope event) {
         JsonNode payload = event.payload();
         Set<ServiceType> types = EnumSet.noneOf(ServiceType.class);
-        payload.path("serviceTypes").forEach(t -> types.add(ServiceType.valueOf(t.asText())));
-        if (!counters.recordAvailability(UUID.fromString(payload.path("driverId").asText()), event.aggregateVersion(),
-                payload.path("newStatus").asText(), types)) {
+        payload.path("serviceTypes").forEach(t -> types.add(ServiceType.valueOf(t.asString())));
+        if (!counters.recordAvailability(UUID.fromString(payload.path("driverId").asString()), event.aggregateVersion(),
+                payload.path("newStatus").asString(), types)) {
             log.debug("Ignored stale availability version {}", event.aggregateVersion());
         }
     }
 
     public void onLocationUpdated(EventEnvelope event) {
         JsonNode payload = event.payload();
-        counters.recordPosition(UUID.fromString(payload.path("driverId").asText()),
+        counters.recordPosition(UUID.fromString(payload.path("driverId").asString()),
                 areas.cellOf(payload.path("latitude").asDouble(), payload.path("longitude").asDouble()),
-                Instant.parse(payload.path("serverTimestamp").asText()));
+                Instant.parse(payload.path("serverTimestamp").asString()));
     }
 }

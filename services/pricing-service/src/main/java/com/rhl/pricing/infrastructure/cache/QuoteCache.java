@@ -1,13 +1,13 @@
 package com.rhl.pricing.infrastructure.cache;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.pricing.application.PricingViews;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -35,7 +35,7 @@ public class QuoteCache {
         }
         try {
             redis.opsForValue().set(PREFIX + quote.id(), objectMapper.writeValueAsString(quote), ttl);
-        } catch (JsonProcessingException | DataAccessException e) {
+        } catch (JacksonException | DataAccessException e) {
             log.warn("Could not cache quote: {}", e.getMessage());
         }
     }
@@ -45,7 +45,7 @@ public class QuoteCache {
             String json = redis.opsForValue().get(PREFIX + quoteId);
             return json == null ? Optional.empty()
                     : Optional.of(objectMapper.readValue(json, PricingViews.QuoteView.class));
-        } catch (JsonProcessingException | DataAccessException e) {
+        } catch (JacksonException | DataAccessException e) {
             log.warn("Could not read cached quote: {}", e.getMessage());
             return Optional.empty();
         }

@@ -1,7 +1,5 @@
 package com.rhl.trip;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.web.ApiException;
 import com.rhl.common.web.ErrorCode;
 import com.rhl.trip.domain.DriverCandidate;
@@ -17,9 +15,9 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -35,6 +33,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -128,15 +128,15 @@ class TripServiceIT {
         String key = "create-" + UUID.randomUUID();
         UUID quoteId = quote(customer, "1.00");
         JsonNode trip = data(book(customer, key, quoteId, null).andExpect(status().isCreated()));
-        String tripId = trip.path("id").asText();
-        assertThat(trip.path("status").asText()).isEqualTo("MATCHING");
+        String tripId = trip.path("id").asString();
+        assertThat(trip.path("status").asString()).isEqualTo("MATCHING");
         // Route and price come from the quote (BR-007).
-        assertThat(trip.path("pickup").path("address").asText()).isEqualTo(PICKUP.get("address"));
-        assertThat(trip.path("fare").path("quoteId").asText()).isEqualTo(quoteId.toString());
+        assertThat(trip.path("pickup").path("address").asString()).isEqualTo(PICKUP.get("address"));
+        assertThat(trip.path("fare").path("quoteId").asString()).isEqualTo(quoteId.toString());
         assertThat(trip.path("fare").path("quotedFare").asLong()).isEqualTo(27_000);
 
         // Retry with the same key returns the same trip; a different body under it is refused (COM-008).
-        assertThat(data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asText())
+        assertThat(data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asString())
                 .isEqualTo(tripId);
         book(customer, key, quote(customer, "1.00"), null)
                 .andExpect(status().isConflict())
@@ -146,11 +146,11 @@ class TripServiceIT {
 
         // The nearest driver gets the offer, with the pickup but not the drop-off (BR-013).
         JsonNode offer = awaitOffer(near);
-        assertThat(offer.path("tripId").asText()).isEqualTo(tripId);
+        assertThat(offer.path("tripId").asString()).isEqualTo(tripId);
         assertThat(offer.path("estimatedPickupDistanceMeters").asInt()).isEqualTo(300);
         assertThat(offer.has("dropoff")).isFalse();
         assertThat(pendingOffers(far)).isEmpty();
-        String offerId = offer.path("id").asText();
+        String offerId = offer.path("id").asString();
         assertThat(redisTemplate.opsForValue().get("dispatch:driver-hold:" + near)).isEqualTo(offerId);
 
         // Nobody else can see the trip or take the offer.
@@ -177,7 +177,7 @@ class TripServiceIT {
 
         // The pickup code is the customer's to hand over; the driver never sees it (README §6).
         String pickupCode = data(perform(get("/api/v1/trips/" + tripId), customerToken(customer)))
-                .path("pickupCode").asText();
+                .path("pickupCode").asString();
         assertThat(pickupCode).matches("^[0-9]{4}$");
         assertThat(data(perform(get("/api/v1/trips/" + tripId), driverToken(near))).has("pickupCode")).isFalse();
         perform(post("/api/v1/trips/" + tripId + "/start-pickup"), driverToken(near)).andExpect(status().isOk());
@@ -202,15 +202,15 @@ class TripServiceIT {
                 "SELECT COUNT(*) FROM outbox_events WHERE message_key = ? AND status = 'PENDING'", tripId))
                 .isZero());
         List<JsonNode> events = consume(Topics.TRIP_EVENTS, tripId, 6);
-        assertThat(events).extracting(e -> e.path("eventType").asText()).containsExactly("TripRequested",
+        assertThat(events).extracting(e -> e.path("eventType").asString()).containsExactly("TripRequested",
                 "TripAccepted", "TripStatusChanged", "TripStatusChanged", "TripStatusChanged", "TripCompleted");
         assertThat(events).extracting(e -> e.path("aggregateVersion").asLong()).isSorted().doesNotHaveDuplicates();
-        assertThat(events.getLast().path("payload").path("driverId").asText()).isEqualTo(near.toString());
+        assertThat(events.getLast().path("payload").path("driverId").asString()).isEqualTo(near.toString());
         // pricing-service settles the booked quote from TripCompleted.
-        assertThat(events.getLast().path("payload").path("quoteId").asText()).isEqualTo(quoteId.toString());
+        assertThat(events.getLast().path("payload").path("quoteId").asString()).isEqualTo(quoteId.toString());
 
         List<JsonNode> offers = consume(Topics.DISPATCH_OFFERS, near.toString(), 1);
-        assertThat(offers.getFirst().path("eventType").asText()).isEqualTo("DriverOfferCreated");
+        assertThat(offers.getFirst().path("eventType").asString()).isEqualTo("DriverOfferCreated");
     }
 
     @Test
@@ -220,9 +220,9 @@ class TripServiceIT {
         UUID second = UUID.randomUUID();
         candidates(new DriverCandidate(first, 200, 100), new DriverCandidate(second, 900, 100));
 
-        String tripId = data(createTrip(customer, "decline-" + UUID.randomUUID())).path("id").asText();
+        String tripId = data(createTrip(customer, "decline-" + UUID.randomUUID())).path("id").asString();
 
-        String firstOffer = awaitOffer(first).path("id").asText();
+        String firstOffer = awaitOffer(first).path("id").asString();
         perform(post("/api/v1/offers/" + firstOffer + "/decline"), driverToken(first))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("DECLINED"));
@@ -231,7 +231,7 @@ class TripServiceIT {
                 .andExpect(jsonPath("$.code").value("OFFER_EXPIRED"));
 
         // The second driver is offered next and lets it expire.
-        String secondOffer = awaitOffer(second).path("id").asText();
+        String secondOffer = awaitOffer(second).path("id").asString();
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(jdbc.queryForObject(
                 "SELECT status FROM driver_offers WHERE id = ?::uuid", String.class, secondOffer))
                 .isEqualTo("EXPIRED"));
@@ -258,12 +258,12 @@ class TripServiceIT {
         UUID driver = UUID.randomUUID();
         candidates(new DriverCandidate(driver, 400, 100));
 
-        String tripId = data(createTrip(customer, "cancel-" + UUID.randomUUID())).path("id").asText();
+        String tripId = data(createTrip(customer, "cancel-" + UUID.randomUUID())).path("id").asString();
         createTrip(customer, "second-" + UUID.randomUUID())
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATION"));
 
-        String offerId = awaitOffer(driver).path("id").asText();
+        String offerId = awaitOffer(driver).path("id").asString();
         Map<String, Object> cancel = Map.of("reason", "CHANGED_MIND", "note", "Plans changed");
         perform(post("/api/v1/trips/" + tripId + "/cancel"), customerToken(customer), cancel)
                 .andExpect(status().isOk())
@@ -281,8 +281,8 @@ class TripServiceIT {
         // What pricing-service needs for the fee decision.
         JsonNode cancelledPayload = json.readTree(jdbc.queryForObject("SELECT envelope::text FROM outbox_events "
                 + "WHERE message_key = ? AND event_type = 'TripCancelled'", String.class, tripId)).path("payload");
-        assertThat(cancelledPayload.path("serviceType").asText()).isEqualTo("RIDE");
-        assertThat(cancelledPayload.path("quoteId").asText()).isNotBlank();
+        assertThat(cancelledPayload.path("serviceType").asString()).isEqualTo("RIDE");
+        assertThat(cancelledPayload.path("quoteId").asString()).isNotBlank();
         assertThat(cancelledPayload.has("acceptedAt")).isFalse();
         assertThat(jdbc.queryForObject("SELECT envelope->'payload'->>'reason' FROM outbox_events "
                 + "WHERE message_key = ? AND event_type = 'DriverOfferCancelled'", String.class, driver.toString()))
@@ -290,7 +290,7 @@ class TripServiceIT {
         assertThat(redisTemplate.hasKey("dispatch:driver-hold:" + driver)).isFalse();
 
         // The customer is free to book again.
-        String next = data(createTrip(customer, "again-" + UUID.randomUUID())).path("id").asText();
+        String next = data(createTrip(customer, "again-" + UUID.randomUUID())).path("id").asString();
         awaitOffer(driver);
         perform(post("/api/v1/trips/" + next + "/cancel"), customerToken(customer), cancel).andExpect(status().isOk());
     }
@@ -300,15 +300,15 @@ class TripServiceIT {
         UUID busy = UUID.randomUUID();
         UUID free = UUID.randomUUID();
         candidates(new DriverCandidate(busy, 100, 100));
-        String first = data(createTrip(UUID.randomUUID(), "busy-" + UUID.randomUUID())).path("id").asText();
-        String offerId = awaitOffer(busy).path("id").asText();
+        String first = data(createTrip(UUID.randomUUID(), "busy-" + UUID.randomUUID())).path("id").asString();
+        String offerId = awaitOffer(busy).path("id").asString();
         perform(post("/api/v1/offers/" + offerId + "/accept"), driverToken(busy)).andExpect(status().isOk());
 
         // location-service may still list the busy driver (its trip.events consumer lags); trip-service filters.
         candidates(new DriverCandidate(busy, 50, 100), new DriverCandidate(free, 700, 100));
         UUID otherCustomer = UUID.randomUUID();
-        String second = data(createTrip(otherCustomer, "free-" + UUID.randomUUID())).path("id").asText();
-        assertThat(awaitOffer(free).path("tripId").asText()).isEqualTo(second);
+        String second = data(createTrip(otherCustomer, "free-" + UUID.randomUUID())).path("id").asString();
+        assertThat(awaitOffer(free).path("tripId").asString()).isEqualTo(second);
         assertThat(pendingOffers(busy)).isEmpty();
 
         Map<String, Object> cancel = Map.of("reason", "OTHER");
@@ -356,7 +356,7 @@ class TripServiceIT {
                 .andExpect(status().isUnprocessableEntity());
         String tripId = data(book(customer, "surge-c-" + UUID.randomUUID(), quoteId, "1.50")
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.fare.surgeMultiplier").value(1.5))).path("id").asText();
+                .andExpect(jsonPath("$.data.fare.surgeMultiplier").value(1.5))).path("id").asString();
 
         perform(post("/api/v1/trips/" + tripId + "/cancel"), customerToken(customer), Map.of("reason", "OTHER"))
                 .andExpect(status().isOk());
@@ -367,7 +367,7 @@ class TripServiceIT {
         UUID customer = UUID.randomUUID();
         UUID quoteId = quote(customer, "1.00");
         String key = "once-" + UUID.randomUUID();
-        String tripId = data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asText();
+        String tripId = data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asString();
         perform(post("/api/v1/trips/" + tripId + "/cancel"), customerToken(customer), Map.of("reason", "OTHER"))
                 .andExpect(status().isOk());
 
@@ -379,7 +379,7 @@ class TripServiceIT {
         // Once the quote has expired a retry with the original key still returns the original trip.
         when(pricing.validQuote(eq(quoteId), eq(customer)))
                 .thenThrow(new ApiException(ErrorCode.QUOTE_EXPIRED, "The quote expired"));
-        assertThat(data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asText())
+        assertThat(data(book(customer, key, quoteId, null).andExpect(status().isCreated())).path("id").asString())
                 .isEqualTo(tripId);
         book(customer, "late-" + UUID.randomUUID(), quoteId, null)
                 .andExpect(status().isUnprocessableEntity())
@@ -416,20 +416,20 @@ class TripServiceIT {
 
         JsonNode booked = data(book(customer, "deliv-" + UUID.randomUUID(),
                 quote(customer, "1.00", ServiceType.DELIVERY), null, delivery).andExpect(status().isCreated()));
-        String tripId = booked.path("id").asText();
-        assertThat(booked.path("delivery").path("recipientPhone").asText()).isEqualTo("+84912345678");
-        String pickupCode = booked.path("pickupCode").asText();
-        String deliveryCode = booked.path("deliveryCode").asText();
+        String tripId = booked.path("id").asString();
+        assertThat(booked.path("delivery").path("recipientPhone").asString()).isEqualTo("+84912345678");
+        String pickupCode = booked.path("pickupCode").asString();
+        String deliveryCode = booked.path("deliveryCode").asString();
         assertThat(pickupCode).matches("^[0-9]{4}$");
         assertThat(deliveryCode).matches("^[0-9]{4}$");
 
         // The offer shows the pickup only; nothing about the recipient (BR-013).
         JsonNode offer = awaitOffer(driver);
         assertThat(offer.toString()).doesNotContain("Nhan", "912345678");
-        JsonNode accepted = data(perform(post("/api/v1/offers/" + offer.path("id").asText() + "/accept"),
+        JsonNode accepted = data(perform(post("/api/v1/offers/" + offer.path("id").asString() + "/accept"),
                 driverToken(driver)).andExpect(status().isOk()));
         // Assigned: the driver sees whom to deliver to, but never the codes.
-        assertThat(accepted.path("delivery").path("recipientName").asText()).isEqualTo("Tran Thi Nhan");
+        assertThat(accepted.path("delivery").path("recipientName").asString()).isEqualTo("Tran Thi Nhan");
         assertThat(accepted.has("pickupCode")).isFalse();
         assertThat(accepted.has("deliveryCode")).isFalse();
         perform(get("/api/v1/trips/" + tripId), customerToken(UUID.randomUUID())).andExpect(status().isNotFound());
@@ -457,7 +457,7 @@ class TripServiceIT {
                 "SELECT COUNT(*) FROM outbox_events WHERE message_key = ? AND status = 'PENDING'", tripId))
                 .isZero());
         List<JsonNode> events = consume(Topics.TRIP_EVENTS, tripId, 6);
-        assertThat(events.getLast().path("eventType").asText()).isEqualTo("TripCompleted");
+        assertThat(events.getLast().path("eventType").asString()).isEqualTo("TripCompleted");
         assertThat(events.toString()).doesNotContain("Nhan", "912345678", pickupCode + "\"", deliveryCode + "\"");
     }
 
@@ -468,8 +468,8 @@ class TripServiceIT {
         UUID driver = UUID.randomUUID();
         candidates(new DriverCandidate(driver, 300, 100));
         String tripId = data(createTrip(customer, "fee-" + UUID.randomUUID()).andExpect(status().isCreated()))
-                .path("id").asText();
-        perform(post("/api/v1/offers/" + awaitOffer(driver).path("id").asText() + "/accept"), driverToken(driver))
+                .path("id").asString();
+        perform(post("/api/v1/offers/" + awaitOffer(driver).path("id").asString() + "/accept"), driverToken(driver))
                 .andExpect(status().isOk());
         when(pricing.cancellationFee(any(), any(), any(), any(), any(), any())).thenReturn(
                 new PricingClient.CancellationFee("LATE_CANCELLATION", 10_000, "VND", 1, null));
@@ -488,7 +488,7 @@ class TripServiceIT {
         perform(post("/api/v1/trips/" + tripId + "/start-pickup"), driverToken(driver)).andExpect(status().isOk());
         perform(post("/api/v1/trips/" + tripId + "/arrive"), driverToken(driver)).andExpect(status().isOk());
         String code = data(perform(get("/api/v1/trips/" + tripId), customerToken(customer))).path("pickupCode")
-                .asText();
+                .asString();
         perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(driver), Map.of("code", code))
                 .andExpect(status().isOk());
         perform(get("/api/v1/trips/" + tripId + "/cancellation-fee").param("reason", "CHANGED_MIND"),
@@ -505,8 +505,8 @@ class TripServiceIT {
         UUID staff = UUID.randomUUID();
         candidates(new DriverCandidate(driver, 300, 100));
         String tripId = data(createTrip(customer, "staff-" + UUID.randomUUID()).andExpect(status().isCreated()))
-                .path("id").asText();
-        perform(post("/api/v1/offers/" + awaitOffer(driver).path("id").asText() + "/accept"), driverToken(driver))
+                .path("id").asString();
+        perform(post("/api/v1/offers/" + awaitOffer(driver).path("id").asString() + "/accept"), driverToken(driver))
                 .andExpect(status().isOk());
 
         perform(get("/api/v1/admin/trips").param("customerId", customer.toString()), staffToken(staff))

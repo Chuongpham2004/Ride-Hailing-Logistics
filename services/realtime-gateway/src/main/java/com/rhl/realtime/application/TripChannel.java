@@ -1,8 +1,5 @@
 package com.rhl.realtime.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.security.Role;
 import com.rhl.common.web.ErrorCode;
@@ -11,6 +8,9 @@ import com.rhl.realtime.infrastructure.cache.TripParticipantStore;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -111,7 +111,7 @@ public class TripChannel {
             return;
         }
         JsonNode p = event.payload();
-        UUID driverId = UUID.fromString(p.path("driverId").asText());
+        UUID driverId = UUID.fromString(p.path("driverId").asString());
         Optional<UUID> tripId = store.currentTripOf(driverId);
         if (tripId.isEmpty() || !followers.containsKey(tripId.get())) {
             return;
@@ -132,7 +132,7 @@ public class TripChannel {
                 data.set(field, p.get(field));
             }
         }
-        data.put("serverTimestamp", p.path("serverTimestamp").asText());
+        data.put("serverTimestamp", p.path("serverTimestamp").asString());
         for (ClientSession session : followers.getOrDefault(trip.tripId(), Set.of())) {
             if (session.getUserId().equals(trip.customerId()) && session.has(Role.CUSTOMER)) {
                 ObjectNode message = messages.create(event.eventId().toString(), TRIP_DRIVER_LOCATION, 1,

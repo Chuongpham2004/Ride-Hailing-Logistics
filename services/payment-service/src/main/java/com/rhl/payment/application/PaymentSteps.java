@@ -1,6 +1,5 @@
 package com.rhl.payment.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.id.UuidV7;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.ProcessedEvents;
@@ -22,6 +21,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -77,7 +77,7 @@ public class PaymentSteps {
         Instant now = clock.instant();
         Payment payment = Payment.open(UuidV7.random(), tripId, purpose, id(p, fare ? "fareId" : "feeId"),
                 id(p, "customerId"), p.hasNonNull("driverId") ? id(p, "driverId") : null, serviceType(p), amount,
-                p.path("currency").asText(), now);
+                p.path("currency").asString(), now);
         PaymentAttempt attempt = payment.startAttempt(UuidV7.random(), provider.name(), now);
         payments.saveAndFlush(payment);
         attempts.save(attempt);
@@ -181,10 +181,10 @@ public class PaymentSteps {
 
     /** Pricing events published before serviceType was added carry none; both services share one rate today. */
     private static ServiceType serviceType(JsonNode p) {
-        return p.hasNonNull("serviceType") ? ServiceType.valueOf(p.path("serviceType").asText()) : ServiceType.RIDE;
+        return p.hasNonNull("serviceType") ? ServiceType.valueOf(p.path("serviceType").asString()) : ServiceType.RIDE;
     }
 
     private static UUID id(JsonNode p, String field) {
-        return UUID.fromString(p.path(field).asText());
+        return UUID.fromString(p.path(field).asString());
     }
 }

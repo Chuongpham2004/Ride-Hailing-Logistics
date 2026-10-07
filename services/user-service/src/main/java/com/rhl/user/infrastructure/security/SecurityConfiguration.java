@@ -1,6 +1,5 @@
 package com.rhl.user.infrastructure.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.security.RolesJwtAuthenticationConverter;
 import com.rhl.common.security.servlet.JsonSecurityErrorHandler;
 import org.springframework.context.annotation.Bean;
@@ -13,6 +12,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Stateless bearer-token API. Authorization is checked here as well as at the gateway, so a call

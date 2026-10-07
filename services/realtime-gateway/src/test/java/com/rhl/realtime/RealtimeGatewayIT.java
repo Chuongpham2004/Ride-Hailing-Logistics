@@ -1,8 +1,5 @@
 package com.rhl.realtime;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
 import com.nimbusds.jose.crypto.RSASSASigner;
@@ -42,6 +39,9 @@ import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -151,10 +151,10 @@ class RealtimeGatewayIT {
         Client otherCustomer = connect(token(UUID.randomUUID(), "CUSTOMER", Duration.ofMinutes(10)));
 
         JsonNode ready = driverApp.next();
-        assertThat(ready.path("type").asText()).isEqualTo("SESSION_READY");
+        assertThat(ready.path("type").asString()).isEqualTo("SESSION_READY");
         assertThat(ready.path("sequence").asLong()).isEqualTo(1);
-        assertThat(ready.path("data").path("userId").asText()).isEqualTo(driver.toString());
-        assertThat(ready.path("data").path("roles").get(0).asText()).isEqualTo("DRIVER");
+        assertThat(ready.path("data").path("userId").asString()).isEqualTo(driver.toString());
+        assertThat(ready.path("data").path("roles").get(0).asString()).isEqualTo("DRIVER");
         customerApp.next();
         otherCustomer.next();
         assertThat(redisTemplate.opsForSet().members("ws:session:" + driver)).containsExactly("it-instance");
@@ -170,18 +170,18 @@ class RealtimeGatewayIT {
                 Map.of("tripId", trip.toString(), "driverId", driver.toString()));
 
         JsonNode offer = driverApp.next();
-        assertThat(offer.path("type").asText()).isEqualTo("DRIVER_OFFER_CREATED");
-        assertThat(offer.path("messageId").asText()).isEqualTo(offerEvent);
+        assertThat(offer.path("type").asString()).isEqualTo("DRIVER_OFFER_CREATED");
+        assertThat(offer.path("messageId").asString()).isEqualTo(offerEvent);
         assertThat(offer.path("sequence").asLong()).isEqualTo(2);
-        assertThat(offer.path("data").path("tripId").asText()).isEqualTo(trip.toString());
+        assertThat(offer.path("data").path("tripId").asString()).isEqualTo(trip.toString());
         assertThat(offer.has("aggregateVersion")).isTrue();
-        assertThat(driverApp.next().path("type").asText()).isEqualTo("TRIP_ACCEPTED");
+        assertThat(driverApp.next().path("type").asString()).isEqualTo("TRIP_ACCEPTED");
         JsonNode earning = driverApp.next();
-        assertThat(earning.path("type").asText()).isEqualTo("DRIVER_EARNING_POSTED");
+        assertThat(earning.path("type").asString()).isEqualTo("DRIVER_EARNING_POSTED");
         assertThat(earning.path("sequence").asLong()).isEqualTo(4);
 
-        assertThat(customerApp.next().path("type").asText()).isEqualTo("TRIP_ACCEPTED");
-        assertThat(customerApp.next().path("type").asText()).isEqualTo("PAYMENT_SUCCEEDED");
+        assertThat(customerApp.next().path("type").asString()).isEqualTo("TRIP_ACCEPTED");
+        assertThat(customerApp.next().path("type").asString()).isEqualTo("PAYMENT_SUCCEEDED");
         // Nobody else hears about it; the driver does not get the customer's payment.
         assertThat(otherCustomer.poll(Duration.ofSeconds(1))).isNull();
         assertThat(customerApp.poll(Duration.ofMillis(300))).isNull();
@@ -202,14 +202,14 @@ class RealtimeGatewayIT {
 
         String ping = driverApp.send("PING", null, Map.of());
         JsonNode pong = driverApp.next();
-        assertThat(pong.path("type").asText()).isEqualTo("PONG");
-        assertThat(pong.path("data").path("inReplyTo").asText()).isEqualTo(ping);
+        assertThat(pong.path("type").asString()).isEqualTo("PONG");
+        assertThat(pong.path("data").path("inReplyTo").asString()).isEqualTo(ping);
 
         driverApp.send("DRIVER_LOCATION_UPDATED", 42L, location());
         JsonNode reported = consume("location.telemetry.raw.v1", driver.toString());
-        assertThat(reported.path("eventType").asText()).isEqualTo("DriverLocationReported");
-        assertThat(reported.path("producer").asText()).isEqualTo("realtime-gateway");
-        assertThat(reported.path("payload").path("driverId").asText()).isEqualTo(driver.toString());
+        assertThat(reported.path("eventType").asString()).isEqualTo("DriverLocationReported");
+        assertThat(reported.path("producer").asString()).isEqualTo("realtime-gateway");
+        assertThat(reported.path("payload").path("driverId").asString()).isEqualTo(driver.toString());
         assertThat(reported.path("payload").path("sequence").asLong()).isEqualTo(42);
         assertThat(reported.path("payload").path("latitude").asDouble()).isEqualTo(10.7769);
 
@@ -227,7 +227,7 @@ class RealtimeGatewayIT {
         assertError(driverApp.next(), "VALIDATION_ERROR", unknown);
         driverApp.sendRaw("{not json");
         JsonNode garbage = driverApp.next();
-        assertThat(garbage.path("data").path("code").asText()).isEqualTo("VALIDATION_ERROR");
+        assertThat(garbage.path("data").path("code").asString()).isEqualTo("VALIDATION_ERROR");
         assertThat(garbage.path("data").has("inReplyTo")).isFalse();
         // Refused messages do not close the connection.
         assertThat(driverApp.isOpen()).isTrue();
@@ -247,7 +247,7 @@ class RealtimeGatewayIT {
         // A bearer header works as well as the query parameter.
         UUID user = UUID.randomUUID();
         Client app = connect(token(user, "CUSTOMER", Duration.ofSeconds(3)), true);
-        assertThat(app.next().path("type").asText()).isEqualTo("SESSION_READY");
+        assertThat(app.next().path("type").asString()).isEqualTo("SESSION_READY");
         // COM-005: refresh before expiry, with a token of the same user only.
         String foreign = app.send("AUTH", null, Map.of("accessToken",
                 token(UUID.randomUUID(), "CUSTOMER", Duration.ofMinutes(10))));
@@ -255,8 +255,8 @@ class RealtimeGatewayIT {
         String fresh = token(user, "CUSTOMER", Duration.ofMinutes(10));
         String refresh = app.send("AUTH", null, Map.of("accessToken", fresh));
         JsonNode refreshed = app.next();
-        assertThat(refreshed.path("type").asText()).isEqualTo("AUTH_REFRESHED");
-        assertThat(refreshed.path("data").path("inReplyTo").asText()).isEqualTo(refresh);
+        assertThat(refreshed.path("type").asString()).isEqualTo("AUTH_REFRESHED");
+        assertThat(refreshed.path("data").path("inReplyTo").asString()).isEqualTo(refresh);
         Thread.sleep(3_500);
         assertThat(app.isOpen()).isTrue();
         // Logout revokes the token: the session ends within a sweep.
@@ -307,19 +307,19 @@ class RealtimeGatewayIT {
 
         String subscribe = customerApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
         JsonNode subscribed = customerApp.next("TRIP_SUBSCRIBED");
-        assertThat(subscribed.path("data").path("inReplyTo").asText()).isEqualTo(subscribe);
-        assertThat(subscribed.path("data").path("participant").asText()).isEqualTo("CUSTOMER");
-        assertThat(subscribed.path("data").path("status").asText()).isEqualTo("ACCEPTED");
-        assertThat(subscribed.path("data").path("driverId").asText()).isEqualTo(driver.toString());
+        assertThat(subscribed.path("data").path("inReplyTo").asString()).isEqualTo(subscribe);
+        assertThat(subscribed.path("data").path("participant").asString()).isEqualTo("CUSTOMER");
+        assertThat(subscribed.path("data").path("status").asString()).isEqualTo("ACCEPTED");
+        assertThat(subscribed.path("data").path("driverId").asString()).isEqualTo(driver.toString());
         driverApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
-        assertThat(driverApp.next("TRIP_SUBSCRIBED").path("data").path("participant").asText()).isEqualTo("DRIVER");
+        assertThat(driverApp.next("TRIP_SUBSCRIBED").path("data").path("participant").asString()).isEqualTo("DRIVER");
 
         String locationEvent = publishLocation(driver, 100);
         JsonNode location = customerApp.next("TRIP_DRIVER_LOCATION");
-        assertThat(location.path("messageId").asText()).isEqualTo(locationEvent);
+        assertThat(location.path("messageId").asString()).isEqualTo(locationEvent);
         assertThat(location.path("aggregateVersion").asLong()).isEqualTo(100);
-        assertThat(location.path("data").path("tripId").asText()).isEqualTo(trip.toString());
-        assertThat(location.path("data").path("driverId").asText()).isEqualTo(driver.toString());
+        assertThat(location.path("data").path("tripId").asString()).isEqualTo(trip.toString());
+        assertThat(location.path("data").path("driverId").asString()).isEqualTo(driver.toString());
         assertThat(location.path("data").path("latitude").asDouble()).isEqualTo(10.7769);
 
         // A late, older event does not end the trip (aggregateVersion guard).
@@ -338,8 +338,8 @@ class RealtimeGatewayIT {
         assertThat(customerApp.next("TRIP_DRIVER_LOCATION").path("data").path("sequence").asLong()).isEqualTo(102);
         assertThat(redisTemplate.getExpire("ws:driver-trip:" + driver)).isBetween(1L, 63L);
         JsonNode ended = customerApp.next("TRIP_UNSUBSCRIBED");
-        assertThat(ended.path("data").path("reason").asText()).isEqualTo("TRIP_ENDED");
-        assertThat(driverApp.next("TRIP_UNSUBSCRIBED").path("data").path("reason").asText()).isEqualTo("TRIP_ENDED");
+        assertThat(ended.path("data").path("reason").asString()).isEqualTo("TRIP_ENDED");
+        assertThat(driverApp.next("TRIP_UNSUBSCRIBED").path("data").path("reason").asString()).isEqualTo("TRIP_ENDED");
         publishLocation(driver, 103);
         String again = customerApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
         assertError(customerApp.next("ERROR"), "INVALID_TRIP_STATE", again);
@@ -347,7 +347,7 @@ class RealtimeGatewayIT {
 
         // Nobody else ever saw the driver; the driver does not get their own position back.
         assertThat(stranger.poll(Duration.ofMillis(300))).isNull();
-        assertThat(driverApp.drain()).noneMatch(m -> "TRIP_DRIVER_LOCATION".equals(m.path("type").asText()));
+        assertThat(driverApp.drain()).noneMatch(m -> "TRIP_DRIVER_LOCATION".equals(m.path("type").asString()));
     }
 
     @Test
@@ -365,8 +365,8 @@ class RealtimeGatewayIT {
 
         String unsubscribe = customerApp.send("UNSUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
         JsonNode done = customerApp.next("TRIP_UNSUBSCRIBED");
-        assertThat(done.path("data").path("inReplyTo").asText()).isEqualTo(unsubscribe);
-        assertThat(done.path("data").path("reason").asText()).isEqualTo("CLIENT_REQUEST");
+        assertThat(done.path("data").path("inReplyTo").asString()).isEqualTo(unsubscribe);
+        assertThat(done.path("data").path("reason").asString()).isEqualTo("CLIENT_REQUEST");
         publishLocation(driver, 7);
         assertThat(customerApp.poll(Duration.ofSeconds(1))).isNull();
     }
@@ -389,9 +389,9 @@ class RealtimeGatewayIT {
     }
 
     private static void assertError(JsonNode message, String code, String inReplyTo) {
-        assertThat(message.path("type").asText()).isEqualTo("ERROR");
-        assertThat(message.path("data").path("code").asText()).isEqualTo(code);
-        assertThat(message.path("data").path("inReplyTo").asText()).isEqualTo(inReplyTo);
+        assertThat(message.path("type").asString()).isEqualTo("ERROR");
+        assertThat(message.path("data").path("code").asString()).isEqualTo(code);
+        assertThat(message.path("data").path("inReplyTo").asString()).isEqualTo(inReplyTo);
     }
 
     private String publish(String topic, UUID key, String type, Map<String, String> payloadOverrides)
@@ -509,7 +509,7 @@ class RealtimeGatewayIT {
             long deadline = System.currentTimeMillis() + 20_000;
             while (System.currentTimeMillis() < deadline) {
                 JsonNode message = received.poll(500, TimeUnit.MILLISECONDS);
-                if (message != null && type.equals(message.path("type").asText())) {
+                if (message != null && type.equals(message.path("type").asString())) {
                     return message;
                 }
             }

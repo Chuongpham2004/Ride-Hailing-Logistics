@@ -1,9 +1,5 @@
 package com.rhl.realtime.api;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rhl.common.id.UuidV7;
 import com.rhl.common.security.Role;
 import com.rhl.common.security.RolesJwtAuthenticationConverter;
@@ -27,6 +23,10 @@ import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -120,7 +120,7 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
         JsonNode message;
         try {
             message = objectMapper.readTree(text.getPayload());
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             reply(session, ErrorCode.VALIDATION_ERROR, "Message is not valid JSON", null);
             return;
         }
@@ -135,9 +135,9 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
             reply(session, ErrorCode.VALIDATION_ERROR, e.getMessage(), messageId);
             return;
         }
-        switch (message.path("type").asText()) {
+        switch (message.path("type").asString()) {
             case PING -> pong(session, messageId);
-            case AUTH -> reauthenticate(session, message.path("data").path("accessToken").asText(), messageId);
+            case AUTH -> reauthenticate(session, message.path("data").path("accessToken").asString(), messageId);
             case DRIVER_LOCATION_UPDATED -> locationReported(session, message, messageId, now);
             case SUBSCRIBE_TRIP -> trips.subscribe(session, tripId(message), messageId);
             case UNSUBSCRIBE_TRIP -> trips.unsubscribe(session, tripId(message), messageId);
@@ -201,7 +201,7 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
                     + config.telemetryMinInterval().toMillis() + " ms apart", messageId);
             return;
         }
-        String correlationId = message.hasNonNull("correlationId") ? message.path("correlationId").asText()
+        String correlationId = message.hasNonNull("correlationId") ? message.path("correlationId").asString()
                 : UuidV7.randomString();
         try {
             telemetry.publish(session.getUserId(), message, correlationId, now);
@@ -219,11 +219,11 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
 
     /** Valid by schema (format uuid). */
     private static UUID tripId(JsonNode message) {
-        return UUID.fromString(message.path("data").path("tripId").asText());
+        return UUID.fromString(message.path("data").path("tripId").asString());
     }
 
     private static String uuidOrNull(JsonNode value) {
-        return value.isTextual() && UUID_PATTERN.matcher(value.asText()).matches() ? value.asText() : null;
+        return value.isString() && UUID_PATTERN.matcher(value.asString()).matches() ? value.asString() : null;
     }
 
     private static Set<Role> roles(Collection<? extends GrantedAuthority> authorities) {

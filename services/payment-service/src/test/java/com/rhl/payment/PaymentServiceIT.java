@@ -1,7 +1,5 @@
 package com.rhl.payment;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.id.UuidV7;
 import com.rhl.payment.application.PaymentProvider;
 import com.rhl.payment.infrastructure.provider.WebhookSignature;
@@ -12,9 +10,9 @@ import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -29,6 +27,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -135,10 +135,10 @@ class PaymentServiceIT {
                 .isEqualTo(21_600);
 
         JsonNode succeeded = consume("payment.events.v1", trip.toString());
-        assertThat(succeeded.path("eventType").asText()).isEqualTo("PaymentSucceeded");
+        assertThat(succeeded.path("eventType").asString()).isEqualTo("PaymentSucceeded");
         assertThat(succeeded.path("payload").path("amount").asLong()).isEqualTo(27_000);
         JsonNode earning = consume("wallet.events.v1", driver.toString());
-        assertThat(earning.path("eventType").asText()).isEqualTo("DriverEarningPosted");
+        assertThat(earning.path("eventType").asString()).isEqualTo("DriverEarningPosted");
         assertThat(earning.path("payload").path("netEarning").asLong()).isEqualTo(21_600);
         assertThat(earning.path("payload").path("commission").asLong()).isEqualTo(5_400);
         assertThat(earning.path("payload").path("balance").asLong()).isEqualTo(21_600);
@@ -148,7 +148,7 @@ class PaymentServiceIT {
                 .andExpect(jsonPath("$.data[0].status").value("SUCCEEDED"))
                 .andExpect(jsonPath("$.data[0].amount").value(27_000));
         String paymentId = data(mvc.perform(get("/api/v1/payments").param("tripId", trip.toString())
-                .with(token(customer, "CUSTOMER")))).path(0).path("id").asText();
+                .with(token(customer, "CUSTOMER")))).path(0).path("id").asString();
         mvc.perform(get("/api/v1/payments/" + paymentId).with(token(UUID.randomUUID(), "CUSTOMER")))
                 .andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/payments/" + paymentId).with(token(UUID.randomUUID(), "FINANCE_STAFF")))
@@ -178,8 +178,8 @@ class PaymentServiceIT {
                 "SELECT status, failure_code FROM payments WHERE trip_id = ?", trip))
                 .containsEntry("status", "FAILED").containsEntry("failure_code", "CARD_DECLINED"));
         JsonNode failed = consume("payment.events.v1", trip.toString());
-        assertThat(failed.path("eventType").asText()).isEqualTo("PaymentFailed");
-        assertThat(failed.path("payload").path("failureCode").asText()).isEqualTo("CARD_DECLINED");
+        assertThat(failed.path("eventType").asString()).isEqualTo("PaymentFailed");
+        assertThat(failed.path("payload").path("failureCode").asString()).isEqualTo("CARD_DECLINED");
         assertThat(count("SELECT COUNT(*) FROM wallets WHERE driver_id = ?", driver)).isZero();
     }
 
@@ -353,7 +353,7 @@ class PaymentServiceIT {
         String first = refundBody(10_000L, "OVERCHARGE", "Route was longer than quoted");
         String refundId = data(refund(paymentId, "refund-key-0001", first, finance).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.status").value("SUCCEEDED"))
-                .andExpect(jsonPath("$.data.amount").value(10_000))).path("id").asText();
+                .andExpect(jsonPath("$.data.amount").value(10_000))).path("id").asString();
         // Sent again: the same refund, not a second one.
         refund(paymentId, "refund-key-0001", first, finance)
                 .andExpect(jsonPath("$.data.id").value(refundId));
@@ -380,9 +380,9 @@ class PaymentServiceIT {
                 paymentId)).hasMessageContaining("violates check constraint");
 
         JsonNode completed = consume("payment.events.v1", trip.toString(), "RefundCompleted");
-        assertThat(completed.path("payload").path("refundId").asText()).isEqualTo(refundId);
+        assertThat(completed.path("payload").path("refundId").asString()).isEqualTo(refundId);
         assertThat(completed.path("payload").path("refundedTotal").asLong()).isEqualTo(10_000);
-        assertThat(completed.path("payload").path("paymentStatus").asText()).isEqualTo("PARTIALLY_REFUNDED");
+        assertThat(completed.path("payload").path("paymentStatus").asString()).isEqualTo("PARTIALLY_REFUNDED");
 
         // The customer sees amounts and status, not the internal note; nobody else sees anything.
         mvc.perform(get("/api/v1/payments/" + paymentId + "/refunds").with(token(customer, "CUSTOMER")))
@@ -441,14 +441,14 @@ class PaymentServiceIT {
         doReturn(PaymentProvider.ChargeResult.pending("prov_r1")).when(provider).refund(any());
 
         String first = data(refund(paymentId, "refund-key-0201", refundBody(27_000L, "SERVICE_NOT_PROVIDED", null),
-                UUID.randomUUID()).andExpect(jsonPath("$.data.status").value("PENDING"))).path("id").asText();
+                UUID.randomUUID()).andExpect(jsonPath("$.data.status").value("PENDING"))).path("id").asString();
         sendCallback(callback("evt_rf_" + first, "refund.failed", "refund:" + first, 27_000, "VND"))
                 .andExpect(jsonPath("$.data.outcome").value("APPLIED"));
         assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE id = ?::uuid", String.class, paymentId))
                 .isEqualTo("SUCCEEDED");
 
         String second = data(refund(paymentId, "refund-key-0202", refundBody(27_000L, "SERVICE_NOT_PROVIDED",
-                null), UUID.randomUUID())).path("id").asText();
+                null), UUID.randomUUID())).path("id").asString();
         String secondKey = "refund:" + second;
         sendCallback(callback("evt_amt_" + second, "refund.succeeded", secondKey, 1, "VND"))
                 .andExpect(jsonPath("$.data.outcome").value("REJECTED"));
@@ -474,12 +474,12 @@ class PaymentServiceIT {
         UUID finance = UUID.randomUUID();
         String paymentId = paidFare(trip, UUID.randomUUID(), driver, 27_000);
         String refundId = data(refund(paymentId, "refund-key-0301", refundBody(10_000L, "OVERCHARGE", null),
-                finance)).path("id").asText();
+                finance)).path("id").asString();
 
         String clawback = adjustmentBody(-8_000, "REFUND_CLAWBACK", null, refundId);
         String adjustmentId = data(adjust(driver, "adjust-key-0001", clawback, finance).andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.balanceAfter").value(13_600))
-                .andExpect(jsonPath("$.data.tripId").value(trip.toString()))).path("id").asText();
+                .andExpect(jsonPath("$.data.tripId").value(trip.toString()))).path("id").asString();
         adjust(driver, "adjust-key-0001", clawback, finance)
                 .andExpect(jsonPath("$.data.id").value(adjustmentId))
                 .andExpect(jsonPath("$.data.balanceAfter").value(13_600));
@@ -514,7 +514,7 @@ class PaymentServiceIT {
                 .andExpect(jsonPath("$.data.entries[1].referenceId").value(adjustmentId));
         JsonNode adjusted = consume("wallet.events.v1", driver.toString(), "WalletAdjusted");
         assertThat(adjusted.path("payload").path("amount").asLong()).isEqualTo(-8_000);
-        assertThat(adjusted.path("payload").path("refundId").asText()).isEqualTo(refundId);
+        assertThat(adjusted.path("payload").path("refundId").asString()).isEqualTo(refundId);
         assertThat(adjusted.path("payload").path("balance").asLong()).isEqualTo(13_600);
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_records WHERE action = 'WALLET_ADJUSTED' "
                 + "AND actor_id = ?", Integer.class, finance)).isEqualTo(2);
@@ -663,7 +663,7 @@ class PaymentServiceIT {
                 for (ConsumerRecord<String, String> record : consumer.poll(Duration.ofMillis(500))) {
                     JsonNode value = json.readTree(record.value());
                     if (key.equals(record.key())
-                            && (eventType == null || eventType.equals(value.path("eventType").asText()))) {
+                            && (eventType == null || eventType.equals(value.path("eventType").asString()))) {
                         return value;
                     }
                 }

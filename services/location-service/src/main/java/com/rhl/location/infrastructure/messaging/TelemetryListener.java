@@ -1,7 +1,5 @@
 package com.rhl.location.infrastructure.messaging;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.web.CorrelationId;
 import com.rhl.location.application.TelemetryService;
@@ -14,6 +12,8 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -29,7 +29,7 @@ public class TelemetryListener {
 
     @KafkaListener(id = "location-telemetry", idIsGroup = false, topics = Topics.TELEMETRY_RAW,
             concurrency = "${rhl.kafka.telemetry-concurrency}")
-    public void onMessage(ConsumerRecord<String, String> record) throws JsonProcessingException {
+    public void onMessage(ConsumerRecord<String, String> record) throws JacksonException {
         EventEnvelope event = reader.read(record.value());
         MDC.put(CorrelationId.MDC_KEY, event.correlationId());
         try {
@@ -44,13 +44,13 @@ public class TelemetryListener {
 
     private static TelemetryReport toReport(JsonNode payload) {
         return new TelemetryReport(
-                UUID.fromString(payload.path("driverId").asText()),
+                UUID.fromString(payload.path("driverId").asString()),
                 payload.path("sequence").asLong(),
                 payload.path("latitude").asDouble(),
                 payload.path("longitude").asDouble(),
                 payload.path("accuracyMeters").asDouble(),
                 payload.hasNonNull("headingDegrees") ? payload.path("headingDegrees").asDouble() : null,
                 payload.hasNonNull("speedMetersPerSecond") ? payload.path("speedMetersPerSecond").asDouble() : null,
-                Instant.parse(payload.path("deviceTimestamp").asText()));
+                Instant.parse(payload.path("deviceTimestamp").asString()));
     }
 }

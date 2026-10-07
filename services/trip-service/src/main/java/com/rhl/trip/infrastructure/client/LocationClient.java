@@ -1,6 +1,5 @@
 package com.rhl.trip.infrastructure.client;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.web.CorrelationId;
 import com.rhl.trip.TripServiceProperties;
 import com.rhl.trip.domain.DriverCandidate;
@@ -11,6 +10,7 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.databind.JsonNode;
 
 import java.net.http.HttpClient;
 import java.util.ArrayList;
@@ -66,7 +66,7 @@ public class LocationClient {
         List<DriverCandidate> candidates = new ArrayList<>();
         if (response != null) {
             for (JsonNode driver : response.path("data")) {
-                candidates.add(new DriverCandidate(UUID.fromString(driver.path("driverId").asText()),
+                candidates.add(new DriverCandidate(UUID.fromString(driver.path("driverId").asString()),
                         driver.path("distanceMeters").asLong(), driver.path("locationAgeMillis").asLong()));
             }
         }

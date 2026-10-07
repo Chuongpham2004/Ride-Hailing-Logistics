@@ -1,6 +1,5 @@
 package com.rhl.trip.infrastructure.client;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.web.ApiException;
 import com.rhl.common.web.CorrelationId;
 import com.rhl.common.web.ErrorCode;
@@ -15,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import tools.jackson.databind.JsonNode;
 
 import java.net.http.HttpClient;
 import java.time.Instant;
@@ -73,10 +73,10 @@ public class PricingClient {
             throw new ApiException(ErrorCode.DEPENDENCY_UNAVAILABLE, "Pricing returned no quote");
         }
         JsonNode b = q.path("breakdown");
-        return new Quote(UUID.fromString(q.path("id").asText()), ServiceType.valueOf(q.path("serviceType").asText()),
+        return new Quote(UUID.fromString(q.path("id").asString()), ServiceType.valueOf(q.path("serviceType").asString()),
                 stop(q.path("pickup")), stop(q.path("dropoff")),
-                new FareSnapshot(UUID.fromString(q.path("id").asText()), q.path("total").asLong(),
-                        q.path("currency").asText(), q.path("surgeMultiplier").decimalValue(),
+                new FareSnapshot(UUID.fromString(q.path("id").asString()), q.path("total").asLong(),
+                        q.path("currency").asString(), q.path("surgeMultiplier").decimalValue(),
                         q.path("ruleVersion").asInt(), q.path("distanceMeters").asInt(),
                         q.path("durationSeconds").asInt()));
     }
@@ -117,8 +117,8 @@ public class PricingClient {
         if (f == null || f.isMissingNode()) {
             throw unavailable();
         }
-        return new CancellationFee(f.path("decision").asText(), f.path("fee").asLong(), f.path("currency").asText(),
-                f.path("ruleVersion").asInt(), f.hasNonNull("freeUntil") ? Instant.parse(f.path("freeUntil").asText())
+        return new CancellationFee(f.path("decision").asString(), f.path("fee").asLong(), f.path("currency").asString(),
+                f.path("ruleVersion").asInt(), f.hasNonNull("freeUntil") ? Instant.parse(f.path("freeUntil").asString())
                 : null);
     }
 
@@ -131,8 +131,8 @@ public class PricingClient {
             return ApiException.notFound("Quote");
         }
         JsonNode error = e.getResponseBodyAs(JsonNode.class);
-        String code = error == null ? "" : error.path("code").asText();
-        String message = error == null ? "The quote cannot be used" : error.path("message").asText();
+        String code = error == null ? "" : error.path("code").asString();
+        String message = error == null ? "The quote cannot be used" : error.path("message").asString();
         return ErrorCode.QUOTE_EXPIRED.name().equals(code)
                 ? new ApiException(ErrorCode.QUOTE_EXPIRED, message)
                 : ApiException.rule(message);
@@ -140,6 +140,6 @@ public class PricingClient {
 
     private static Stop stop(JsonNode node) {
         return new Stop(node.path("latitude").asDouble(), node.path("longitude").asDouble(),
-                node.path("address").asText());
+                node.path("address").asString());
     }
 }

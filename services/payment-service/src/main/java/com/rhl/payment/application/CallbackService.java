@@ -1,8 +1,5 @@
 package com.rhl.payment.application;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.id.UuidV7;
 import com.rhl.common.web.ApiException;
 import com.rhl.common.web.ErrorCode;
@@ -18,6 +15,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -73,12 +73,12 @@ public class CallbackService {
         JsonNode json;
         try {
             json = objectMapper.readTree(body);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, "Malformed callback");
         }
-        String eventId = json.path("eventId").asText("");
-        String type = json.path("type").asText("");
-        String key = json.path("idempotencyKey").asText("");
+        String eventId = json.path("eventId").asString("");
+        String type = json.path("type").asString("");
+        String key = json.path("idempotencyKey").asString("");
         if (eventId.isBlank() || type.isBlank() || key.isBlank()) {
             throw new ApiException(ErrorCode.VALIDATION_ERROR, "Callback needs eventId, type and idempotencyKey");
         }
@@ -133,13 +133,13 @@ public class CallbackService {
     }
 
     private static boolean matches(JsonNode json, long amount, String currency) {
-        return json.path("amount").asLong(-1) == amount && currency.equals(json.path("currency").asText());
+        return json.path("amount").asLong(-1) == amount && currency.equals(json.path("currency").asString());
     }
 
     private static PaymentProvider.ChargeResult result(JsonNode json, String type, String key) {
         return SUCCEEDED.equals(type) || REFUND_SUCCEEDED.equals(type)
-                ? PaymentProvider.ChargeResult.success(json.path("reference").asText(key))
-                : PaymentProvider.ChargeResult.declined(json.path("failureCode").asText("DECLINED"));
+                ? PaymentProvider.ChargeResult.success(json.path("reference").asString(key))
+                : PaymentProvider.ChargeResult.declined(json.path("failureCode").asString("DECLINED"));
     }
 
     private Ack reject(UUID callbackId, UUID paymentId, UUID refundId, String reason) {
