@@ -3,11 +3,13 @@ package com.rhl.user.application.auth;
 import com.rhl.common.security.Role;
 import com.rhl.common.web.ApiException;
 import com.rhl.common.web.ErrorCode;
+import com.rhl.user.UserServiceProperties;
 import com.rhl.user.application.AuditLog;
 import com.rhl.user.domain.DomainException;
 import com.rhl.user.domain.auth.RefreshToken;
 import com.rhl.user.domain.user.Identifiers;
 import com.rhl.user.domain.user.User;
+import com.rhl.user.infrastructure.cache.ClientRateLimiter;
 import com.rhl.user.infrastructure.cache.LoginAttemptLimiter;
 import com.rhl.user.infrastructure.cache.TokenRevocationStore;
 import com.rhl.user.infrastructure.persistence.RefreshTokenRepository;
@@ -41,6 +43,8 @@ public class AuthService {
     private final LoginAttemptLimiter limiter;
     private final TokenRevocationStore revocations;
     private final AuditLog audit;
+    private final ClientRateLimiter rateLimiter;
+    private final UserServiceProperties properties;
     private final Clock clock;
 
     /**
@@ -56,8 +60,13 @@ public class AuthService {
                             Instant refreshTokenExpiresAt) {
     }
 
+    /** @param clientIp limits bulk sign-ups and probing for existing accounts (NFR-SEC-007) */
     @Transactional
-    public User register(RegisterCommand cmd) {
+    public User register(RegisterCommand cmd, String clientIp) {
+        if (!rateLimiter.tryAcquire("register", clientIp, properties.rateLimits().registrationsPerHour(),
+                Duration.ofHours(1))) {
+            throw new ApiException(ErrorCode.RATE_LIMIT_EXCEEDED, "Too many sign-ups, try again later");
+        }
         String email = blankToNull(cmd.email()) == null ? null : Identifiers.email(cmd.email());
         String phone = blankToNull(cmd.phone()) == null ? null : Identifiers.phone(cmd.phone());
         validatePassword(cmd.password(), email, phone);

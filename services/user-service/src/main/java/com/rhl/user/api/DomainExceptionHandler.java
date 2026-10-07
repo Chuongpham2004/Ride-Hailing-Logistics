@@ -9,6 +9,7 @@ import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.util.List;
@@ -17,6 +18,13 @@ import java.util.List;
 @RestControllerAdvice
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class DomainExceptionHandler {
+
+    /** Over the multipart limit: refused before the content is read. */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<ApiResponse<Void>> handleTooLarge(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(ErrorCode.BUSINESS_RULE_VIOLATION.status()).body(ApiResponse.error(
+                ErrorCode.BUSINESS_RULE_VIOLATION, "The file is too large", java.util.List.of()));
+    }
 
     @ExceptionHandler(DomainException.class)
     public ResponseEntity<ApiResponse<Void>> handleDomain(DomainException ex) {

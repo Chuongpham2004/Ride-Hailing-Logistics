@@ -12,6 +12,7 @@ import com.rhl.user.domain.driver.ServiceType;
 import com.rhl.user.domain.driver.Vehicle;
 import com.rhl.user.domain.driver.VehicleType;
 import com.rhl.user.domain.user.User;
+import com.rhl.user.infrastructure.persistence.DocumentFileRepository;
 import com.rhl.user.infrastructure.persistence.DriverDocumentRepository;
 import com.rhl.user.infrastructure.persistence.DriverProfileRepository;
 import com.rhl.user.infrastructure.persistence.UserRepository;
@@ -25,6 +26,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -39,9 +41,13 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class DriverService {
 
+    /** Interim policy until TBD-11: a driver proves an email or phone before applying. */
+    public static final String CONTACT_NOT_VERIFIED = "Verify your email or phone number first";
+
     private final DriverProfileRepository profiles;
     private final VehicleRepository vehicles;
     private final DriverDocumentRepository documents;
+    private final DocumentFileRepository files;
     private final UserRepository users;
     private final DocumentRequirements requirements;
     private final DriverEventPublisher events;
@@ -56,7 +62,7 @@ public class DriverService {
     }
 
     public record DocumentCommand(DocumentType type, UUID vehicleId, String documentNumber, LocalDate issuedOn,
-                                  LocalDate expiresOn, String fileRef) {
+                                  LocalDate expiresOn, UUID fileId) {
     }
 
     @Transactional
@@ -122,8 +128,14 @@ public class DriverService {
             throw ApiException.notFound("Vehicle");
         }
         Instant now = clock.instant();
+        if (cmd.fileId() != null) {
+            // Same driver only; a file backs one document, checked under a row lock.
+            files.findForAttach(cmd.fileId(), driverId)
+                    .orElseThrow(() -> ApiException.notFound("File"))
+                    .attach(driverId, now);
+        }
         DriverDocument document = DriverDocument.submit(driverId, cmd.vehicleId(), cmd.type(), cmd.documentNumber(),
-                cmd.issuedOn(), cmd.expiresOn(), cmd.fileRef(), now);
+                cmd.issuedOn(), cmd.expiresOn(), cmd.fileId(), now);
         List<DriverDocument> previous = documents.findByDriverIdAndTypeAndStatus(driverId, cmd.type(),
                         DriverDocument.Status.ACTIVE).stream()
                 .filter(d -> Objects.equals(d.getVehicleId(), cmd.vehicleId()))
@@ -141,8 +153,8 @@ public class DriverService {
     @Transactional
     public DriverViews.ProfileView submitForReview(UUID driverId) {
         DriverProfile profile = load(driverId);
-        profile.submit(requirements.profileProblems(currentDocuments(driverId),
-                vehicles.findByDriverIdOrderByCreatedAt(driverId), today()), clock.instant());
+        profile.submit(submissionProblems(driverId, currentDocuments(driverId),
+                vehicles.findByDriverIdOrderByCreatedAt(driverId)), clock.instant());
         audit.success(driverId, "DRIVER_PROFILE_SUBMITTED", "DRIVER_PROFILE", driverId,
                 Map.of("profileVersion", profile.getProfileVersion()));
         return view(profile, false);
@@ -191,7 +203,16 @@ public class DriverService {
                 profile.getSubmittedAt(), profile.getAvailability(), profile.getActiveVehicleId(),
                 driverVehicles.stream().map(DriverViews.VehicleView::of).toList(),
                 docs.stream().map(d -> DriverViews.DocumentView.of(d, revealDocumentNumbers)).toList(),
-                requirements.profileProblems(docs, driverVehicles, today()));
+                submissionProblems(driverId, docs, driverVehicles));
+    }
+
+    /** What blocks submitting the profile for review: documents, vehicles and a verified contact. */
+    private List<String> submissionProblems(UUID driverId, List<DriverDocument> docs, List<Vehicle> driverVehicles) {
+        List<String> problems = new ArrayList<>(requirements.profileProblems(docs, driverVehicles, today()));
+        if (!users.findById(driverId).map(User::hasVerifiedContact).orElse(false)) {
+            problems.add(CONTACT_NOT_VERIFIED);
+        }
+        return problems;
     }
 
     DriverProfile load(UUID driverId) {

@@ -6,7 +6,20 @@ import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import com.rhl.user.application.notification.NotificationSender;
+import com.rhl.user.domain.driver.UploadInspectorTest;
 import org.junit.jupiter.api.Test;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.containers.MinIOContainer;
+import org.testcontainers.utility.DockerImageName;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import org.mockito.ArgumentCaptor;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,6 +51,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -48,7 +69,10 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "rhl.bootstrap.admin-email=admin@rhl.test",
         "rhl.bootstrap.admin-password=admin-password-123",
-        "rhl.outbox.poll-interval=50ms"})
+        "rhl.outbox.poll-interval=50ms",
+        // Every test signs up from the same MockMvc address; the limit is exercised for resets.
+        "rhl.rate-limits.registrations-per-hour=1000",
+        "rhl.rate-limits.password-resets-per-hour=5"})
 class UserServiceIT {
 
     private static final String PASSWORD = "s3cret-pass";
@@ -65,6 +89,21 @@ class UserServiceIT {
     @ServiceConnection
     static KafkaContainer kafka = new KafkaContainer("apache/kafka:3.9.1");
 
+    /** MinIO as published by Chainguard (MinIO no longer ships public images); runs as root for /data. */
+    @Container
+    static MinIOContainer minio = new MinIOContainer(DockerImageName.parse("cgr.dev/chainguard/minio:latest")
+            .asCompatibleSubstituteFor("minio/minio"))
+            .withUserName("rhl-it")
+            .withPassword("rhl-it-secret-123")
+            .withCreateContainerCmdModifier(cmd -> cmd.withUser("0"));
+
+    @DynamicPropertySource
+    static void storage(DynamicPropertyRegistry registry) {
+        registry.add("rhl.storage.endpoint", minio::getS3URL);
+        registry.add("rhl.storage.access-key", minio::getUserName);
+        registry.add("rhl.storage.secret-key", minio::getPassword);
+    }
+
     @Autowired
     MockMvc mvc;
 
@@ -75,7 +114,14 @@ class UserServiceIT {
     JdbcTemplate jdbc;
 
     @Autowired
+    StringRedisTemplate redisTemplate;
+
+    @Autowired
     KafkaTemplate<String, String> kafkaTemplate;
+
+    /** Stands in for the email/SMS provider; codes are read from its calls. */
+    @MockitoBean
+    NotificationSender sender;
 
     @Test
     void driverOnboardingReviewAndGoingOnlinePublishesAnEvent() throws Exception {
@@ -92,6 +138,13 @@ class UserServiceIT {
         call(post("/api/v1/drivers/me/profile/submit"), driver, null)
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATION"));
+        call(get("/api/v1/drivers/me/profile"), driver, null)
+                .andExpect(jsonPath("$.data.missingRequirements[?(@ == 'Verify your email or phone number first')]")
+                        .exists());
+        verifyEmail(driver, driverEmail);
+        call(get("/api/v1/drivers/me/profile"), driver, null)
+                .andExpect(jsonPath("$.data.missingRequirements[?(@ == 'Verify your email or phone number first')]")
+                        .doesNotExist());
 
         String plate = "59X" + (100000 + (int) (Math.random() * 899999));
         String vehicleId = data(call(post("/api/v1/drivers/me/vehicles"), driver, Map.of(
@@ -301,13 +354,222 @@ class UserServiceIT {
                 .andExpect(jsonPath("$.data.availability").value("OFFLINE"));
     }
 
+    /** FR-IAM: verify email/phone with a one-time code sent to the address on the account. */
+    @Test
+    void contactsAreVerifiedWithAOneTimeCode() throws Exception {
+        String email = unique("verify");
+        register(email, "CUSTOMER");
+        String token = login(email, PASSWORD);
+        call(get("/api/v1/users/me"), token, null).andExpect(jsonPath("$.data.emailVerified").value(false));
+
+        call(post("/api/v1/users/me/contacts/email/verification"), token, null)
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.data.channel").value("EMAIL"))
+                .andExpect(jsonPath("$.data.destination").value(email.charAt(0) + "***@rhl.test"))
+                .andExpect(jsonPath("$.data.expiresInSeconds").value(600));
+        String first = codeSentTo(email);
+        // One code per cooldown.
+        call(post("/api/v1/users/me/contacts/email/verification"), token, null)
+                .andExpect(status().isTooManyRequests());
+        // No phone on the account; unknown channel.
+        call(post("/api/v1/users/me/contacts/phone/verification"), token, null)
+                .andExpect(status().isUnprocessableEntity());
+        call(post("/api/v1/users/me/contacts/fax/verification"), token, null)
+                .andExpect(status().isUnprocessableEntity());
+
+        // Five wrong entries discard the code: even the right one stops working.
+        String wrong = first.equals("000000") ? "111111" : "000000";
+        for (int i = 0; i < 5; i++) {
+            call(post("/api/v1/users/me/contacts/email/verification/confirm"), token, Map.of("code", wrong))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        }
+        call(post("/api/v1/users/me/contacts/email/verification/confirm"), token, Map.of("code", first))
+                .andExpect(status().isBadRequest());
+
+        redisTemplateDeleteCooldowns();
+        call(post("/api/v1/users/me/contacts/email/verification"), token, null).andExpect(status().isAccepted());
+        call(post("/api/v1/users/me/contacts/email/verification/confirm"), token, Map.of("code", codeSentTo(email)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.emailVerified").value(true));
+        call(post("/api/v1/users/me/contacts/email/verification"), token, null).andExpect(status().isConflict());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_records WHERE action = 'CONTACT_VERIFIED' "
+                + "AND actor_id = (SELECT id FROM users WHERE email = ?)", Integer.class, email)).isEqualTo(1);
+    }
+
+    /** FR-IAM: password reset by code; the answer never reveals whether an account exists. */
+    @Test
+    void aForgottenPasswordIsResetWithACodeAndEndsEverySession() throws Exception {
+        String email = unique("forgot");
+        register(email, "CUSTOMER");
+        JsonNode session = data(call(post("/api/v1/auth/login"), null,
+                Map.of("identifier", email, "password", PASSWORD)).andExpect(status().isOk()));
+        String ghost = unique("ghost");
+
+        JsonNode known = data(call(post("/api/v1/auth/password-reset"), null, Map.of("identifier", email))
+                .andExpect(status().isAccepted()));
+        JsonNode unknown = data(call(post("/api/v1/auth/password-reset"), null, Map.of("identifier", ghost))
+                .andExpect(status().isAccepted()));
+        assertThat(unknown).isEqualTo(known);
+        verify(sender, never()).sendCode(any(), eq(ghost), any(), any(), any());
+        String code = codeSentTo(email);
+        // Asking again within the cooldown answers the same but sends nothing.
+        call(post("/api/v1/auth/password-reset"), null, Map.of("identifier", email)).andExpect(status().isAccepted());
+        verify(sender, times(1)).sendCode(any(), eq(email), any(), any(), any());
+
+        // A weak password is refused before the code is used up.
+        call(post("/api/v1/auth/password-reset/confirm"), null,
+                Map.of("identifier", email, "code", code, "newPassword", "short"))
+                .andExpect(status().isUnprocessableEntity());
+        call(post("/api/v1/auth/password-reset/confirm"), null,
+                Map.of("identifier", ghost, "code", code, "newPassword", "brand-new-pass"))
+                .andExpect(status().isBadRequest());
+        call(post("/api/v1/auth/password-reset/confirm"), null,
+                Map.of("identifier", email, "code", code, "newPassword", "brand-new-pass"))
+                .andExpect(status().isNoContent());
+        // Used once only.
+        call(post("/api/v1/auth/password-reset/confirm"), null,
+                Map.of("identifier", email, "code", code, "newPassword", "another-pass-1"))
+                .andExpect(status().isBadRequest());
+
+        call(post("/api/v1/auth/login"), null, Map.of("identifier", email, "password", PASSWORD))
+                .andExpect(status().isUnauthorized());
+        call(post("/api/v1/auth/refresh"), null, Map.of("refreshToken", session.path("refreshToken").asText()))
+                .andExpect(status().isUnauthorized());
+        String token = login(email, "brand-new-pass");
+        // The code reached the inbox, so the email counts as verified.
+        call(get("/api/v1/users/me"), token, null).andExpect(jsonPath("$.data.emailVerified").value(true));
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_records WHERE action = 'PASSWORD_RESET' "
+                + "AND actor_id = (SELECT id FROM users WHERE email = ?)", Integer.class, email)).isEqualTo(1);
+    }
+
+    @Test
+    void passwordResetRequestsAreLimitedPerClient() throws Exception {
+        for (int i = 0; i < 5; i++) {
+            mvc.perform(post("/api/v1/auth/password-reset").with(fromAddress("203.0.113.7"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(json.writeValueAsString(Map.of("identifier", unique("probe")))))
+                    .andExpect(status().isAccepted());
+        }
+        mvc.perform(post("/api/v1/auth/password-reset").with(fromAddress("203.0.113.7"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("identifier", unique("probe")))))
+                .andExpect(status().isTooManyRequests());
+        // Another client is not affected.
+        mvc.perform(post("/api/v1/auth/password-reset").with(fromAddress("203.0.113.8"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(json.writeValueAsString(Map.of("identifier", unique("probe")))))
+                .andExpect(status().isAccepted());
+    }
+
+    /** FR-DRV, README §9: checked uploads, one document per file, private downloads, audited reviews. */
+    @Test
+    void documentFilesAreCheckedStoredPrivatelyAndAuditedWhenReviewed() throws Exception {
+        String email = unique("files");
+        String driverId = register(email, "DRIVER").path("id").asText();
+        String driver = login(email, PASSWORD);
+        call(post("/api/v1/drivers/me/profile"), driver, Map.of(
+                "fullName", "Le Van File", "dateOfBirth", "1990-05-01", "serviceTypes", List.of("RIDE")))
+                .andExpect(status().isCreated());
+        String otherEmail = unique("other");
+        register(otherEmail, "DRIVER");
+        String other = login(otherEmail, PASSWORD);
+        call(post("/api/v1/drivers/me/profile"), other, Map.of(
+                "fullName", "Pham Van Khac", "dateOfBirth", "1991-05-01", "serviceTypes", List.of("RIDE")))
+                .andExpect(status().isCreated());
+
+        byte[] photo = UploadInspectorTest.pngWithText("GPSLatitude", "10.7769");
+        JsonNode uploaded = data(upload(driver, "license.png", photo)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.contentType").value("image/png")));
+        String fileId = uploaded.path("fileId").asText();
+
+        // Refused: not an image whatever its name, name not matching content, wrong role.
+        upload(driver, "license.png", "MZ\u0090 not an image".getBytes(StandardCharsets.ISO_8859_1))
+                .andExpect(status().isUnprocessableEntity());
+        upload(driver, "license.pdf", photo).andExpect(status().isUnprocessableEntity());
+        String customerEmail = unique("cust");
+        register(customerEmail, "CUSTOMER");
+        upload(login(customerEmail, PASSWORD), "license.png", photo).andExpect(status().isForbidden());
+
+        // The file backs one document of its own driver.
+        Map<String, Object> licence = new java.util.HashMap<>(Map.of("type", "DRIVER_LICENSE",
+                "documentNumber", "B2-123456", "expiresOn", LocalDate.now().plusYears(2).toString(), "fileId", fileId));
+        call(post("/api/v1/drivers/me/documents"), other, licence).andExpect(status().isNotFound());
+        String documentId = data(call(post("/api/v1/drivers/me/documents"), driver, licence)
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.data.hasFile").value(true))).path("id").asText();
+        licence.put("type", "NATIONAL_ID");
+        licence.remove("expiresOn");
+        call(post("/api/v1/drivers/me/documents"), driver, licence).andExpect(status().isConflict());
+
+        // Downloads: the driver and reviewers only, always as an attachment, metadata gone.
+        byte[] stored = mvc.perform(get("/api/v1/drivers/me/documents/" + documentId + "/file")
+                        .header("Authorization", "Bearer " + driver))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "image/png"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.startsWith("attachment")))
+                .andReturn().getResponse().getContentAsByteArray();
+        assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain("GPSLatitude");
+        assertThat(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(stored)))
+                .isEqualTo(uploaded.path("sha256").asText());
+        call(get("/api/v1/drivers/me/documents/" + documentId + "/file"), other, null)
+                .andExpect(status().isNotFound());
+        String admin = login("admin@rhl.test", "admin-password-123");
+        mvc.perform(get("/api/v1/admin/drivers/" + driverId + "/documents/" + documentId + "/file")
+                        .header("Authorization", "Bearer " + admin))
+                .andExpect(status().isOk());
+        call(get("/api/v1/admin/drivers/" + driverId + "/documents/" + documentId + "/file"), driver, null)
+                .andExpect(status().isForbidden());
+        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_records WHERE action = 'DOCUMENT_FILE_VIEWED' "
+                + "AND target_id = ?", Integer.class, documentId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT object_key FROM document_files WHERE id = ?::uuid", String.class,
+                fileId)).isEqualTo("drivers/" + driverId + "/" + fileId);
+    }
+
     // ---- helpers --------------------------------------------------------------------------
+
+    private ResultActions upload(String token, String name, byte[] content) throws Exception {
+        return mvc.perform(multipart("/api/v1/drivers/me/documents/files")
+                .file(new MockMultipartFile("file", name, "application/octet-stream", content))
+                .header("Authorization", "Bearer " + token));
+    }
+
+    private void verifyEmail(String token, String email) throws Exception {
+        call(post("/api/v1/users/me/contacts/email/verification"), token, null).andExpect(status().isAccepted());
+        call(post("/api/v1/users/me/contacts/email/verification/confirm"), token, Map.of("code", codeSentTo(email)))
+                .andExpect(jsonPath("$.data.emailVerified").value(true));
+    }
+
+    /** The last code sent to {@code destination}. */
+    private String codeSentTo(String destination) {
+        ArgumentCaptor<String> code = ArgumentCaptor.forClass(String.class);
+        verify(sender, atLeastOnce()).sendCode(any(), eq(destination), any(), code.capture(), any());
+        return code.getValue();
+    }
+
+    private void redisTemplateDeleteCooldowns() {
+        java.util.Set<String> keys = redisTemplate.keys("auth:otp-cooldown:*");
+        if (keys != null && !keys.isEmpty()) {
+            redisTemplate.delete(keys);
+        }
+    }
+
+    private static RequestPostProcessor fromAddress(String ip) {
+        return request -> {
+            request.setRemoteAddr(ip);
+            return request;
+        };
+    }
 
     /** Registers, onboards, approves and puts a driver online; returns (driverId, access token). */
     private Map.Entry<String, String> onlineDriver() throws Exception {
         String email = unique("driver");
         String driverId = register(email, "DRIVER").path("id").asText();
         String driver = login(email, PASSWORD);
+        verifyEmail(driver, email);
         call(post("/api/v1/drivers/me/profile"), driver, Map.of(
                 "fullName", "Tran Van Xe", "dateOfBirth", "1990-05-01", "serviceTypes", List.of("RIDE")))
                 .andExpect(status().isCreated());

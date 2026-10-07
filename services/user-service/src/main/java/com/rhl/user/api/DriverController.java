@@ -2,6 +2,7 @@ package com.rhl.user.api;
 
 import com.rhl.common.security.CurrentUser;
 import com.rhl.common.web.ApiResponse;
+import com.rhl.user.application.driver.DocumentFileService;
 import com.rhl.user.application.driver.DriverService;
 import com.rhl.user.application.driver.DriverViews;
 import com.rhl.user.domain.driver.DocumentType;
@@ -18,6 +19,8 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -26,9 +29,12 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.util.Set;
 import java.util.UUID;
@@ -41,6 +47,7 @@ import java.util.UUID;
 public class DriverController {
 
     private final DriverService drivers;
+    private final DocumentFileService documentFiles;
 
     public record ProfileRequest(@NotBlank @Size(max = 120) String fullName, @Past LocalDate dateOfBirth,
                                  @NotEmpty Set<@NotNull ServiceType> serviceTypes) {
@@ -56,11 +63,10 @@ public class DriverController {
                                  @Min(1980) @Max(2100) int manufactureYear) {
     }
 
-    /** {@code fileRef} comes from the protected upload store; the upload endpoint is not part of this API yet. */
+    /** @param fileId from {@code POST /api/v1/drivers/me/documents/files}; optional */
     public record DocumentRequest(@NotNull DocumentType type, UUID vehicleId,
                                   @NotBlank @Size(max = 40) @Pattern(regexp = "^[A-Za-z0-9-]+$") String documentNumber,
-                                  LocalDate issuedOn, LocalDate expiresOn,
-                                  @Size(max = 300) @Pattern(regexp = "^[A-Za-z0-9/_.-]+$") String fileRef) {
+                                  LocalDate issuedOn, LocalDate expiresOn, UUID fileId) {
     }
 
     public record OnlineRequest(@NotNull UUID vehicleId, @NotEmpty Set<@NotNull ServiceType> serviceTypes) {
@@ -95,11 +101,29 @@ public class DriverController {
         drivers.deactivateVehicle(me(), vehicleId);
     }
 
+    /**
+     * Uploads a scan or photo (JPEG, PNG or PDF) for a document submitted afterwards with its
+     * {@code fileId}. The real type is read from the content; images are re-encoded without
+     * metadata.
+     */
+    @PostMapping(path = "/documents/files", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @ResponseStatus(HttpStatus.CREATED)
+    public ApiResponse<DocumentFileService.Uploaded> uploadFile(@RequestParam("file") MultipartFile file)
+            throws IOException {
+        return ApiResponse.ok(documentFiles.upload(me(), file.getOriginalFilename(), file.getBytes()));
+    }
+
+    /** The driver's own document file, as an attachment. */
+    @GetMapping("/documents/{documentId}/file")
+    public ResponseEntity<byte[]> documentFile(@PathVariable UUID documentId) {
+        return FileResponses.attachment(documentFiles.forDriver(me(), documentId));
+    }
+
     @PostMapping("/documents")
     @ResponseStatus(HttpStatus.CREATED)
     public ApiResponse<DriverViews.DocumentView> submitDocument(@Valid @RequestBody DocumentRequest r) {
         return ApiResponse.ok(drivers.submitDocument(me(), new DriverService.DocumentCommand(r.type(), r.vehicleId(),
-                r.documentNumber(), r.issuedOn(), r.expiresOn(), r.fileRef())));
+                r.documentNumber(), r.issuedOn(), r.expiresOn(), r.fileId())));
     }
 
     @PostMapping("/profile/submit")

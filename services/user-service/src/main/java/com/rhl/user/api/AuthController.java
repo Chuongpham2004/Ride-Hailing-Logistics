@@ -5,11 +5,15 @@ import com.rhl.common.security.CurrentUser;
 import com.rhl.common.security.Role;
 import com.rhl.common.web.ApiResponse;
 import com.rhl.user.application.auth.AuthService;
+import com.rhl.user.application.auth.PasswordResetService;
+import com.rhl.user.domain.user.ContactChannel;
 import com.rhl.user.domain.user.User;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -33,6 +37,7 @@ import java.util.UUID;
 public class AuthController {
 
     private final AuthService auth;
+    private final PasswordResetService passwordReset;
     private final JWKSet publicJwkSet;
 
     public record RegisterRequest(
@@ -46,6 +51,17 @@ public class AuthController {
         public boolean isIdentifierPresent() {
             return (email != null && !email.isBlank()) || (phone != null && !phone.isBlank());
         }
+    }
+
+    public record PasswordResetRequest(@NotBlank @Size(max = 254) String identifier) {
+    }
+
+    public record PasswordResetConfirmRequest(@NotBlank @Size(max = 254) String identifier,
+                                              @NotBlank @Pattern(regexp = "^[0-9]{6}$") String code,
+                                              @NotBlank @Size(max = 128) String newPassword) {
+    }
+
+    public record AcceptedResponse(String message) {
     }
 
     public record LoginRequest(@NotBlank @Size(max = 254) String identifier,
@@ -68,19 +84,21 @@ public class AuthController {
         }
     }
 
-    public record UserResponse(UUID id, String email, String phone, String fullName, Set<Role> roles, String status) {
+    public record UserResponse(UUID id, String email, String phone, String fullName, Set<Role> roles, String status,
+                               boolean emailVerified, boolean phoneVerified) {
 
         static UserResponse of(User u) {
             return new UserResponse(u.getId(), u.getEmail(), u.getPhone(), u.getFullName(), u.getRoles(),
-                    u.getStatus().name());
+                    u.getStatus().name(), u.isVerified(ContactChannel.EMAIL), u.isVerified(ContactChannel.PHONE));
         }
     }
 
     @PostMapping("/api/v1/auth/register")
     @ResponseStatus(HttpStatus.CREATED)
-    public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request) {
+    public ApiResponse<UserResponse> register(@Valid @RequestBody RegisterRequest request,
+                                              HttpServletRequest http) {
         User user = auth.register(new AuthService.RegisterCommand(request.email(), request.phone(),
-                request.password(), request.fullName(), request.role()));
+                request.password(), request.fullName(), request.role()), http.getRemoteAddr());
         return ApiResponse.ok(UserResponse.of(user));
     }
 
@@ -99,6 +117,26 @@ public class AuthController {
     public void logout(@AuthenticationPrincipal Jwt jwt, @Valid @RequestBody(required = false) LogoutRequest request) {
         auth.logout(CurrentUser.get().id(), jwt.getId(), jwt.getExpiresAt(),
                 request == null ? null : request.refreshToken());
+    }
+
+    /**
+     * Sends a reset code to the email or phone typed, if an active account has it. The answer is
+     * the same either way, so it does not reveal which addresses have accounts.
+     */
+    @PostMapping("/api/v1/auth/password-reset")
+    @ResponseStatus(HttpStatus.ACCEPTED)
+    public ApiResponse<AcceptedResponse> requestPasswordReset(@Valid @RequestBody PasswordResetRequest request,
+                                                              HttpServletRequest http) {
+        passwordReset.request(request.identifier(), http.getRemoteAddr());
+        return ApiResponse.ok(new AcceptedResponse(
+                "If an account uses this email or phone number, a reset code has been sent to it"));
+    }
+
+    /** Sets a new password with the code; every session of the account is signed out. */
+    @PostMapping("/api/v1/auth/password-reset/confirm")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void confirmPasswordReset(@Valid @RequestBody PasswordResetConfirmRequest request) {
+        passwordReset.confirm(request.identifier(), request.code(), request.newPassword());
     }
 
     /** Public signing keys for the gateway and other services. */
