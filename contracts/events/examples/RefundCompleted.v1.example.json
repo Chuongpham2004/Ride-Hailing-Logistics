@@ -1,0 +1,27 @@
+{
+  "eventId": "0199b8c2-4d10-7a3e-9c51-1f2e3d4c5b70",
+  "eventType": "RefundCompleted",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-07T10:15:02Z",
+  "correlationId": "0199b8c2-4d10-7a3e-9c51-1f2e3d4c5b6f",
+  "producer": "payment-service",
+  "aggregateId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e07",
+  "aggregateVersion": 4,
+  "payload": {
+    "refundId": "0199b8c2-4c88-7d21-8a3b-6e5f4d3c2b1a",
+    "paymentId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e07",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "customerId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e02",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "purpose": "TRIP_FARE",
+    "amount": 10000,
+    "currency": "VND",
+    "refundedTotal": 10000,
+    "paymentAmount": 27000,
+    "paymentStatus": "PARTIALLY_REFUNDED",
+    "reason": "OVERCHARGE",
+    "provider": "SANDBOX",
+    "providerRef": "sbxr_5d1e7f3a",
+    "completedAt": "2026-10-07T10:15:02Z"
+  }
+}

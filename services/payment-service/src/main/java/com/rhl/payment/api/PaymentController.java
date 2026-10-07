@@ -38,6 +38,12 @@ public class PaymentController {
         return ApiResponse.ok(queries.forTrip(CurrentUser.get(), tripId));
     }
 
+    /** Refunds of a payment: the customer who paid, or finance staff (FR-PAY). */
+    @GetMapping("/api/v1/payments/{paymentId}/refunds")
+    public ApiResponse<List<PaymentQueries.RefundView>> refunds(@PathVariable UUID paymentId) {
+        return ApiResponse.ok(queries.refunds(CurrentUser.get(), paymentId));
+    }
+
     /** Pay a failed payment again (FR-PAY); a no-op while one is in flight or once paid. */
     @PostMapping("/api/v1/payments/{paymentId}/retry")
     @PreAuthorize("hasRole('CUSTOMER')")

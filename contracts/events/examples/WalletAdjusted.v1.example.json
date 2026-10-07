@@ -1,0 +1,22 @@
+{
+  "eventId": "0199b8c5-0a11-7b42-8d63-2c4e6f8a0b12",
+  "eventType": "WalletAdjusted",
+  "eventVersion": 1,
+  "occurredAt": "2026-10-07T10:20:40Z",
+  "correlationId": "0199b8c5-0a11-7b42-8d63-2c4e6f8a0b11",
+  "producer": "payment-service",
+  "aggregateId": "0199b3a9-2f00-7e11-9a22-3b4c5d6e7f80",
+  "aggregateVersion": 3,
+  "payload": {
+    "adjustmentId": "0199b8c5-09f0-7c55-9e74-3d5f7a9b1c23",
+    "walletId": "0199b3a9-2f00-7e11-9a22-3b4c5d6e7f80",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "amount": -8000,
+    "currency": "VND",
+    "reason": "REFUND_CLAWBACK",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "refundId": "0199b8c2-4c88-7d21-8a3b-6e5f4d3c2b1a",
+    "balance": 13600,
+    "postedAt": "2026-10-07T10:20:40Z"
+  }
+}
