@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:ERROR:v1",
+  "title": "ERROR v1 (server -> client)",
+  "description": "A client message was refused; the connection stays open. code uses the API error codes (README §8.3); inReplyTo is absent when the message could not be read at all.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "required": [
+    "sequence"
+  ],
+  "properties": {
+    "type": {
+      "const": "ERROR"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "code",
+        "message"
+      ],
+      "properties": {
+        "code": {
+          "enum": [
+            "VALIDATION_ERROR",
+            "AUTHENTICATION_REQUIRED",
+            "ACCESS_DENIED",
+            "RATE_LIMIT_EXCEEDED",
+            "DEPENDENCY_UNAVAILABLE",
+            "RESOURCE_NOT_FOUND",
+            "INVALID_TRIP_STATE"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "inReplyTo": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

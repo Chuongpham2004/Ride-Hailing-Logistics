@@ -1,0 +1,89 @@
+server:
+  port: 8085
+  shutdown: graceful
+
+spring:
+  application:
+    name: realtime-gateway
+  threads:
+    virtual:
+      enabled: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:16379}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        # Telemetry path: keep batching delay small for the 500 ms end-to-end budget (NFR-PERF-001).
+        linger.ms: 5
+    consumer:
+      # Every instance gets every event (README §4.7: consumer group realtime-{instanceId}) and
+      # only pushes what happens from now on; clients load a REST snapshot on (re)connect.
+      group-id: realtime-${rhl.realtime.instance-id}
+      enable-auto-commit: false
+      auto-offset-reset: latest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: record
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${USER_SERVICE_URL:http://localhost:8081}/.well-known/jwks.json
+  jackson:
+    deserialization:
+      fail-on-unknown-properties: false
+    default-property-inclusion: non_null
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+rhl:
+  jwt:
+    issuer: rhl-user-service
+  realtime:
+    # Unique per running instance; names this instance's consumer group and its entries in
+    # ws:session:{userId}. Set REALTIME_INSTANCE_ID to a stable value (pod name) in deployments.
+    instance-id: ${REALTIME_INSTANCE_ID:${random.uuid}}
+    # Browsers send an Origin header; native apps do not. Tokens, not cookies, authenticate.
+    allowed-origins: ${REALTIME_ALLOWED_ORIGINS:*}
+    # A session with no client message for this long is closed (COM-006); clients PING well before.
+    heartbeat-timeout: 45s
+    sweep-interval: 5s
+    # ws:session:{userId} entries expire unless refreshed by the sweep.
+    session-ttl: 90s
+    max-message-bytes: 16384
+    send-time-limit: 5s
+    send-buffer-bytes: 524288
+    # Driver location reports closer together than this are refused (NFR-SEC-007).
+    telemetry-min-interval: 1s
+    trip:
+      # Placeholder until the tracking grace period is decided (FR-RT: revoke after trip end + grace).
+      grace: 2m
+      participants-ttl: 24h
+      max-subscriptions: 5
+  kafka:
+    partitions: 3
+    replicas: 1
+  # Telemetry goes straight to Kafka (README §4.7) and this service has no database.
+  outbox:
+    enabled: false
+
+logging:
+  pattern:
+    correlation: "[%X{correlationId:-}] "

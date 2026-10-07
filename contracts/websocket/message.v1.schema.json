@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:message:v1",
+  "title": "Realtime message v1",
+  "description": "Envelope of every WebSocket message, both directions (COM-007). Server messages always carry sequence: it increases by one per message within a connection, so a gap means a lost message and the client reloads its REST snapshot. Forwarded domain events reuse the eventId as messageId and carry the event's aggregateVersion, so a client drops duplicates and stale updates after a reconnect.",
+  "type": "object",
+  "required": [
+    "messageId",
+    "type",
+    "version",
+    "sentAt",
+    "data"
+  ],
+  "properties": {
+    "messageId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "type": {
+      "type": "string",
+      "pattern": "^[A-Z][A-Z_]+$"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sentAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "correlationId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "aggregateVersion": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "data": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

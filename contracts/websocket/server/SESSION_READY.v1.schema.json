@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:SESSION_READY:v1",
+  "title": "SESSION_READY v1 (server -> client)",
+  "description": "First message of every connection. After it the client loads its REST snapshot (trip, offers, wallet) and applies later messages on top (FR-RT, UC-07).",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "required": [
+    "sequence"
+  ],
+  "properties": {
+    "type": {
+      "const": "SESSION_READY"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "sessionId",
+        "userId",
+        "roles",
+        "tokenExpiresAt",
+        "heartbeatIntervalSeconds"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "userId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "roles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tokenExpiresAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "heartbeatIntervalSeconds": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

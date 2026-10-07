@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:PING:v1",
+  "title": "PING v1 (client -> server)",
+  "description": "Heartbeat (COM-006). Any client message keeps the session alive; a client with nothing else to send pings at the heartbeatIntervalSeconds announced in SESSION_READY. Answered with PONG.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "PING"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "properties": {},
+      "additionalProperties": false
+    }
+  }
+}

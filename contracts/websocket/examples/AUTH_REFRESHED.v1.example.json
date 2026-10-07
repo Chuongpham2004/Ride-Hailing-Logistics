@@ -1,0 +1,11 @@
+{
+  "messageId": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e14",
+  "type": "AUTH_REFRESHED",
+  "version": 1,
+  "sentAt": "2026-10-07T09:00:00Z",
+  "sequence": 3,
+  "data": {
+    "inReplyTo": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e04",
+    "tokenExpiresAt": "2026-10-07T09:30:00Z"
+  }
+}

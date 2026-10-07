@@ -1,0 +1,22 @@
+{
+  "messageId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e10",
+  "type": "DRIVER_OFFER_CREATED",
+  "version": 1,
+  "sentAt": "2026-10-07T09:00:00Z",
+  "sequence": 5,
+  "correlationId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9eff",
+  "aggregateVersion": 1,
+  "data": {
+    "offerId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e05",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "serviceType": "RIDE",
+    "pickup": {
+      "latitude": 10.775,
+      "longitude": 106.699
+    },
+    "estimatedPickupDistanceMeters": 850,
+    "createdAt": "2026-10-07T09:00:00Z",
+    "expiresAt": "2026-10-07T09:00:15Z"
+  }
+}
