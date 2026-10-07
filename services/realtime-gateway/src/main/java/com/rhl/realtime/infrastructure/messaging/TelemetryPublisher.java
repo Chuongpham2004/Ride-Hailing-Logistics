@@ -1,9 +1,5 @@
 package com.rhl.realtime.infrastructure.messaging;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rhl.common.id.UuidV7;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.EventHeaders;
@@ -13,6 +9,10 @@ import org.apache.kafka.clients.producer.ProducerRecord;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
@@ -52,7 +52,7 @@ public class TelemetryPublisher {
         long sequence = message.path("sequence").asLong();
         ObjectNode payload = objectMapper.createObjectNode();
         payload.put("driverId", driverId.toString());
-        payload.put("messageId", message.path("messageId").asText());
+        payload.put("messageId", message.path("messageId").asString());
         payload.put("sequence", sequence);
         payload.set("latitude", data.get("latitude"));
         payload.set("longitude", data.get("longitude"));
@@ -62,7 +62,7 @@ public class TelemetryPublisher {
                 payload.set(field, data.get(field));
             }
         }
-        payload.put("deviceTimestamp", data.path("deviceTimestamp").asText());
+        payload.put("deviceTimestamp", data.path("deviceTimestamp").asString());
         payload.put("receivedAt", receivedAt.toString());
 
         String key = driverId.toString();
@@ -86,7 +86,7 @@ public class TelemetryPublisher {
     private String write(JsonNode json) {
         try {
             return objectMapper.writeValueAsString(json);
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             throw new IllegalStateException("Cannot serialize " + EVENT_TYPE, e);
         }
     }

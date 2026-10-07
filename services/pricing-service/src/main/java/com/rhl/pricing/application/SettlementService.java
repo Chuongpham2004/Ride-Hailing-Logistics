@@ -1,6 +1,5 @@
 package com.rhl.pricing.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.id.UuidV7;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.InvalidEventException;
@@ -21,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -70,7 +70,7 @@ public class SettlementService {
         FinalFare fare;
         try {
             fare = FinalFare.upfront(UuidV7.random(), tripId, id(p, "customerId"), id(p, "driverId"), quote,
-                    Instant.parse(p.path("completedAt").asText()), clock.instant());
+                    Instant.parse(p.path("completedAt").asString()), clock.instant());
         } catch (IllegalArgumentException e) {
             throw new InvalidEventException(e.getMessage());
         }
@@ -93,15 +93,15 @@ public class SettlementService {
         }
         UUID quoteId = p.hasNonNull("quoteId") ? id(p, "quoteId") : null;
         FareQuote quote = quoteId == null ? null : quotes.findById(quoteId).orElse(null);
-        ServiceType serviceType = p.hasNonNull("serviceType") ? ServiceType.valueOf(p.path("serviceType").asText())
+        ServiceType serviceType = p.hasNonNull("serviceType") ? ServiceType.valueOf(p.path("serviceType").asString())
                 : quote != null ? quote.getServiceType() : ServiceType.RIDE;
-        Instant cancelledAt = Instant.parse(p.path("cancelledAt").asText());
+        Instant cancelledAt = Instant.parse(p.path("cancelledAt").asString());
         CancellationFeeRule rule = feeRules.findEffective(serviceType, cancelledAt)
                 .orElseThrow(() -> new IllegalStateException("No cancellation fee rule for " + serviceType));
 
         CancellationFeeRule.Cancellation cancellation = new CancellationFeeRule.Cancellation(
-                p.path("actorType").asText(), p.path("oldStatus").asText(), p.path("reason").asText(),
-                p.hasNonNull("acceptedAt") ? Instant.parse(p.path("acceptedAt").asText()) : null, cancelledAt,
+                p.path("actorType").asString(), p.path("oldStatus").asString(), p.path("reason").asString(),
+                p.hasNonNull("acceptedAt") ? Instant.parse(p.path("acceptedAt").asString()) : null, cancelledAt,
                 quote == null ? null : quote.getTotal());
         CancellationFee fee = CancellationFee.decide(UuidV7.random(), tripId, id(p, "customerId"),
                 p.hasNonNull("driverId") ? id(p, "driverId") : null, quoteId, rule, cancellation, clock.instant());
@@ -155,6 +155,6 @@ public class SettlementService {
     }
 
     private static UUID id(JsonNode payload, String field) {
-        return UUID.fromString(payload.path(field).asText());
+        return UUID.fromString(payload.path(field).asString());
     }
 }

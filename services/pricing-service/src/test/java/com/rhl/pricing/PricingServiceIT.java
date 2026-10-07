@@ -1,7 +1,5 @@
 package com.rhl.pricing;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.id.UuidV7;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -9,9 +7,9 @@ import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -27,6 +25,8 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -94,21 +94,21 @@ class PricingServiceIT {
 
         JsonNode quote = data(quote(customer, "DELIVERY", BEN_THANH, DH_KHTN).andExpect(status().isCreated()));
 
-        String id = quote.path("id").asText();
+        String id = quote.path("id").asString();
         JsonNode b = quote.path("breakdown");
         assertThat(b.path("baseFare").asLong() + b.path("distanceFare").asLong() + b.path("timeFare").asLong()
                 + b.path("minimumFareAdjustment").asLong() + b.path("surgeAmount").asLong()
                 + b.path("roundingAdjustment").asLong()).isEqualTo(quote.path("total").asLong());
         assertThat(quote.path("total").asLong() % 1_000).isZero();
-        assertThat(quote.path("currency").asText()).isEqualTo("VND");
+        assertThat(quote.path("currency").asString()).isEqualTo("VND");
         assertThat(quote.path("ruleVersion").asInt()).isEqualTo(1);
         assertThat(quote.path("surgeMultiplier").decimalValue()).isEqualByComparingTo("1.00");
-        assertThat(quote.path("surgeSource").asText()).isEqualTo("COMPUTED");
+        assertThat(quote.path("surgeSource").asString()).isEqualTo("COMPUTED");
         assertThat(quote.path("surgeConfirmationRequired").asBoolean()).isFalse();
-        assertThat(quote.path("routeSource").asText()).isEqualTo("ESTIMATE");
+        assertThat(quote.path("routeSource").asString()).isEqualTo("ESTIMATE");
         assertThat(quote.path("distanceMeters").asInt()).isBetween(2_600, 2_900);
-        assertThat(Duration.between(Instant.parse(quote.path("createdAt").asText()),
-                Instant.parse(quote.path("expiresAt").asText()))).isEqualTo(Duration.ofSeconds(3));
+        assertThat(Duration.between(Instant.parse(quote.path("createdAt").asString()),
+                Instant.parse(quote.path("expiresAt").asString()))).isEqualTo(Duration.ofSeconds(3));
         assertThat(redisTemplate.hasKey("quote:" + id)).isTrue();
 
         // Owner and administrators can read it; other customers cannot tell it exists.
@@ -152,8 +152,8 @@ class PricingServiceIT {
 
         JsonNode rules = data(perform(get("/api/v1/admin/pricing/rules"), admin));
         JsonNode v1 = find(rules, "RIDE", 1);
-        assertThat(Instant.parse(v1.path("effectiveTo").asText())).isEqualTo(Instant.parse(v2.path("effectiveFrom")
-                .asText()));
+        assertThat(Instant.parse(v1.path("effectiveTo").asString())).isEqualTo(Instant.parse(v2.path("effectiveFrom")
+                .asString()));
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(data(quote(customer, "RIDE", BEN_THANH, DH_KHTN)).path("ruleVersion").asInt())
@@ -163,7 +163,7 @@ class PricingServiceIT {
         assertThat(after.path("breakdown").path("baseFare").asLong()).isEqualTo(20_000);
 
         // The earlier quote keeps its rule version and price (BR-007).
-        perform(get("/api/v1/quotes/" + before.path("id").asText()), customerToken(customer))
+        perform(get("/api/v1/quotes/" + before.path("id").asString()), customerToken(customer))
                 .andExpect(jsonPath("$.data.ruleVersion").value(1))
                 .andExpect(jsonPath("$.data.total").value(before.path("total").asLong()));
     }
@@ -203,7 +203,7 @@ class PricingServiceIT {
                 q -> q.path("surgeMultiplier").decimalValue().compareTo(new BigDecimal("2.00")) == 0);
 
         assertThat(surged.path("surgeConfirmationRequired").asBoolean()).isTrue();
-        assertThat(surged.path("surgeSource").asText()).isEqualTo("COMPUTED");
+        assertThat(surged.path("surgeSource").asString()).isEqualTo("COMPUTED");
         assertThat(surged.path("surgeRuleVersion").asInt()).isEqualTo(1);
         JsonNode b = surged.path("breakdown");
         assertThat(b.path("surgeAmount").asLong()).isPositive();
@@ -234,7 +234,7 @@ class PricingServiceIT {
         completed.put("dropoff", DH_KHTN);
         completed.put("acceptedAt", Instant.now().minusSeconds(900).toString());
         completed.put("completedAt", Instant.now().toString());
-        completed.put("quoteId", quote.path("id").asText());
+        completed.put("quoteId", quote.path("id").asString());
 
         // Redelivered (same eventId) and duplicated (new eventId, same trip): still one fare.
         UUID eventId = UuidV7.random();
@@ -249,12 +249,12 @@ class PricingServiceIT {
                 .isEqualTo(quote.path("total").asLong());
 
         JsonNode event = consume("pricing.events.v1", tripId.toString());
-        assertThat(event.path("eventType").asText()).isEqualTo("FareFinalized");
+        assertThat(event.path("eventType").asString()).isEqualTo("FareFinalized");
         JsonNode payload = event.path("payload");
-        assertThat(payload.path("method").asText()).isEqualTo("UPFRONT");
+        assertThat(payload.path("method").asString()).isEqualTo("UPFRONT");
         assertThat(payload.path("total").asLong()).isEqualTo(quote.path("total").asLong());
-        assertThat(payload.path("quoteId").asText()).isEqualTo(quote.path("id").asText());
-        assertThat(payload.path("driverId").asText()).isEqualTo(driver.toString());
+        assertThat(payload.path("quoteId").asString()).isEqualTo(quote.path("id").asString());
+        assertThat(payload.path("driverId").asString()).isEqualTo(driver.toString());
         assertThat(payload.path("breakdown").path("distanceFare").asLong())
                 .isEqualTo(quote.path("breakdown").path("distanceFare").asLong());
 
@@ -264,7 +264,7 @@ class PricingServiceIT {
         noQuote.put("tripId", legacy.toString());
         noQuote.remove("quoteId");
         publish("trip.events.v1", legacy, UuidV7.random(), "TripCompleted", "trip-service", 5, noQuote);
-        assertThat(consume("trip.events.v1.DLT", legacy.toString()).path("eventType").asText())
+        assertThat(consume("trip.events.v1.DLT", legacy.toString()).path("eventType").asString())
                 .isEqualTo("TripCompleted");
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM final_fares WHERE trip_id = ?", Integer.class, legacy))
                 .isZero();
@@ -279,7 +279,7 @@ class PricingServiceIT {
         Instant now = Instant.now();
 
         publish("trip.events.v1", late, UuidV7.random(), "TripCancelled", "trip-service", 3,
-                cancelled(late, customer, "ARRIVED", now.minusSeconds(600), now, quote.path("id").asText()));
+                cancelled(late, customer, "ARRIVED", now.minusSeconds(600), now, quote.path("id").asString()));
         publish("trip.events.v1", early, UuidV7.random(), "TripCancelled", "trip-service", 1,
                 cancelled(early, customer, "MATCHING", null, now, null));
 
@@ -293,7 +293,7 @@ class PricingServiceIT {
                 .containsEntry("decision", "NOT_ASSIGNED").containsEntry("fee", 0L);
 
         JsonNode event = consume("pricing.events.v1", late.toString());
-        assertThat(event.path("eventType").asText()).isEqualTo("CancellationFeeCalculated");
+        assertThat(event.path("eventType").asString()).isEqualTo("CancellationFeeCalculated");
         assertThat(event.path("payload").path("fee").asLong()).isEqualTo(10_000);
     }
 
@@ -477,7 +477,7 @@ class PricingServiceIT {
 
     private static JsonNode find(JsonNode rules, String serviceType, int version) {
         for (JsonNode rule : rules) {
-            if (rule.path("serviceType").asText().equals(serviceType) && rule.path("version").asInt() == version) {
+            if (rule.path("serviceType").asString().equals(serviceType) && rule.path("version").asInt() == version) {
                 return rule;
             }
         }

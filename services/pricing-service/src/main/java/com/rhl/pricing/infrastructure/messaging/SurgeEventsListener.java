@@ -1,6 +1,5 @@
 package com.rhl.pricing.infrastructure.messaging;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.web.CorrelationId;
 import com.rhl.pricing.application.SurgeSignals;
@@ -9,6 +8,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 
 import java.util.function.Consumer;
 
@@ -24,19 +24,19 @@ public class SurgeEventsListener {
     private final SurgeSignals signals;
 
     @KafkaListener(id = "pricing-driver-supply", idIsGroup = false, topics = Topics.DRIVER_EVENTS)
-    public void onDriverEvent(ConsumerRecord<String, String> record) throws JsonProcessingException {
+    public void onDriverEvent(ConsumerRecord<String, String> record) throws JacksonException {
         handle(record, "DriverAvailabilityChanged", signals::onAvailabilityChanged);
     }
 
     /** High-frequency stream (one report per driver every 3–5 s), so it gets its own consumers. */
     @KafkaListener(id = "pricing-location-supply", idIsGroup = false, topics = Topics.LOCATION_UPDATES,
             concurrency = "${rhl.kafka.location-concurrency}")
-    public void onLocationUpdate(ConsumerRecord<String, String> record) throws JsonProcessingException {
+    public void onLocationUpdate(ConsumerRecord<String, String> record) throws JacksonException {
         handle(record, "DriverLocationUpdated", signals::onLocationUpdated);
     }
 
     private void handle(ConsumerRecord<String, String> record, String eventType, Consumer<EventEnvelope> action)
-            throws JsonProcessingException {
+            throws JacksonException {
         if (!eventType.equals(reader.eventType(record.value()))) {
             return;
         }

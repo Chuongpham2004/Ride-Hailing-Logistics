@@ -1,6 +1,5 @@
 package com.rhl.user.infrastructure.messaging;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.web.CorrelationId;
 import com.rhl.user.application.driver.TripAvailabilityProjection;
@@ -9,6 +8,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 
 import java.util.Set;
 
@@ -26,7 +26,7 @@ public class TripEventsListener {
 
     @KafkaListener(id = "user-trip-availability", idIsGroup = false,
             topics = {Topics.DISPATCH_OFFERS, Topics.TRIP_EVENTS})
-    public void onMessage(ConsumerRecord<String, String> record) throws JsonProcessingException {
+    public void onMessage(ConsumerRecord<String, String> record) throws JacksonException {
         if (!RELEVANT.contains(reader.eventType(record.value()))) {
             return;
         }

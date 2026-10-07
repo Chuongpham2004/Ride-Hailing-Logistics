@@ -1,8 +1,5 @@
 package com.rhl.realtime.infrastructure.messaging;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.messaging.EventSchemaValidator;
 import com.rhl.common.messaging.InvalidEventException;
@@ -15,6 +12,9 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Reads the topics whose events reach clients. One listener for all of them: each instance has
@@ -37,12 +37,12 @@ public class DomainEventListener {
 
     @KafkaListener(id = LISTENER_ID, idIsGroup = false, topics = {Topics.DISPATCH_OFFERS, Topics.TRIP_EVENTS,
             Topics.PAYMENT_EVENTS, Topics.WALLET_EVENTS, Topics.LOCATION_UPDATES})
-    public void onMessage(ConsumerRecord<String, String> record) throws JsonProcessingException {
+    public void onMessage(ConsumerRecord<String, String> record) throws JacksonException {
         JsonNode json = objectMapper.readTree(record.value());
         if (json == null || !json.isObject()) {
             throw new InvalidEventException("Event is not a JSON object");
         }
-        String type = json.path("eventType").asText();
+        String type = json.path("eventType").asString();
         boolean location = LOCATION_UPDATED.equals(type);
         if (!location && !EventRouter.isForwarded(type)) {
             return;

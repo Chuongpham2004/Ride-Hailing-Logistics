@@ -1,12 +1,12 @@
 package com.rhl.realtime.infrastructure.cache;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.realtime.RealtimeProperties;
 import com.rhl.realtime.application.TripParticipants;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -62,30 +62,30 @@ public class TripParticipantStore {
         String status;
         String endedAt = null;
         switch (event.eventType()) {
-            case "TripRequested" -> status = p.path("status").asText("MATCHING");
+            case "TripRequested" -> status = p.path("status").asString("MATCHING");
             case "TripAccepted" -> status = "ACCEPTED";
             case "TripStatusChanged" -> {
-                status = p.path("newStatus").asText();
-                endedAt = TripParticipants.ENDED.contains(status) ? p.path("occurredAt").asText() : null;
+                status = p.path("newStatus").asString();
+                endedAt = TripParticipants.ENDED.contains(status) ? p.path("occurredAt").asString() : null;
             }
             case "TripCompleted" -> {
                 status = "COMPLETED";
-                endedAt = p.path("completedAt").asText();
+                endedAt = p.path("completedAt").asString();
             }
             case "TripCancelled" -> {
                 status = "CANCELLED";
-                endedAt = p.path("cancelledAt").asText();
+                endedAt = p.path("cancelledAt").asString();
             }
             default -> {
                 return false;
             }
         }
-        String tripId = p.path("tripId").asText();
-        String driverId = p.hasNonNull("driverId") ? p.path("driverId").asText() : null;
+        String tripId = p.path("tripId").asString();
+        String driverId = p.hasNonNull("driverId") ? p.path("driverId").asString() : null;
         Duration ttl = endedAt == null ? config.participantsTtl() : config.grace().plus(MARGIN);
 
         List<String> args = new ArrayList<>(List.of(Long.toString(event.aggregateVersion()),
-                Long.toString(ttl.toSeconds()), "customerId", p.path("customerId").asText(), "status", status));
+                Long.toString(ttl.toSeconds()), "customerId", p.path("customerId").asString(), "status", status));
         if (driverId != null) {
             args.add("driverId");
             args.add(driverId);

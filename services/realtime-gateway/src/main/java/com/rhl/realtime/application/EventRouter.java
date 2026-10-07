@@ -1,12 +1,12 @@
 package com.rhl.realtime.application;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.security.Role;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.LinkedHashSet;
 import java.util.Locale;
@@ -93,7 +93,7 @@ public class EventRouter {
     private static void add(Set<Recipient> recipients, JsonNode payload, String field, Role role) {
         if (payload.hasNonNull(field)) {
             try {
-                recipients.add(new Recipient(UUID.fromString(payload.path(field).asText()), role));
+                recipients.add(new Recipient(UUID.fromString(payload.path(field).asString()), role));
             } catch (IllegalArgumentException e) {
                 log.warn("Ignoring malformed {} in event payload", field);
             }

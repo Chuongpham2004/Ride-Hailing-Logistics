@@ -1,7 +1,5 @@
 package com.rhl.gateway;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.web.ApiResponse;
 import com.rhl.common.web.ErrorCode;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -12,6 +10,8 @@ import org.springframework.security.web.server.authorization.ServerAccessDeniedH
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerWebExchange;
 import reactor.core.publisher.Mono;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.util.List;
 
@@ -44,7 +44,7 @@ public class JsonErrorWriter {
         try {
             body = objectMapper.writeValueAsBytes(
                     ApiResponse.error(code, message, List.of(), CorrelationIdWebFilter.of(exchange)));
-        } catch (JsonProcessingException e) {
+        } catch (JacksonException e) {
             return Mono.error(e);
         }
         DataBuffer buffer = response.bufferFactory().wrap(body);

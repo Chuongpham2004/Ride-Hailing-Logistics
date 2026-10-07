@@ -1,21 +1,19 @@
 package com.rhl.trip.api;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.security.CurrentUser;
 import com.rhl.common.web.ApiResponse;
 import com.rhl.trip.application.TripService;
 import com.rhl.trip.application.TripViews;
 import com.rhl.trip.domain.CancelReason;
 import com.rhl.trip.domain.PackageSize;
-import com.rhl.trip.infrastructure.client.PricingClient;
 import com.rhl.trip.domain.TripStatus;
+import com.rhl.trip.infrastructure.client.PricingClient;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -32,6 +30,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -171,7 +171,7 @@ public class TripController {
         try {
             byte[] body = objectMapper.writeValueAsString(request).getBytes(StandardCharsets.UTF_8);
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(body));
-        } catch (JsonProcessingException | NoSuchAlgorithmException e) {
+        } catch (JacksonException | NoSuchAlgorithmException e) {
             throw new IllegalStateException("Cannot hash the request", e);
         }
     }

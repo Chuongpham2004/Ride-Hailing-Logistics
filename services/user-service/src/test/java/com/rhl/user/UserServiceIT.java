@@ -1,41 +1,41 @@
 package com.rhl.user;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.rhl.user.application.notification.NotificationSender;
+import com.rhl.user.domain.driver.UploadInspectorTest;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
-import com.rhl.user.application.notification.NotificationSender;
-import com.rhl.user.domain.driver.UploadInspectorTest;
 import org.junit.jupiter.api.Test;
-import org.springframework.mock.web.MockMultipartFile;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-import org.testcontainers.containers.MinIOContainer;
-import org.testcontainers.utility.DockerImageName;
-import java.security.MessageDigest;
-import java.util.HexFormat;
 import org.mockito.ArgumentCaptor;
-import org.springframework.data.redis.core.StringRedisTemplate;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.test.context.DynamicPropertyRegistry;
+import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder;
+import org.springframework.test.web.servlet.request.RequestPostProcessor;
 import org.testcontainers.containers.GenericContainer;
+import org.testcontainers.containers.MinIOContainer;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.kafka.KafkaContainer;
+import org.testcontainers.utility.DockerImageName;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -126,7 +126,7 @@ class UserServiceIT {
     @Test
     void driverOnboardingReviewAndGoingOnlinePublishesAnEvent() throws Exception {
         String driverEmail = unique("driver");
-        String driverId = register(driverEmail, "DRIVER").path("id").asText();
+        String driverId = register(driverEmail, "DRIVER").path("id").asString();
         String driver = login(driverEmail, PASSWORD);
 
         call(post("/api/v1/drivers/me/profile"), driver, Map.of(
@@ -150,7 +150,7 @@ class UserServiceIT {
         String vehicleId = data(call(post("/api/v1/drivers/me/vehicles"), driver, Map.of(
                 "type", "MOTORBIKE", "plateNumber", plate, "brand", "Honda", "model", "Wave",
                 "color", "Red", "manufactureYear", 2021))
-                .andExpect(status().isCreated())).path("id").asText();
+                .andExpect(status().isCreated())).path("id").asString();
 
         String nextYear = LocalDate.now().plusYears(1).toString();
         submitDocument(driver, "NATIONAL_ID", null, null);
@@ -199,9 +199,9 @@ class UserServiceIT {
         assertThat(new String(record.headers().lastHeader("eventType").value(), StandardCharsets.UTF_8))
                 .isEqualTo("DriverAvailabilityChanged");
         JsonNode event = json.readTree(record.value());
-        assertThat(event.path("producer").asText()).isEqualTo("user-service");
-        assertThat(event.path("payload").path("newStatus").asText()).isEqualTo("AVAILABLE");
-        assertThat(event.path("payload").path("vehicleId").asText()).isEqualTo(vehicleId);
+        assertThat(event.path("producer").asString()).isEqualTo("user-service");
+        assertThat(event.path("payload").path("newStatus").asString()).isEqualTo("AVAILABLE");
+        assertThat(event.path("payload").path("vehicleId").asString()).isEqualTo(vehicleId);
 
         // A driver on duty can go offline; repeating it is a no-op.
         call(post("/api/v1/drivers/me/availability/offline"), driver, null)
@@ -268,10 +268,10 @@ class UserServiceIT {
         register(email, "CUSTOMER");
         JsonNode first = data(call(post("/api/v1/auth/login"), null,
                 Map.of("identifier", email, "password", PASSWORD)).andExpect(status().isOk()));
-        String r1 = first.path("refreshToken").asText();
+        String r1 = first.path("refreshToken").asString();
 
         String r2 = data(call(post("/api/v1/auth/refresh"), null, Map.of("refreshToken", r1))
-                .andExpect(status().isOk())).path("refreshToken").asText();
+                .andExpect(status().isOk())).path("refreshToken").asString();
         assertThat(r2).isNotEqualTo(r1);
 
         call(post("/api/v1/auth/refresh"), null, Map.of("refreshToken", r1)).andExpect(status().isUnauthorized());
@@ -434,7 +434,7 @@ class UserServiceIT {
 
         call(post("/api/v1/auth/login"), null, Map.of("identifier", email, "password", PASSWORD))
                 .andExpect(status().isUnauthorized());
-        call(post("/api/v1/auth/refresh"), null, Map.of("refreshToken", session.path("refreshToken").asText()))
+        call(post("/api/v1/auth/refresh"), null, Map.of("refreshToken", session.path("refreshToken").asString()))
                 .andExpect(status().isUnauthorized());
         String token = login(email, "brand-new-pass");
         // The code reached the inbox, so the email counts as verified.
@@ -466,7 +466,7 @@ class UserServiceIT {
     @Test
     void documentFilesAreCheckedStoredPrivatelyAndAuditedWhenReviewed() throws Exception {
         String email = unique("files");
-        String driverId = register(email, "DRIVER").path("id").asText();
+        String driverId = register(email, "DRIVER").path("id").asString();
         String driver = login(email, PASSWORD);
         call(post("/api/v1/drivers/me/profile"), driver, Map.of(
                 "fullName", "Le Van File", "dateOfBirth", "1990-05-01", "serviceTypes", List.of("RIDE")))
@@ -482,7 +482,7 @@ class UserServiceIT {
         JsonNode uploaded = data(upload(driver, "license.png", photo)
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.data.contentType").value("image/png")));
-        String fileId = uploaded.path("fileId").asText();
+        String fileId = uploaded.path("fileId").asString();
 
         // Refused: not an image whatever its name, name not matching content, wrong role.
         upload(driver, "license.png", "MZ\u0090 not an image".getBytes(StandardCharsets.ISO_8859_1))
@@ -498,7 +498,7 @@ class UserServiceIT {
         call(post("/api/v1/drivers/me/documents"), other, licence).andExpect(status().isNotFound());
         String documentId = data(call(post("/api/v1/drivers/me/documents"), driver, licence)
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.data.hasFile").value(true))).path("id").asText();
+                .andExpect(jsonPath("$.data.hasFile").value(true))).path("id").asString();
         licence.put("type", "NATIONAL_ID");
         licence.remove("expiresOn");
         call(post("/api/v1/drivers/me/documents"), driver, licence).andExpect(status().isConflict());
@@ -514,7 +514,7 @@ class UserServiceIT {
                 .andReturn().getResponse().getContentAsByteArray();
         assertThat(new String(stored, StandardCharsets.ISO_8859_1)).doesNotContain("GPSLatitude");
         assertThat(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(stored)))
-                .isEqualTo(uploaded.path("sha256").asText());
+                .isEqualTo(uploaded.path("sha256").asString());
         call(get("/api/v1/drivers/me/documents/" + documentId + "/file"), other, null)
                 .andExpect(status().isNotFound());
         String admin = login("admin@rhl.test", "admin-password-123");
@@ -567,7 +567,7 @@ class UserServiceIT {
     /** Registers, onboards, approves and puts a driver online; returns (driverId, access token). */
     private Map.Entry<String, String> onlineDriver() throws Exception {
         String email = unique("driver");
-        String driverId = register(email, "DRIVER").path("id").asText();
+        String driverId = register(email, "DRIVER").path("id").asString();
         String driver = login(email, PASSWORD);
         verifyEmail(driver, email);
         call(post("/api/v1/drivers/me/profile"), driver, Map.of(
@@ -576,7 +576,7 @@ class UserServiceIT {
         String plate = "59X" + (100000 + (int) (Math.random() * 899999));
         String vehicleId = data(call(post("/api/v1/drivers/me/vehicles"), driver, Map.of(
                 "type", "MOTORBIKE", "plateNumber", plate, "brand", "Honda", "model", "Wave",
-                "color", "Red", "manufactureYear", 2021)).andExpect(status().isCreated())).path("id").asText();
+                "color", "Red", "manufactureYear", 2021)).andExpect(status().isCreated())).path("id").asString();
         String nextYear = LocalDate.now().plusYears(1).toString();
         submitDocument(driver, "NATIONAL_ID", null, null);
         submitDocument(driver, "DRIVER_LICENSE", null, nextYear);
@@ -635,7 +635,7 @@ class UserServiceIT {
 
     private String login(String identifier, String password) throws Exception {
         return data(call(post("/api/v1/auth/login"), null, Map.of("identifier", identifier, "password", password))
-                .andExpect(status().isOk())).path("accessToken").asText();
+                .andExpect(status().isOk())).path("accessToken").asString();
     }
 
     private ResultActions call(MockHttpServletRequestBuilder request, String token, Object body) throws Exception {

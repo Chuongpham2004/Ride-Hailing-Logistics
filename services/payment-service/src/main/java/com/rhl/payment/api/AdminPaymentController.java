@@ -1,7 +1,5 @@
 package com.rhl.payment.api;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.security.CurrentUser;
 import com.rhl.common.web.ApiResponse;
 import com.rhl.payment.application.PaymentQueries;
@@ -28,6 +26,8 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.ObjectMapper;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -111,7 +111,7 @@ public class AdminPaymentController {
         try {
             byte[] body = objectMapper.writeValueAsString(request).getBytes(StandardCharsets.UTF_8);
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(body));
-        } catch (JsonProcessingException | NoSuchAlgorithmException e) {
+        } catch (JacksonException | NoSuchAlgorithmException e) {
             throw new IllegalStateException("Cannot hash the request", e);
         }
     }

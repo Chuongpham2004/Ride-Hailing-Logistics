@@ -1,6 +1,5 @@
 package com.rhl.location.infrastructure.messaging;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.rhl.common.messaging.EventEnvelope;
 import com.rhl.common.web.CorrelationId;
 import com.rhl.location.application.PresenceService;
@@ -9,6 +8,7 @@ import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.MDC;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
+import tools.jackson.core.JacksonException;
 
 /** Consumes driver.events.v1; only availability changes matter to location-service. */
 @Component
@@ -21,7 +21,7 @@ public class DriverEventsListener {
     private final PresenceService presence;
 
     @KafkaListener(id = "location-driver-events", idIsGroup = false, topics = Topics.DRIVER_EVENTS)
-    public void onMessage(ConsumerRecord<String, String> record) throws JsonProcessingException {
+    public void onMessage(ConsumerRecord<String, String> record) throws JacksonException {
         // Other driver events (DriverApproved, DriverSuspended, ...) are not used here.
         if (!AVAILABILITY_CHANGED.equals(reader.eventType(record.value()))) {
             return;

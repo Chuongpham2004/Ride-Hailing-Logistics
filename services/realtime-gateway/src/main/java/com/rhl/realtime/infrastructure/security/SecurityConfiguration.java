@@ -1,11 +1,10 @@
 package com.rhl.realtime.infrastructure.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.rhl.common.security.JwtClaims;
 import com.rhl.common.security.RolesJwtAuthenticationConverter;
 import com.rhl.common.security.servlet.JsonSecurityErrorHandler;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.autoconfigure.security.oauth2.resource.OAuth2ResourceServerProperties;
+import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -22,6 +21,7 @@ import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.server.resource.web.DefaultBearerTokenResolver;
 import org.springframework.security.web.SecurityFilterChain;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * The WebSocket handshake is authenticated like any API call (COM-005, NFR-SEC-004): a bearer

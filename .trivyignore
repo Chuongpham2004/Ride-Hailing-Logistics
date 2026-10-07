@@ -1,11 +1,7 @@
 # Vulnerabilities accepted in the image scan (delivery.yml). Every entry needs a reason and an
 # expiry: once the date passes, Trivy reports the CVE again and the release gate fails, so the
 # entry has to be re-checked instead of staying forever.
-
-# CVE-2026-47884 / GHSA-pc63-qcmh-9cmg (CRITICAL): spring-webmvc improper path limitation in
-# XsltView. Only 7.0.9 is patched; no Spring Framework 6.2.x fix is published, and moving to
-# Spring Boot 4 / Framework 7 is a separate migration. Not reachable here: no service uses
-# XsltView or any server-side view resolver, every MVC endpoint returns JSON (api-gateway runs
-# on WebFlux and is not affected). Drop this line and override spring-framework in pom.xml as
-# soon as a patched 6.2.x release exists.
-CVE-2026-47884 exp:2026-11-05
+#
+# No accepted vulnerabilities. CVE-2026-47884 (spring-webmvc XsltView) was accepted until
+# 2026-11-05 while the services ran on Spring Framework 6.2, which never got a fix; the move to
+# Spring Boot 4.0 / Spring Framework 7.0.9 removed it.
