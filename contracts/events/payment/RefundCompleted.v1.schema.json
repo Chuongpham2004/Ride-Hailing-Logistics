@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:event:RefundCompleted:v1",
+  "title": "RefundCompleted v1",
+  "description": "The provider confirmed a refund of a captured payment. Published once per refund; refundedTotal is the payment's refunded sum including this refund and never exceeds paymentAmount (BR-010). Driver wallets are not changed by a refund: finance staff post a WalletAdjusted (REFUND_CLAWBACK) when the driver bears it. Topic payment.events.v1, key = tripId.",
+  "type": "object",
+  "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
+  "properties": {
+    "eventType": { "const": "RefundCompleted" },
+    "eventVersion": { "const": 1 },
+    "producer": { "const": "payment-service" },
+    "payload": {
+      "type": "object",
+      "required": ["refundId", "paymentId", "tripId", "customerId", "purpose", "amount", "currency", "refundedTotal",
+                   "paymentAmount", "paymentStatus", "reason", "provider", "providerRef", "completedAt"],
+      "properties": {
+        "refundId": { "type": "string", "format": "uuid" },
+        "paymentId": { "type": "string", "format": "uuid" },
+        "tripId": { "type": "string", "format": "uuid" },
+        "customerId": { "type": "string", "format": "uuid" },
+        "driverId": { "anyOf": [{ "type": "null" }, { "type": "string", "format": "uuid" }] },
+        "purpose": { "enum": ["TRIP_FARE", "CANCELLATION_FEE"] },
+        "amount": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "refundedTotal": { "type": "integer", "minimum": 1 },
+        "paymentAmount": { "type": "integer", "minimum": 1 },
+        "paymentStatus": { "enum": ["PARTIALLY_REFUNDED", "REFUNDED"] },
+        "reason": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "provider": { "type": "string", "minLength": 1, "maxLength": 30 },
+        "providerRef": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "additionalProperties": true
+    }
+  }
+}

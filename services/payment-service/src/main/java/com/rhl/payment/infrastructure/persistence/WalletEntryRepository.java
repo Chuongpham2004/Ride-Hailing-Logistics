@@ -6,9 +6,13 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 public interface WalletEntryRepository extends JpaRepository<WalletEntry, UUID> {
+
+    /** The single line an adjustment posted. */
+    Optional<WalletEntry> findByReferenceTypeAndReferenceId(String referenceType, UUID referenceId);
 
     // Keyset pagination on the time-ordered UUIDv7 id (NFR-PERF-008).
 

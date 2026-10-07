@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Stand-in for the real provider until TBD-09 is decided (README §2: one electronic method in
- * sandbox). Approves every charge and honours idempotency keys like a real provider would, so
+ * sandbox). Approves every charge and refund and honours idempotency keys like a real provider would, so
  * the retry paths behave the same. Keys live in memory: development only.
  */
 @Component
@@ -28,5 +28,11 @@ public class SandboxPaymentProvider implements PaymentProvider {
     public ChargeResult charge(ChargeRequest request) {
         return charges.computeIfAbsent(request.idempotencyKey(),
                 key -> ChargeResult.success("sbx_" + UUID.randomUUID().toString().replace("-", "")));
+    }
+
+    @Override
+    public ChargeResult refund(RefundRequest request) {
+        return charges.computeIfAbsent(request.idempotencyKey(),
+                key -> ChargeResult.success("sbxr_" + UUID.randomUUID().toString().replace("-", "")));
     }
 }

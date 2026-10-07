@@ -84,6 +84,9 @@ rhl:
     # Shared with the provider; set PAYMENT_WEBHOOK_SECRET outside local development.
     webhook-secret: ${PAYMENT_WEBHOOK_SECRET:dev-only-webhook-secret-change-me}
     signature-tolerance: 5m
+  wallet:
+    # VND; finance adjustments above this need a separate, reviewed process.
+    max-adjustment: 5000000
   kafka:
     partitions: 3
     replicas: 1

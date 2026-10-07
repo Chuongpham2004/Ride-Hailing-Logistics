@@ -25,6 +25,7 @@ public class WalletEntry {
 
     public static final String EARNING = "EARNING";
     public static final String COMMISSION = "COMMISSION";
+    public static final String ADJUSTMENT = "ADJUSTMENT";
 
     @Id
     private UUID id;
@@ -35,7 +36,7 @@ public class WalletEntry {
     @Column(name = "entry_type", nullable = false)
     private String entryType;
 
-    /** Signed: earnings credit, commissions debit. */
+    /** Signed: earnings credit, commissions debit, adjustments either way. */
     @Column(nullable = false)
     private long amount;
 

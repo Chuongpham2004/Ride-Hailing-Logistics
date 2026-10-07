@@ -19,8 +19,20 @@ public interface PaymentProvider {
      */
     ChargeResult charge(ChargeRequest request);
 
+    /**
+     * Gives (part of) a captured charge back, with the same idempotency and outcome rules as
+     * {@link #charge}; a refusal is {@code DECLINED} with the provider's reason.
+     *
+     * @throws ProviderUnavailableException when the outcome is unknown; sent again with the same key
+     */
+    ChargeResult refund(RefundRequest request);
+
     /** No card data: the provider resolves the customer's stored method from its own token (CON-08). */
     record ChargeRequest(String idempotencyKey, UUID customerId, long amount, String currency, String description) {
+    }
+
+    /** @param chargeReference the provider's ID of the charge being refunded */
+    record RefundRequest(String idempotencyKey, String chargeReference, long amount, String currency, String reason) {
     }
 
     enum Outcome {
@@ -31,7 +43,9 @@ public interface PaymentProvider {
     }
 
     /**
-     * @param reference   the provider's ID for the charge; set when succeeded or pending
+     * The outcome of a charge or a refund.
+     *
+     * @param reference   the provider's ID for the charge or refund; set when succeeded or pending
      * @param failureCode the provider's reason; set when declined
      */
     record ChargeResult(Outcome outcome, String reference, String failureCode) {

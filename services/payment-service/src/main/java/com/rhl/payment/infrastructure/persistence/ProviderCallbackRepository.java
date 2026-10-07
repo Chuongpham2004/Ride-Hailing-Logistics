@@ -35,8 +35,8 @@ public class ProviderCallbackRepository {
     }
 
     @Transactional(propagation = Propagation.MANDATORY)
-    public void resolve(UUID id, String outcome, UUID paymentId, String reason) {
-        jdbc.update("UPDATE provider_callbacks SET outcome = ?, payment_id = ?, reason = ? WHERE id = ?",
-                outcome, paymentId, reason, id);
+    public void resolve(UUID id, String outcome, UUID paymentId, UUID refundId, String reason) {
+        jdbc.update("UPDATE provider_callbacks SET outcome = ?, payment_id = ?, refund_id = ?, reason = ? WHERE id = ?",
+                outcome, paymentId, refundId, reason, id);
     }
 }
