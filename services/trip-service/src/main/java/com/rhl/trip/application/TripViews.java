@@ -2,9 +2,11 @@ package com.rhl.trip.application;
 
 import com.rhl.trip.domain.ActorType;
 import com.rhl.trip.domain.CancelReason;
+import com.rhl.trip.domain.DeliveryDetails;
 import com.rhl.trip.domain.DriverOffer;
 import com.rhl.trip.domain.FareSnapshot;
 import com.rhl.trip.domain.OfferStatus;
+import com.rhl.trip.domain.PackageSize;
 import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Stop;
 import com.rhl.trip.domain.Trip;
@@ -28,13 +30,34 @@ public final class TripViews {
     public record TripView(UUID id, UUID customerId, UUID driverId, ServiceType serviceType, TripStatus status,
                            Stop pickup, Stop dropoff, FareSnapshot fare, Instant matchingDeadline,
                            CancelReason cancelReason, ActorType cancelledBy, Instant createdAt, Instant acceptedAt,
-                           Instant completedAt, Instant cancelledAt, long version) {
+                           Instant completedAt, Instant cancelledAt, long version, DeliveryView delivery,
+                           String pickupCode, String deliveryCode) {
 
+        /** Without delivery details or codes: lists and system contexts. */
         static TripView of(Trip t) {
+            return of(t, null, ActorType.SYSTEM);
+        }
+
+        /**
+         * Recipient details for the trip's participants and staff (UC-05); the handover codes for
+         * the customer only, who hands them to the driver and the recipient.
+         */
+        static TripView of(Trip t, DeliveryDetails delivery, ActorType viewer) {
+            boolean customer = viewer == ActorType.CUSTOMER;
             return new TripView(t.getId(), t.getCustomerId(), t.getDriverId(), t.getServiceType(), t.getStatus(),
                     t.getPickup(), t.getDropoff(), t.getFare(), t.getMatchingDeadline(), t.getCancelReason(),
                     t.getCancelledBy(), t.getCreatedAt(), t.getAcceptedAt(), t.getCompletedAt(), t.getCancelledAt(),
-                    t.getVersion());
+                    t.getVersion(), viewer == ActorType.SYSTEM ? null : DeliveryView.of(delivery),
+                    customer ? t.getPickupCode() : null, customer ? t.getDeliveryCode() : null);
+        }
+    }
+
+    public record DeliveryView(String recipientName, String recipientPhone, String packageDescription,
+                               PackageSize packageSize, int packageWeightGrams, String instructions) {
+
+        static DeliveryView of(DeliveryDetails d) {
+            return d == null ? null : new DeliveryView(d.getRecipientName(), d.getRecipientPhone(),
+                    d.getPackageDescription(), d.getPackageSize(), d.getPackageWeightGrams(), d.getInstructions());
         }
     }
 

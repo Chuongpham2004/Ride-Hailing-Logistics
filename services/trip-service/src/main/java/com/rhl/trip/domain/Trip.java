@@ -80,6 +80,20 @@ public class Trip {
     @Column(name = "cancelled_by")
     private ActorType cancelledBy;
 
+    /** Shown to the customer, entered by the driver to start the trip; {@code null} when not required. */
+    @Column(name = "pickup_code")
+    private String pickupCode;
+
+    /** DELIVERY only: the customer passes it to the recipient, the driver enters it to complete. */
+    @Column(name = "delivery_code")
+    private String deliveryCode;
+
+    @Column(name = "pickup_code_failures", nullable = false)
+    private int pickupCodeFailures;
+
+    @Column(name = "delivery_code_failures", nullable = false)
+    private int deliveryCodeFailures;
+
     /**
      * Also the {@code aggregateVersion} of trip events, so consumers can drop stale ones (FR-EVT-006).
      * {@code null} until persisted, so Spring Data inserts instead of merging.
@@ -102,8 +116,16 @@ public class Trip {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
+    /**
+     * @param pickupCode   {@code null} when this service does not require a code to start
+     * @param deliveryCode required for DELIVERY, forbidden otherwise
+     */
     public static Trip create(UUID id, UUID customerId, ServiceType serviceType, Stop pickup, Stop dropoff,
-                              FareSnapshot fare, MatchingPolicy policy, Instant now) {
+                              FareSnapshot fare, MatchingPolicy policy, String pickupCode, String deliveryCode,
+                              Instant now) {
+        if ((serviceType == ServiceType.DELIVERY) != (deliveryCode != null)) {
+            throw new IllegalArgumentException("A delivery code goes with DELIVERY trips only");
+        }
         Trip trip = new Trip();
         trip.id = Objects.requireNonNull(id);
         trip.customerId = Objects.requireNonNull(customerId);
@@ -111,6 +133,8 @@ public class Trip {
         trip.pickup = Objects.requireNonNull(pickup);
         trip.dropoff = Objects.requireNonNull(dropoff);
         trip.fare = Objects.requireNonNull(fare);
+        trip.pickupCode = pickupCode;
+        trip.deliveryCode = deliveryCode;
         trip.status = TripStatus.CREATED;
         trip.matchingRadiusMeters = policy.initialRadiusMeters();
         trip.matchingDeadline = now.plus(policy.matchingTimeout());
@@ -132,10 +156,31 @@ public class Trip {
         return transition;
     }
 
-    /** PICKING_UP, ARRIVED, IN_TRIP or COMPLETED, reported by the assigned driver. */
-    public Transition advance(TripStatus target, UUID driver, Instant now) {
+    /**
+     * PICKING_UP, ARRIVED, IN_TRIP or COMPLETED, reported by the assigned driver. Starting needs
+     * the pickup code when the trip has one; completing a delivery needs the delivery code
+     * (README §6). The move is checked first, so codes are only counted in the right state.
+     *
+     * @param code        what the driver entered; ignored for steps that need none
+     * @param maxAttempts wrong entries allowed per code; a wrong entry is counted even though
+     *                    the step is refused, so the caller must keep the change
+     */
+    public Transition advance(TripStatus target, UUID driver, String code, int maxAttempts, Instant now) {
         if (!isAssignedTo(driver)) {
             throw DomainException.invalidTripState("The trip is not assigned to this driver");
+        }
+        TripStateMachine.check(status, target, ActorType.DRIVER);
+        if (target == TripStatus.IN_TRIP && pickupCode != null
+                && !codeMatches("pickup", pickupCode, code, pickupCodeFailures, maxAttempts)) {
+            pickupCodeFailures++;
+            updatedAt = now;
+            throw DomainException.rule("The pickup code is wrong");
+        }
+        if (target == TripStatus.COMPLETED && deliveryCode != null
+                && !codeMatches("delivery", deliveryCode, code, deliveryCodeFailures, maxAttempts)) {
+            deliveryCodeFailures++;
+            updatedAt = now;
+            throw DomainException.rule("The delivery code is wrong");
         }
         Transition transition = moveTo(target, Actor.driver(driver), null, now);
         if (target == TripStatus.COMPLETED) {
@@ -179,6 +224,18 @@ public class Trip {
         matchingRadiusMeters = next;
         updatedAt = now;
         return true;
+    }
+
+    /** Missing codes and locked codes are refused without counting; a wrong code returns {@code false}. */
+    private static boolean codeMatches(String name, String expected, String entered, int failures,
+                                       int maxAttempts) {
+        if (failures >= maxAttempts) {
+            throw DomainException.rule("Too many wrong " + name + " codes; contact support");
+        }
+        if (entered == null || entered.isBlank()) {
+            throw DomainException.rule("The " + name + " code is required");
+        }
+        return HandoverCodes.matches(expected, entered.strip());
     }
 
     public boolean isAssignedTo(UUID driver) {

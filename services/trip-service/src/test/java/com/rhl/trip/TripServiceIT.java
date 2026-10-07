@@ -51,6 +51,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -172,9 +173,18 @@ class TripServiceIT {
         perform(post("/api/v1/trips/" + tripId + "/start-pickup"), customerToken(customer))
                 .andExpect(status().isForbidden());
 
-        for (String step : List.of("start-pickup", "arrive", "start", "complete")) {
-            perform(post("/api/v1/trips/" + tripId + "/" + step), driverToken(near)).andExpect(status().isOk());
-        }
+        // The pickup code is the customer's to hand over; the driver never sees it (README §6).
+        String pickupCode = data(perform(get("/api/v1/trips/" + tripId), customerToken(customer)))
+                .path("pickupCode").asText();
+        assertThat(pickupCode).matches("^[0-9]{4}$");
+        assertThat(data(perform(get("/api/v1/trips/" + tripId), driverToken(near))).has("pickupCode")).isFalse();
+        perform(post("/api/v1/trips/" + tripId + "/start-pickup"), driverToken(near)).andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/arrive"), driverToken(near)).andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(near))
+                .andExpect(status().isUnprocessableEntity());
+        perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(near), Map.of("code", pickupCode))
+                .andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/complete"), driverToken(near)).andExpect(status().isOk());
         // A retried completion changes nothing and publishes nothing (BR-009).
         perform(post("/api/v1/trips/" + tripId + "/complete"), driverToken(near))
                 .andExpect(status().isOk())
@@ -382,24 +392,103 @@ class TripServiceIT {
                 .isEqualTo(1);
     }
 
+    /** UC-05: recipient data only for participants, codes only for the customer, proof on completion. */
+    @Test
+    void aDeliveryIsHandedOverWithItsCodesAndProven() throws Exception {
+        UUID customer = UUID.randomUUID();
+        UUID driver = UUID.randomUUID();
+        candidates(new DriverCandidate(driver, 300, 100));
+        Map<String, Object> delivery = Map.of("recipientName", "Tran Thi Nhan", "recipientPhone", "+84 912 345 678",
+                "packageDescription", "Ho so giay to", "packageSize", "SMALL", "packageWeightGrams", 800,
+                "instructions", "Goi truoc khi den");
+
+        // Delivery details belong to DELIVERY quotes, and DELIVERY quotes need them.
+        book(customer, "deliv-" + UUID.randomUUID(), quote(customer, "1.00", ServiceType.DELIVERY), null, null)
+                .andExpect(status().isUnprocessableEntity());
+        book(customer, "deliv-" + UUID.randomUUID(), quote(customer, "1.00", ServiceType.RIDE), null, delivery)
+                .andExpect(status().isUnprocessableEntity());
+        book(customer, "deliv-" + UUID.randomUUID(), quote(customer, "1.00", ServiceType.DELIVERY), null,
+                Map.of("recipientName", "X", "recipientPhone", "123", "packageDescription", "x",
+                        "packageSize", "SMALL", "packageWeightGrams", 800))
+                .andExpect(status().isUnprocessableEntity());
+
+        JsonNode booked = data(book(customer, "deliv-" + UUID.randomUUID(),
+                quote(customer, "1.00", ServiceType.DELIVERY), null, delivery).andExpect(status().isCreated()));
+        String tripId = booked.path("id").asText();
+        assertThat(booked.path("delivery").path("recipientPhone").asText()).isEqualTo("+84912345678");
+        String pickupCode = booked.path("pickupCode").asText();
+        String deliveryCode = booked.path("deliveryCode").asText();
+        assertThat(pickupCode).matches("^[0-9]{4}$");
+        assertThat(deliveryCode).matches("^[0-9]{4}$");
+
+        // The offer shows the pickup only; nothing about the recipient (BR-013).
+        JsonNode offer = awaitOffer(driver);
+        assertThat(offer.toString()).doesNotContain("Nhan", "912345678");
+        JsonNode accepted = data(perform(post("/api/v1/offers/" + offer.path("id").asText() + "/accept"),
+                driverToken(driver)).andExpect(status().isOk()));
+        // Assigned: the driver sees whom to deliver to, but never the codes.
+        assertThat(accepted.path("delivery").path("recipientName").asText()).isEqualTo("Tran Thi Nhan");
+        assertThat(accepted.has("pickupCode")).isFalse();
+        assertThat(accepted.has("deliveryCode")).isFalse();
+        perform(get("/api/v1/trips/" + tripId), customerToken(UUID.randomUUID())).andExpect(status().isNotFound());
+
+        perform(post("/api/v1/trips/" + tripId + "/start-pickup"), driverToken(driver)).andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/arrive"), driverToken(driver)).andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(driver), Map.of("code", pickupCode))
+                .andExpect(status().isOk());
+
+        // Proof of delivery: the recipient's code. A wrong one is refused and counted.
+        String wrong = deliveryCode.equals("0000") ? "1111" : "0000";
+        perform(post("/api/v1/trips/" + tripId + "/complete"), driverToken(driver), Map.of("code", wrong))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.message").value("The delivery code is wrong"));
+        assertThat(count("SELECT delivery_code_failures FROM trips WHERE id = ?::uuid", tripId)).isEqualTo(1);
+        perform(post("/api/v1/trips/" + tripId + "/complete"), driverToken(driver), Map.of("code", deliveryCode))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("COMPLETED"));
+        assertThat(jdbc.queryForObject("SELECT method FROM delivery_proofs WHERE trip_id = ?::uuid", String.class,
+                tripId)).isEqualTo("DELIVERY_CODE");
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM delivery_proofs")).hasMessageContaining("append-only");
+
+        // Recipient data never leaves trip-service in events.
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(() -> assertThat(count(
+                "SELECT COUNT(*) FROM outbox_events WHERE message_key = ? AND status = 'PENDING'", tripId))
+                .isZero());
+        List<JsonNode> events = consume(Topics.TRIP_EVENTS, tripId, 6);
+        assertThat(events.getLast().path("eventType").asText()).isEqualTo("TripCompleted");
+        assertThat(events.toString()).doesNotContain("Nhan", "912345678", pickupCode + "\"", deliveryCode + "\"");
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     /** Stubs pricing-service: a valid quote for {@code customer} from PICKUP to DROPOFF. */
     private UUID quote(UUID customer, String surge) {
+        return quote(customer, surge, ServiceType.RIDE);
+    }
+
+    private UUID quote(UUID customer, String surge, ServiceType service) {
         UUID quoteId = UUID.randomUUID();
         Stop pickup = new Stop((Double) PICKUP.get("latitude"), (Double) PICKUP.get("longitude"),
                 (String) PICKUP.get("address"));
         Stop dropoff = new Stop((Double) DROPOFF.get("latitude"), (Double) DROPOFF.get("longitude"),
                 (String) DROPOFF.get("address"));
         when(pricing.validQuote(eq(quoteId), eq(customer))).thenReturn(new PricingClient.Quote(quoteId,
-                ServiceType.RIDE, pickup, dropoff,
+                service, pickup, dropoff,
                 new FareSnapshot(quoteId, 27_000L, "VND", new BigDecimal(surge), 1, 2_764, 452)));
         return quoteId;
     }
 
     private ResultActions book(UUID customer, String key, UUID quoteId, String acceptedSurge) throws Exception {
+        return book(customer, key, quoteId, acceptedSurge, null);
+    }
+
+    private ResultActions book(UUID customer, String key, UUID quoteId, String acceptedSurge,
+                               Map<String, Object> delivery) throws Exception {
         Map<String, Object> body = new HashMap<>();
         body.put("quoteId", quoteId.toString());
+        if (delivery != null) {
+            body.put("delivery", delivery);
+        }
         if (acceptedSurge != null) {
             body.put("acceptedSurgeMultiplier", new BigDecimal(acceptedSurge));
         }

@@ -5,15 +5,24 @@ import com.rhl.common.security.CurrentUser;
 import com.rhl.common.security.Role;
 import com.rhl.common.web.ApiException;
 import com.rhl.common.web.ErrorCode;
+import com.rhl.trip.TripServiceProperties;
 import com.rhl.trip.domain.Actor;
+import com.rhl.trip.domain.ActorType;
 import com.rhl.trip.domain.CancelReason;
+import com.rhl.trip.domain.DeliveryDetails;
+import com.rhl.trip.domain.DeliveryProof;
 import com.rhl.trip.domain.DomainException;
+import com.rhl.trip.domain.HandoverCodes;
 import com.rhl.trip.domain.MatchingPolicy;
+import com.rhl.trip.domain.PackageSize;
+import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Transition;
 import com.rhl.trip.domain.Trip;
 import com.rhl.trip.domain.TripStatus;
 import com.rhl.trip.domain.TripStatusChange;
 import com.rhl.trip.infrastructure.client.PricingClient;
+import com.rhl.trip.infrastructure.persistence.DeliveryDetailsRepository;
+import com.rhl.trip.infrastructure.persistence.DeliveryProofRepository;
 import com.rhl.trip.infrastructure.persistence.DriverOfferRepository;
 import com.rhl.trip.infrastructure.persistence.IdempotencyKeyRepository;
 import com.rhl.trip.infrastructure.persistence.TripRepository;
@@ -47,11 +56,21 @@ public class TripService {
     private final ApplicationEventPublisher afterCommit;
     private final MatchingPolicy policy;
     private final PricingClient pricing;
+    private final DeliveryDetailsRepository deliveries;
+    private final DeliveryProofRepository proofs;
+    private final TripServiceProperties properties;
     private final TransactionTemplate tx;
     private final Clock clock;
 
-    /** @param acceptedSurgeMultiplier the surge the customer confirmed (BR-006), {@code null} if none shown */
-    public record CreateCommand(UUID quoteId, BigDecimal acceptedSurgeMultiplier) {
+    /**
+     * @param acceptedSurgeMultiplier the surge the customer confirmed (BR-006), {@code null} if none shown
+     * @param delivery                required for DELIVERY quotes, refused for RIDE
+     */
+    public record CreateCommand(UUID quoteId, BigDecimal acceptedSurgeMultiplier, DeliveryCommand delivery) {
+    }
+
+    public record DeliveryCommand(String recipientName, String recipientPhone, String packageDescription,
+                                  PackageSize packageSize, int packageWeightGrams, String instructions) {
     }
 
     /**
@@ -70,7 +89,13 @@ public class TripService {
         // Remote call outside any transaction; the claim below settles races between retries.
         PricingClient.Quote quote = pricing.validQuote(command.quoteId(), customerId);
         quote.fare().requireSurgeConsent(command.acceptedSurgeMultiplier());
-        return tx.execute(status -> book(scope, idempotencyKey, requestHash, customerId, quote));
+        if ((quote.serviceType() == ServiceType.DELIVERY) != (command.delivery() != null)) {
+            throw DomainException.rule(quote.serviceType() == ServiceType.DELIVERY
+                    ? "A delivery needs the recipient and package details"
+                    : "Only deliveries take recipient and package details");
+        }
+        return tx.execute(status -> book(scope, idempotencyKey, requestHash, customerId, quote,
+                command.delivery()));
     }
 
     private Optional<TripViews.TripView> replay(String scope, String idempotencyKey, String requestHash) {
@@ -79,12 +104,13 @@ public class TripService {
                 throw new ApiException(ErrorCode.IDEMPOTENCY_KEY_REUSED,
                         "This Idempotency-Key was already used for a different request");
             }
-            return TripViews.TripView.of(trips.findById(entry.resourceId()).orElseThrow());
+            return TripViews.TripView.of(trips.findById(entry.resourceId()).orElseThrow(),
+                    deliveries.findById(entry.resourceId()).orElse(null), ActorType.CUSTOMER);
         });
     }
 
     private TripViews.TripView book(String scope, String idempotencyKey, String requestHash, UUID customerId,
-                                    PricingClient.Quote quote) {
+                                    PricingClient.Quote quote, DeliveryCommand deliveryCommand) {
         Instant now = clock.instant();
         UUID tripId = UuidV7.random();
         if (!idempotencyKeys.claim(scope, idempotencyKey, requestHash, tripId, now)) {
@@ -99,21 +125,33 @@ public class TripService {
             throw ApiException.conflict("This quote was already used for a trip; ask for a new one");
         }
 
+        TripServiceProperties.Codes codes = properties.codes();
+        boolean delivery = quote.serviceType() == ServiceType.DELIVERY;
         Trip trip = Trip.create(tripId, customerId, quote.serviceType(), quote.pickup(), quote.dropoff(),
-                quote.fare(), policy, now);
+                quote.fare(), policy,
+                codes.pickupRequired().contains(quote.serviceType()) ? HandoverCodes.generate(codes.length()) : null,
+                delivery ? HandoverCodes.generate(codes.length()) : null, now);
+        DeliveryDetails details = delivery ? DeliveryDetails.of(tripId, deliveryCommand.recipientName(),
+                deliveryCommand.recipientPhone(), deliveryCommand.packageDescription(), deliveryCommand.packageSize(),
+                deliveryCommand.packageWeightGrams(), deliveryCommand.instructions(),
+                properties.delivery().maxWeightGrams(), now) : null;
         Transition created = new Transition(tripId, null, TripStatus.CREATED, Actor.customer(customerId), null, now);
         Transition matching = trip.startMatching(now);
         trips.saveAndFlush(trip);
+        if (details != null) {
+            deliveries.save(details);
+        }
         history.save(TripStatusChange.of(created));
         history.save(TripStatusChange.of(matching));
         events.requested(trip, now);
         afterCommit.publishEvent(new AfterCommit.Dispatch(tripId));
-        return TripViews.TripView.of(trip);
+        return TripViews.TripView.of(trip, details, ActorType.CUSTOMER);
     }
 
     @Transactional(readOnly = true)
     public TripViews.TripView get(CurrentUser user, UUID tripId) {
-        return TripViews.TripView.of(visible(user, tripId));
+        Trip trip = trips.findById(tripId).orElseThrow(() -> ApiException.notFound("Trip"));
+        return view(trip, actorFor(user, trip).type());
     }
 
     @Transactional(readOnly = true)
@@ -146,7 +184,7 @@ public class TripService {
         Trip trip = trips.findByIdForUpdate(tripId).orElseThrow(() -> ApiException.notFound("Trip"));
         Actor actor = actorFor(user, trip);
         if (trip.getStatus() == TripStatus.CANCELLED) {
-            return TripViews.TripView.of(trip);
+            return view(trip, actor.type());
         }
         Instant now = clock.instant();
         Transition transition = trip.cancel(actor, reason, note, now);
@@ -157,24 +195,40 @@ public class TripService {
             afterCommit.publishEvent(new AfterCommit.ReleaseHold(offer.getDriverId(), offer.getId()));
         });
         record(trip, transition);
-        return TripViews.TripView.of(trip);
+        return view(trip, actor.type());
     }
 
     /**
      * PICKING_UP → ARRIVED → IN_TRIP → COMPLETED by the assigned driver. Repeating the step the
      * trip is already in returns it unchanged, so a retried completion never publishes a second
-     * {@code TripCompleted} (BR-009).
+     * {@code TripCompleted} (BR-009). Starting checks the pickup code, completing a delivery the
+     * delivery code; a wrong code is counted and kept although the step is refused, hence no
+     * rollback for domain errors (nothing else changes before they are thrown).
+     *
+     * @param code what the driver entered, {@code null} for steps that need none
      */
-    @Transactional
-    public TripViews.TripView advance(UUID driverId, UUID tripId, TripStatus target) {
+    @Transactional(noRollbackFor = DomainException.class)
+    public TripViews.TripView advance(UUID driverId, UUID tripId, TripStatus target, String code) {
         Trip trip = trips.findByIdForUpdate(tripId)
                 .filter(t -> t.isAssignedTo(driverId))
                 .orElseThrow(() -> ApiException.notFound("Trip"));
         if (trip.getStatus() == target) {
-            return TripViews.TripView.of(trip);
+            return view(trip, ActorType.DRIVER);
         }
-        record(trip, trip.advance(target, driverId, clock.instant()));
-        return TripViews.TripView.of(trip);
+        Instant now = clock.instant();
+        Transition transition = trip.advance(target, driverId, code, properties.codes().maxAttempts(), now);
+        if (target == TripStatus.COMPLETED && trip.getServiceType() == ServiceType.DELIVERY) {
+            proofs.save(DeliveryProof.byCode(tripId, driverId, now));
+        }
+        record(trip, transition);
+        return view(trip, ActorType.DRIVER);
+    }
+
+    /** The trip as {@code viewer} may see it: delivery details for participants, codes for the customer. */
+    TripViews.TripView view(Trip trip, ActorType viewer) {
+        DeliveryDetails details = trip.getServiceType() == ServiceType.DELIVERY
+                ? deliveries.findById(trip.getId()).orElse(null) : null;
+        return TripViews.TripView.of(trip, details, viewer);
     }
 
     private void record(Trip trip, Transition transition) {

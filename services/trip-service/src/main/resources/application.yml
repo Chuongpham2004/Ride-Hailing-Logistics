@@ -75,6 +75,14 @@ rhl:
     hold-grace: 5s
     tick-interval: 1s
     batch-size: 50
+  # README §6: pickup confirmation and delivery proof (TBD-08 chose a delivery code).
+  codes:
+    pickup-required: [RIDE, DELIVERY]
+    length: 4
+    max-attempts: 5
+  delivery:
+    # Placeholder until TBD-08 sets package limits.
+    max-weight-grams: 20000
   location:
     base-url: ${LOCATION_SERVICE_URL:http://localhost:8082}
     connect-timeout: 500ms
