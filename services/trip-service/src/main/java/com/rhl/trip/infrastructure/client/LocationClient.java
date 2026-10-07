@@ -6,6 +6,7 @@ import com.rhl.trip.TripServiceProperties;
 import com.rhl.trip.domain.DriverCandidate;
 import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Stop;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -18,16 +19,18 @@ import java.util.UUID;
 
 /**
  * Nearby AVAILABLE drivers from location-service ({@code GET /internal/v1/drivers/nearby},
- * README §8.5). Short timeouts and no retry here: a failed round is simply tried again on the
- * next dispatcher tick.
+ * README §8.5). Short timeouts, one bounded retry and a circuit breaker: while location-service
+ * is failing, dispatch rounds fail at once and are tried again on a later dispatcher tick.
  */
 @Component
 public class LocationClient {
 
     private final RestClient rest;
+    private final RemoteCalls calls;
 
     public LocationClient(RestClient.Builder builder, TripServiceProperties properties) {
         TripServiceProperties.Remote config = properties.location();
+        this.calls = new RemoteCalls("location-service", properties.resilience());
         HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
         factory.setReadTimeout(config.readTimeout());
@@ -47,7 +50,7 @@ public class LocationClient {
     public List<DriverCandidate> nearby(ServiceType serviceType, Stop pickup, int radiusMeters, int limit) {
         JsonNode response;
         try {
-            response = rest.get()
+            response = calls.read(() -> rest.get()
                     .uri(uri -> uri.path("/internal/v1/drivers/nearby")
                             .queryParam("latitude", pickup.latitude())
                             .queryParam("longitude", pickup.longitude())
@@ -56,8 +59,8 @@ public class LocationClient {
                             .queryParam("limit", limit)
                             .build())
                     .retrieve()
-                    .body(JsonNode.class);
-        } catch (RestClientException e) {
+                    .body(JsonNode.class));
+        } catch (RestClientException | CallNotPermittedException e) {
             throw new LocationUnavailableException(e);
         }
         List<DriverCandidate> candidates = new ArrayList<>();
