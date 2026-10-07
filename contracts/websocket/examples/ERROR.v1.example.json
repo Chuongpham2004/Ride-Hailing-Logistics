@@ -1,0 +1,12 @@
+{
+  "messageId": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e05",
+  "type": "ERROR",
+  "version": 1,
+  "sentAt": "2026-10-07T09:00:00Z",
+  "sequence": 4,
+  "data": {
+    "code": "RATE_LIMIT_EXCEEDED",
+    "message": "Location reports must be at least 1 s apart",
+    "inReplyTo": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e23"
+  }
+}

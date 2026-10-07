@@ -1,0 +1,16 @@
+{
+  "messageId": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e13",
+  "type": "SESSION_READY",
+  "version": 1,
+  "sentAt": "2026-10-07T09:00:00Z",
+  "sequence": 1,
+  "data": {
+    "sessionId": "7c1e2f5a-3b4d-4e6f-8a9b-0c1d2e3f4a5b",
+    "userId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "roles": [
+      "DRIVER"
+    ],
+    "tokenExpiresAt": "2026-10-07T09:15:00Z",
+    "heartbeatIntervalSeconds": 15
+  }
+}
