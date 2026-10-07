@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -64,4 +65,22 @@ public interface TripRepository extends JpaRepository<Trip, UUID> {
             nativeQuery = true)
     List<Trip> findDriverPage(@Param("userId") UUID userId, @Param("before") UUID before,
                               @Param("limit") int limit);
+
+    /** Staff search (FR-ADM-001): optional filters, newest first, keyset pagination on the UUIDv7 id. */
+    @Query(value = """
+            SELECT * FROM trips
+            WHERE (CAST(:status AS VARCHAR) IS NULL OR status = CAST(:status AS VARCHAR))
+              AND (CAST(:customerId AS UUID) IS NULL OR customer_id = CAST(:customerId AS UUID))
+              AND (CAST(:driverId AS UUID) IS NULL OR driver_id = CAST(:driverId AS UUID))
+              AND (CAST(:serviceType AS VARCHAR) IS NULL OR service_type = CAST(:serviceType AS VARCHAR))
+              AND (CAST(:createdFrom AS TIMESTAMPTZ) IS NULL OR created_at >= CAST(:createdFrom AS TIMESTAMPTZ))
+              AND (CAST(:createdTo AS TIMESTAMPTZ) IS NULL OR created_at < CAST(:createdTo AS TIMESTAMPTZ))
+              AND (CAST(:before AS UUID) IS NULL OR id < CAST(:before AS UUID))
+            ORDER BY id DESC
+            LIMIT :limit
+            """, nativeQuery = true)
+    List<Trip> search(@Param("status") String status, @Param("customerId") UUID customerId,
+                      @Param("driverId") UUID driverId, @Param("serviceType") String serviceType,
+                      @Param("createdFrom") Instant createdFrom, @Param("createdTo") Instant createdTo,
+                      @Param("before") UUID before, @Param("limit") int limit);
 }

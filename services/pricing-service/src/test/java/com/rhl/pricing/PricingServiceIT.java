@@ -297,6 +297,45 @@ class PricingServiceIT {
         assertThat(event.path("payload").path("fee").asLong()).isEqualTo(10_000);
     }
 
+    /** FR-CAN: the fee is shown before cancelling, decided by the same rule, without storing anything. */
+    @Test
+    void cancellationFeesCanBePreviewedWithoutBeingCharged() throws Exception {
+        mvc.perform(preview("CUSTOMER", "MATCHING", "CHANGED_MIND", null, 27_000L))
+                .andExpect(jsonPath("$.data.decision").value("NOT_ASSIGNED"))
+                .andExpect(jsonPath("$.data.fee").value(0));
+        Instant justAccepted = Instant.now().minusSeconds(30);
+        mvc.perform(preview("CUSTOMER", "ACCEPTED", "CHANGED_MIND", justAccepted, 27_000L))
+                .andExpect(jsonPath("$.data.decision").value("WITHIN_FREE_WINDOW"))
+                .andExpect(jsonPath("$.data.fee").value(0))
+                .andExpect(jsonPath("$.data.freeUntil").value(justAccepted.plusSeconds(120).toString()))
+                .andExpect(jsonPath("$.data.ruleVersion").value(1));
+        mvc.perform(preview("CUSTOMER", "PICKING_UP", "WAIT_TOO_LONG", Instant.now().minusSeconds(600), 27_000L))
+                .andExpect(jsonPath("$.data.decision").value("LATE_CANCELLATION"))
+                .andExpect(jsonPath("$.data.fee").value(10_000))
+                .andExpect(jsonPath("$.data.currency").value("VND"));
+        // A no-show fee never exceeds the booked price.
+        mvc.perform(preview("DRIVER", "ARRIVED", "CUSTOMER_NO_SHOW", Instant.now().minusSeconds(900), 12_000L))
+                .andExpect(jsonPath("$.data.decision").value("NO_SHOW"))
+                .andExpect(jsonPath("$.data.fee").value(12_000));
+        mvc.perform(preview("STAFF", "IN_TRIP", "OTHER", Instant.now().minusSeconds(900), 27_000L))
+                .andExpect(jsonPath("$.data.decision").value("NOT_CHARGEABLE"));
+        mvc.perform(preview("HACKER", "ACCEPTED", "OTHER", null, null)).andExpect(status().isBadRequest());
+    }
+
+    private MockHttpServletRequestBuilder preview(String actor, String status, String reason, Instant acceptedAt,
+                                                  Long bookedFare) {
+        MockHttpServletRequestBuilder request = get("/internal/v1/cancellation-fees/preview")
+                .param("serviceType", "RIDE").param("actorType", actor).param("status", status)
+                .param("reason", reason);
+        if (acceptedAt != null) {
+            request.param("acceptedAt", acceptedAt.toString());
+        }
+        if (bookedFare != null) {
+            request.param("bookedFare", bookedFare.toString());
+        }
+        return request;
+    }
+
     @Test
     void quotesValidateTheirInput() throws Exception {
         UUID customer = UUID.randomUUID();

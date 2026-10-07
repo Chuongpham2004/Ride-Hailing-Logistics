@@ -49,4 +49,6 @@ public interface DriverOfferRepository extends JpaRepository<DriverOffer, UUID> 
             FOR UPDATE SKIP LOCKED
             """, nativeQuery = true)
     List<DriverOffer> lockExpired(@Param("now") Instant now, @Param("limit") int limit);
+
+    List<DriverOffer> findByTripIdOrderByCreatedAt(UUID tripId);
 }
