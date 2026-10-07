@@ -19,6 +19,7 @@ import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Transition;
 import com.rhl.trip.domain.Trip;
 import com.rhl.trip.domain.TripStatus;
+import com.rhl.trip.domain.TripStateMachine;
 import com.rhl.trip.domain.TripStatusChange;
 import com.rhl.trip.infrastructure.client.PricingClient;
 import com.rhl.trip.infrastructure.persistence.DeliveryDetailsRepository;
@@ -36,7 +37,9 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -47,6 +50,8 @@ public class TripService {
 
     /** Staff who may look up and cancel any trip (README §3); cancellations are recorded with the actor. */
     private static final Role[] STAFF = {Role.SUPPORT_STAFF, Role.ADMINISTRATOR};
+    /** Staff cancellations are exceptions: they say why, in more than a word (BR-014). */
+    static final int MIN_STAFF_NOTE = 10;
 
     private final TripRepository trips;
     private final DriverOfferRepository offers;
@@ -59,6 +64,7 @@ public class TripService {
     private final DeliveryDetailsRepository deliveries;
     private final DeliveryProofRepository proofs;
     private final TripServiceProperties properties;
+    private final AuditLog audit;
     private final TransactionTemplate tx;
     private final Clock clock;
 
@@ -176,8 +182,22 @@ public class TripService {
     }
 
     /**
+     * What cancelling now would cost the customer (FR-CAN: shown before confirming), decided by
+     * pricing-service with the rule in force. Only for someone who may cancel the trip now.
+     */
+    @Transactional(readOnly = true)
+    public PricingClient.CancellationFee cancellationFee(CurrentUser user, UUID tripId, CancelReason reason) {
+        Trip trip = trips.findById(tripId).orElseThrow(() -> ApiException.notFound("Trip"));
+        Actor actor = actorFor(user, trip);
+        TripStateMachine.check(trip.getStatus(), TripStatus.CANCELLED, actor.type());
+        return pricing.cancellationFee(trip.getServiceType(), actor.type().name(), trip.getStatus().name(),
+                reason.name(), trip.getAcceptedAt(), trip.getFare() == null ? null : trip.getFare().quotedFare());
+    }
+
+    /**
      * Cancels on behalf of the customer, the assigned driver or staff (FR-CAN). Repeating a
-     * cancellation returns the cancelled trip without a second event (idempotent).
+     * cancellation returns the cancelled trip without a second event (idempotent). A staff
+     * cancellation is the exception process (README §6): it needs a note and is audited.
      */
     @Transactional
     public TripViews.TripView cancel(CurrentUser user, UUID tripId, CancelReason reason, String note) {
@@ -186,8 +206,23 @@ public class TripService {
         if (trip.getStatus() == TripStatus.CANCELLED) {
             return view(trip, actor.type());
         }
+        if (actor.type() == ActorType.STAFF && (note == null || note.strip().length() < MIN_STAFF_NOTE)) {
+            throw DomainException.rule("A staff cancellation needs a note of at least " + MIN_STAFF_NOTE
+                    + " characters");
+        }
         Instant now = clock.instant();
+        TripStatus from = trip.getStatus();
         Transition transition = trip.cancel(actor, reason, note, now);
+        if (actor.type() == ActorType.STAFF) {
+            Map<String, Object> delta = new LinkedHashMap<>();
+            delta.put("fromStatus", from.name());
+            delta.put("reason", reason.name());
+            delta.put("serviceType", trip.getServiceType().name());
+            if (trip.getDriverId() != null) {
+                delta.put("driverId", trip.getDriverId().toString());
+            }
+            audit.record(actor.id(), "TRIP_CANCELLED_BY_STAFF", "TRIP", tripId, "SUCCESS", delta);
+        }
         offers.findPendingByTripIdForUpdate(tripId).ifPresent(offer -> {
             offer.withdraw(now);
             offers.saveAndFlush(offer);

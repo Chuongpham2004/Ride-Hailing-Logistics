@@ -38,6 +38,7 @@ import org.testcontainers.kafka.KafkaContainer;
 
 import java.math.BigDecimal;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -56,6 +57,7 @@ import static org.awaitility.Awaitility.await;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -459,6 +461,92 @@ class TripServiceIT {
         assertThat(events.toString()).doesNotContain("Nhan", "912345678", pickupCode + "\"", deliveryCode + "\"");
     }
 
+    /** FR-CAN: the fee is shown before cancelling; only to someone who may cancel the trip now. */
+    @Test
+    void theCancellationFeeIsShownBeforeCancelling() throws Exception {
+        UUID customer = UUID.randomUUID();
+        UUID driver = UUID.randomUUID();
+        candidates(new DriverCandidate(driver, 300, 100));
+        String tripId = data(createTrip(customer, "fee-" + UUID.randomUUID()).andExpect(status().isCreated()))
+                .path("id").asText();
+        perform(post("/api/v1/offers/" + awaitOffer(driver).path("id").asText() + "/accept"), driverToken(driver))
+                .andExpect(status().isOk());
+        when(pricing.cancellationFee(any(), any(), any(), any(), any(), any())).thenReturn(
+                new PricingClient.CancellationFee("LATE_CANCELLATION", 10_000, "VND", 1, null));
+
+        perform(get("/api/v1/trips/" + tripId + "/cancellation-fee").param("reason", "CHANGED_MIND"),
+                customerToken(customer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.decision").value("LATE_CANCELLATION"))
+                .andExpect(jsonPath("$.data.fee").value(10_000));
+        verify(pricing).cancellationFee(eq(ServiceType.RIDE), eq("CUSTOMER"), eq("ACCEPTED"), eq("CHANGED_MIND"),
+                org.mockito.ArgumentMatchers.notNull(), eq(27_000L));
+        perform(get("/api/v1/trips/" + tripId + "/cancellation-fee").param("reason", "CHANGED_MIND"),
+                customerToken(UUID.randomUUID())).andExpect(status().isNotFound());
+
+        // In the trip the customer can no longer cancel: no fee to show.
+        perform(post("/api/v1/trips/" + tripId + "/start-pickup"), driverToken(driver)).andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/arrive"), driverToken(driver)).andExpect(status().isOk());
+        String code = data(perform(get("/api/v1/trips/" + tripId), customerToken(customer))).path("pickupCode")
+                .asText();
+        perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(driver), Map.of("code", code))
+                .andExpect(status().isOk());
+        perform(get("/api/v1/trips/" + tripId + "/cancellation-fee").param("reason", "CHANGED_MIND"),
+                customerToken(customer))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.code").value("INVALID_TRIP_STATE"));
+    }
+
+    /** README §3: support staff look trips up (audited) and cancel by exception with a note (BR-014). */
+    @Test
+    void staffLookTripsUpAndCancelByExceptionOnTheRecord() throws Exception {
+        UUID customer = UUID.randomUUID();
+        UUID driver = UUID.randomUUID();
+        UUID staff = UUID.randomUUID();
+        candidates(new DriverCandidate(driver, 300, 100));
+        String tripId = data(createTrip(customer, "staff-" + UUID.randomUUID()).andExpect(status().isCreated()))
+                .path("id").asText();
+        perform(post("/api/v1/offers/" + awaitOffer(driver).path("id").asText() + "/accept"), driverToken(driver))
+                .andExpect(status().isOk());
+
+        perform(get("/api/v1/admin/trips").param("customerId", customer.toString()), staffToken(staff))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(tripId));
+        perform(get("/api/v1/admin/trips").param("customerId", customer.toString()).param("status", "COMPLETED"),
+                staffToken(staff))
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+        perform(get("/api/v1/admin/trips").param("driverId", driver.toString())
+                        .param("createdFrom", Instant.now().minusSeconds(3600).toString()), staffToken(staff))
+                .andExpect(jsonPath("$.data.items[0].id").value(tripId));
+        perform(get("/api/v1/admin/trips"), customerToken(customer)).andExpect(status().isForbidden());
+
+        perform(get("/api/v1/admin/trips/" + tripId), staffToken(staff))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.trip.status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.data.trip.pickupCode").doesNotExist())
+                .andExpect(jsonPath("$.data.history.length()").value(3))
+                .andExpect(jsonPath("$.data.offers[0].driverId").value(driver.toString()))
+                .andExpect(jsonPath("$.data.offers[0].status").value("ACCEPTED"))
+                .andExpect(jsonPath("$.data.pickupCodeFailures").value(0));
+        assertThat(count("SELECT COUNT(*) FROM audit_records WHERE action = 'TRIP_VIEWED' AND target_id = ?",
+                tripId)).isEqualTo(1);
+
+        // An exception needs a reason in words; the note stays on the trip, not in the audit delta.
+        perform(post("/api/v1/trips/" + tripId + "/cancel"), staffToken(staff), Map.of("reason", "SAFETY_CONCERN"))
+                .andExpect(status().isUnprocessableEntity());
+        perform(post("/api/v1/trips/" + tripId + "/cancel"), staffToken(staff),
+                Map.of("reason", "SAFETY_CONCERN", "note", "Customer reported a safety issue by phone"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("CANCELLED"))
+                .andExpect(jsonPath("$.data.cancelledBy").value("STAFF"));
+        String delta = jdbc.queryForObject("SELECT delta::text FROM audit_records WHERE action = "
+                + "'TRIP_CANCELLED_BY_STAFF' AND target_id = ? AND actor_id = ?", String.class, tripId, staff);
+        assertThat(delta).contains("\"fromStatus\": \"ACCEPTED\"").contains("SAFETY_CONCERN")
+                .doesNotContain("phone");
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM audit_records")).hasMessageContaining("append-only");
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     /** Stubs pricing-service: a valid quote for {@code customer} from PICKUP to DROPOFF. */
@@ -561,6 +649,10 @@ class TripServiceIT {
 
     private static RequestPostProcessor customerToken(UUID id) {
         return jwt().jwt(j -> j.subject(id.toString())).authorities(new SimpleGrantedAuthority("ROLE_CUSTOMER"));
+    }
+
+    private static RequestPostProcessor staffToken(UUID id) {
+        return jwt().jwt(j -> j.subject(id.toString())).authorities(new SimpleGrantedAuthority("ROLE_SUPPORT_STAFF"));
     }
 
     private static RequestPostProcessor driverToken(UUID id) {

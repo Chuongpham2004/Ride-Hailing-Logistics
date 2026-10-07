@@ -18,8 +18,23 @@ import java.util.Set;
 @Validated
 @ConfigurationProperties(prefix = "rhl")
 public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @NotNull Codes codes,
-                                    @Valid @NotNull Delivery delivery, @Valid @NotNull Remote location,
-                                    @Valid @NotNull Remote pricing, @Valid @NotNull Kafka kafka) {
+                                    @Valid @NotNull Delivery delivery, @Valid @NotNull Resilience resilience,
+                                    @Valid @NotNull Remote location, @Valid @NotNull Remote pricing,
+                                    @Valid @NotNull Kafka kafka) {
+
+    /**
+     * Circuit breaker and retry applied to each remote service (README §8.5).
+     *
+     * @param failureRateThreshold percentage of failed calls that opens the circuit
+     * @param slidingWindowSize    calls the failure rate is measured over
+     * @param minimumCalls         calls needed before the rate counts
+     * @param openFor              how long calls fail fast before a few are let through again
+     * @param maxAttempts          attempts per call, the first included (idempotent GETs only)
+     */
+    public record Resilience(@Min(1) @Max(100) int failureRateThreshold, @Min(1) int slidingWindowSize,
+                             @Min(1) int minimumCalls, @NotNull Duration openFor, @Min(1) @Max(5) int maxAttempts,
+                             @NotNull Duration retryWait) {
+    }
 
     /**
      * Handover codes (README §6: start needs confirmation/OTP if enabled; DELIVERY completion

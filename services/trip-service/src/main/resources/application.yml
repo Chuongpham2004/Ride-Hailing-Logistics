@@ -83,6 +83,16 @@ rhl:
   delivery:
     # Placeholder until TBD-08 sets package limits.
     max-weight-grams: 20000
+  # Per remote service: a failure rate above the threshold over the window opens the circuit, so
+  # calls fail fast (503 / next dispatcher tick) instead of piling up on a dead service. Only
+  # idempotent GETs are retried, and only on network errors and 5xx.
+  resilience:
+    failure-rate-threshold: 50
+    sliding-window-size: 20
+    minimum-calls: 10
+    open-for: 10s
+    max-attempts: 2
+    retry-wait: 200ms
   location:
     base-url: ${LOCATION_SERVICE_URL:http://localhost:8082}
     connect-timeout: 500ms

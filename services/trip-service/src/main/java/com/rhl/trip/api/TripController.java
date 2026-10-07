@@ -8,6 +8,7 @@ import com.rhl.trip.application.TripService;
 import com.rhl.trip.application.TripViews;
 import com.rhl.trip.domain.CancelReason;
 import com.rhl.trip.domain.PackageSize;
+import com.rhl.trip.infrastructure.client.PricingClient;
 import com.rhl.trip.domain.TripStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
@@ -112,7 +113,17 @@ public class TripController {
         return ApiResponse.ok(trips.history(CurrentUser.get(), tripId));
     }
 
-    /** Customer, assigned driver or support staff; who may cancel in which state follows the state machine. */
+    /** What cancelling now would cost, for whoever may cancel (FR-CAN: shown before confirming). */
+    @GetMapping("/{tripId}/cancellation-fee")
+    public ApiResponse<PricingClient.CancellationFee> cancellationFee(@PathVariable UUID tripId,
+                                                                      @RequestParam CancelReason reason) {
+        return ApiResponse.ok(trips.cancellationFee(CurrentUser.get(), tripId, reason));
+    }
+
+    /**
+     * Customer, assigned driver or support staff; who may cancel in which state follows the state
+     * machine. Staff must add a note; their cancellations are audited.
+     */
     @PostMapping("/{tripId}/cancel")
     public ApiResponse<TripViews.TripView> cancel(@PathVariable UUID tripId, @Valid @RequestBody CancelRequest request) {
         return ApiResponse.ok(trips.cancel(CurrentUser.get(), tripId, request.reason(), request.note()));
