@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rhl:ws:domain-event:v1",
   "title": "Forwarded domain event v1 (server -> client)",
-  "description": "A domain event pushed to the users it concerns: offers and wallet changes to the driver, trip changes to the customer and the assigned driver, payments and refunds to the customer. type is the event type in UPPER_SNAKE_CASE (DriverOfferCreated -> DRIVER_OFFER_CREATED), version is the eventVersion, messageId is the eventId, aggregateVersion and correlationId are those of the event, and data is the event payload exactly as in contracts/events/<EventType>.v<version>.schema.json.",
+  "description": "A domain event pushed to the users it concerns: offers and wallet changes to the driver, trip changes to the customer and the assigned driver, payments and refunds to the customer. The driver position of a followed trip has its own message, TRIP_DRIVER_LOCATION. type is the event type in UPPER_SNAKE_CASE (DriverOfferCreated -> DRIVER_OFFER_CREATED), version is the eventVersion, messageId is the eventId, aggregateVersion and correlationId are those of the event, and data is the event payload exactly as in contracts/events/<EventType>.v<version>.schema.json.",
   "type": "object",
   "allOf": [
     {

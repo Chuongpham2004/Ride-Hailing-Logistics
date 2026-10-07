@@ -26,12 +26,22 @@ public record RealtimeProperties(@Valid @NotNull Realtime realtime, @Valid @NotN
      * @param sendTimeLimit        a client this slow to read is disconnected
      * @param sendBufferBytes      bytes queued for a slow client before it is disconnected
      * @param telemetryMinInterval smallest gap between two accepted location reports of a driver
+     * @param trip                 trip channel: who may follow a trip and for how long
      */
     public record Realtime(@NotBlank String instanceId, @NotEmpty List<String> allowedOrigins,
                            @NotNull Duration heartbeatTimeout, @NotNull Duration sweepInterval,
                            @NotNull Duration sessionTtl, @Min(1024) int maxMessageBytes,
                            @NotNull Duration sendTimeLimit, @Min(1024) int sendBufferBytes,
-                           @NotNull Duration telemetryMinInterval) {
+                           @NotNull Duration telemetryMinInterval, @Valid @NotNull Trip trip) {
+    }
+
+    /**
+     * @param grace            after a trip ends its customer still sees the driver this long, then
+     *                         following stops (BR-013)
+     * @param participantsTtl  lifetime of a running trip's participant record, renewed by each trip event
+     * @param maxSubscriptions trips one connection may follow at once
+     */
+    public record Trip(@NotNull Duration grace, @NotNull Duration participantsTtl, @Min(1) int maxSubscriptions) {
     }
 
     public record Kafka(@Min(1) int partitions, @Min(1) short replicas) {

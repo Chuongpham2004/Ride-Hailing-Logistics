@@ -73,7 +73,8 @@ import static org.awaitility.Awaitility.await;
 @Testcontainers
 @TestPropertySource(properties = {
         "rhl.realtime.instance-id=it-instance",
-        "rhl.realtime.heartbeat-timeout=8s",
+        "rhl.realtime.heartbeat-timeout=10s",
+        "rhl.realtime.trip.grace=3s",
         "rhl.realtime.sweep-interval=200ms",
         "rhl.realtime.telemetry-min-interval=1s"})
 class RealtimeGatewayIT {
@@ -138,7 +139,7 @@ class RealtimeGatewayIT {
     void listenerAssigned() {
         MessageListenerContainer container = listeners.getListenerContainer(DomainEventListener.LISTENER_ID);
         await().atMost(Duration.ofSeconds(60)).until(() -> container != null
-                && container.getAssignedPartitions() != null && container.getAssignedPartitions().size() == 12);
+                && container.getAssignedPartitions() != null && container.getAssignedPartitions().size() == 15);
     }
 
     @Test
@@ -272,13 +273,110 @@ class RealtimeGatewayIT {
     @Test
     void aSilentConnectionIsClosed() throws Exception {
         Client app = connect(token(UUID.randomUUID(), "CUSTOMER", Duration.ofMinutes(10)));
-        assertThat(app.next().path("data").path("heartbeatIntervalSeconds").asInt()).isEqualTo(2);
-        CloseStatus status = app.closed().get(15, TimeUnit.SECONDS);
+        assertThat(app.next().path("data").path("heartbeatIntervalSeconds").asInt()).isEqualTo(3);
+        CloseStatus status = app.closed().get(20, TimeUnit.SECONDS);
         assertThat(status.getCode()).isEqualTo(4408);
         assertThat(status.getReason()).isEqualTo("HEARTBEAT_TIMEOUT");
     }
 
+    /** FR-RT, BR-013: only the trip's customer sees its driver, and only until the grace period ends. */
+    @Test
+    void theCustomerFollowsTheirTripAndSeesTheDriverUntilTheGracePeriodEnds() throws Exception {
+        UUID driver = UUID.randomUUID();
+        UUID customer = UUID.randomUUID();
+        UUID trip = UuidV7.random();
+        Client driverApp = connect(token(driver, "DRIVER", Duration.ofMinutes(10)));
+        Client customerApp = connect(token(customer, "CUSTOMER", Duration.ofMinutes(10)));
+        Client stranger = connect(token(UUID.randomUUID(), "CUSTOMER", Duration.ofMinutes(10)));
+        driverApp.next();
+        customerApp.next();
+        stranger.next();
+
+        publish("trip.events.v1", trip, "TripRequested", Map.of("tripId", trip.toString(),
+                "customerId", customer.toString()), 1);
+        publish("trip.events.v1", trip, "TripAccepted", Map.of("tripId", trip.toString(),
+                "customerId", customer.toString(), "driverId", driver.toString()), 2);
+        customerApp.next("TRIP_ACCEPTED");
+        driverApp.next("TRIP_ACCEPTED");
+
+        // Unknown and foreign trips look the same.
+        String foreign = stranger.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
+        assertError(stranger.next(), "RESOURCE_NOT_FOUND", foreign);
+        String unknown = customerApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", UuidV7.randomString()));
+        assertError(customerApp.next(), "RESOURCE_NOT_FOUND", unknown);
+
+        String subscribe = customerApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
+        JsonNode subscribed = customerApp.next("TRIP_SUBSCRIBED");
+        assertThat(subscribed.path("data").path("inReplyTo").asText()).isEqualTo(subscribe);
+        assertThat(subscribed.path("data").path("participant").asText()).isEqualTo("CUSTOMER");
+        assertThat(subscribed.path("data").path("status").asText()).isEqualTo("ACCEPTED");
+        assertThat(subscribed.path("data").path("driverId").asText()).isEqualTo(driver.toString());
+        driverApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
+        assertThat(driverApp.next("TRIP_SUBSCRIBED").path("data").path("participant").asText()).isEqualTo("DRIVER");
+
+        String locationEvent = publishLocation(driver, 100);
+        JsonNode location = customerApp.next("TRIP_DRIVER_LOCATION");
+        assertThat(location.path("messageId").asText()).isEqualTo(locationEvent);
+        assertThat(location.path("aggregateVersion").asLong()).isEqualTo(100);
+        assertThat(location.path("data").path("tripId").asText()).isEqualTo(trip.toString());
+        assertThat(location.path("data").path("driverId").asText()).isEqualTo(driver.toString());
+        assertThat(location.path("data").path("latitude").asDouble()).isEqualTo(10.7769);
+
+        // A late, older event does not end the trip (aggregateVersion guard).
+        publish("trip.events.v1", trip, "TripStatusChanged", Map.of("tripId", trip.toString(),
+                "customerId", customer.toString(), "oldStatus", "MATCHING", "newStatus", "NO_DRIVER"), 1);
+        customerApp.next("TRIP_STATUS_CHANGED");
+        publishLocation(driver, 101);
+        assertThat(customerApp.next("TRIP_DRIVER_LOCATION").path("data").path("sequence").asLong()).isEqualTo(101);
+
+        // Trip over: still visible during the grace period, then following ends (BR-013).
+        publish("trip.events.v1", trip, "TripCompleted", Map.of("tripId", trip.toString(),
+                "customerId", customer.toString(), "driverId", driver.toString(),
+                "completedAt", Instant.now().toString()), 5);
+        customerApp.next("TRIP_COMPLETED");
+        publishLocation(driver, 102);
+        assertThat(customerApp.next("TRIP_DRIVER_LOCATION").path("data").path("sequence").asLong()).isEqualTo(102);
+        assertThat(redisTemplate.getExpire("ws:driver-trip:" + driver)).isBetween(1L, 63L);
+        JsonNode ended = customerApp.next("TRIP_UNSUBSCRIBED");
+        assertThat(ended.path("data").path("reason").asText()).isEqualTo("TRIP_ENDED");
+        assertThat(driverApp.next("TRIP_UNSUBSCRIBED").path("data").path("reason").asText()).isEqualTo("TRIP_ENDED");
+        publishLocation(driver, 103);
+        String again = customerApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
+        assertError(customerApp.next("ERROR"), "INVALID_TRIP_STATE", again);
+        assertThat(customerApp.poll(Duration.ofMillis(500))).isNull();
+
+        // Nobody else ever saw the driver; the driver does not get their own position back.
+        assertThat(stranger.poll(Duration.ofMillis(300))).isNull();
+        assertThat(driverApp.drain()).noneMatch(m -> "TRIP_DRIVER_LOCATION".equals(m.path("type").asText()));
+    }
+
+    @Test
+    void followingEndsOnRequest() throws Exception {
+        UUID driver = UUID.randomUUID();
+        UUID customer = UUID.randomUUID();
+        UUID trip = UuidV7.random();
+        Client customerApp = connect(token(customer, "CUSTOMER", Duration.ofMinutes(10)));
+        customerApp.next();
+        publish("trip.events.v1", trip, "TripAccepted", Map.of("tripId", trip.toString(),
+                "customerId", customer.toString(), "driverId", driver.toString()), 2);
+        customerApp.next("TRIP_ACCEPTED");
+        customerApp.send("SUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
+        customerApp.next("TRIP_SUBSCRIBED");
+
+        String unsubscribe = customerApp.send("UNSUBSCRIBE_TRIP", null, Map.of("tripId", trip.toString()));
+        JsonNode done = customerApp.next("TRIP_UNSUBSCRIBED");
+        assertThat(done.path("data").path("inReplyTo").asText()).isEqualTo(unsubscribe);
+        assertThat(done.path("data").path("reason").asText()).isEqualTo("CLIENT_REQUEST");
+        publishLocation(driver, 7);
+        assertThat(customerApp.poll(Duration.ofSeconds(1))).isNull();
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
+
+    private String publishLocation(UUID driver, long sequence) throws Exception {
+        return publish("location.updates.v1", driver, "DriverLocationUpdated", Map.of("driverId", driver.toString()),
+                sequence, Map.of("sequence", sequence));
+    }
 
     private static Map<String, Object> location() {
         Map<String, Object> data = new LinkedHashMap<>();
@@ -296,9 +394,19 @@ class RealtimeGatewayIT {
         assertThat(message.path("data").path("inReplyTo").asText()).isEqualTo(inReplyTo);
     }
 
-    /** Publishes the contract example of {@code type} with fresh IDs; returns the event ID. */
     private String publish(String topic, UUID key, String type, Map<String, String> payloadOverrides)
             throws Exception {
+        return publish(topic, key, type, payloadOverrides, 1, Map.of());
+    }
+
+    private String publish(String topic, UUID key, String type, Map<String, String> payloadOverrides, long version)
+            throws Exception {
+        return publish(topic, key, type, payloadOverrides, version, Map.of());
+    }
+
+    /** Publishes the contract example of {@code type} with fresh IDs; returns the event ID. */
+    private String publish(String topic, UUID key, String type, Map<String, String> payloadOverrides, long version,
+                           Map<String, Long> numbers) throws Exception {
         ObjectNode event;
         try (InputStream in = getClass().getResourceAsStream("/contracts/events/examples/" + type
                 + ".v1.example.json")) {
@@ -308,8 +416,10 @@ class RealtimeGatewayIT {
         String eventId = UuidV7.randomString();
         event.put("eventId", eventId);
         event.put("aggregateId", key.toString());
+        event.put("aggregateVersion", version);
         ObjectNode payload = (ObjectNode) event.path("payload");
         payloadOverrides.forEach(payload::put);
+        numbers.forEach(payload::put);
         kafkaTemplate.send(topic, key.toString(), json.writeValueAsString(event)).get();
         return eventId;
     }
@@ -392,6 +502,24 @@ class RealtimeGatewayIT {
             JsonNode message = received.poll(20, TimeUnit.SECONDS);
             assertThat(message).as("a message within 20 s").isNotNull();
             return message;
+        }
+
+        /** The next message of this type; other messages before it are skipped. */
+        JsonNode next(String type) throws InterruptedException {
+            long deadline = System.currentTimeMillis() + 20_000;
+            while (System.currentTimeMillis() < deadline) {
+                JsonNode message = received.poll(500, TimeUnit.MILLISECONDS);
+                if (message != null && type.equals(message.path("type").asText())) {
+                    return message;
+                }
+            }
+            throw new AssertionError("No " + type + " within 20 s");
+        }
+
+        List<JsonNode> drain() {
+            List<JsonNode> all = new java.util.ArrayList<>();
+            received.drainTo(all);
+            return all;
         }
 
         JsonNode poll(Duration wait) throws InterruptedException {

@@ -18,6 +18,8 @@ public class Topics {
     public static final String TRIP_EVENTS = "trip.events.v1";
     public static final String PAYMENT_EVENTS = "payment.events.v1";
     public static final String WALLET_EVENTS = "wallet.events.v1";
+    /** Validated driver positions, key = driverId; shown only to the customer of the driver's trip. */
+    public static final String LOCATION_UPDATES = "location.updates.v1";
 
     @Bean
     public KafkaAdmin.NewTopics realtimeTopics(RealtimeProperties properties) {
@@ -28,6 +30,7 @@ public class Topics {
                 TopicBuilder.name(DISPATCH_OFFERS).partitions(partitions).replicas(replicas).build(),
                 TopicBuilder.name(TRIP_EVENTS).partitions(partitions).replicas(replicas).build(),
                 TopicBuilder.name(PAYMENT_EVENTS).partitions(partitions).replicas(replicas).build(),
-                TopicBuilder.name(WALLET_EVENTS).partitions(partitions).replicas(replicas).build());
+                TopicBuilder.name(WALLET_EVENTS).partitions(partitions).replicas(replicas).build(),
+                TopicBuilder.name(LOCATION_UPDATES).partitions(partitions).replicas(replicas).build());
     }
 }

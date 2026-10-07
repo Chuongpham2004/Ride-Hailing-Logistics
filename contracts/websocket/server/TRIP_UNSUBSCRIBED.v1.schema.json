@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:TRIP_UNSUBSCRIBED:v1",
+  "title": "TRIP_UNSUBSCRIBED v1 (server -> client)",
+  "description": "The caller no longer follows the trip: on request (inReplyTo set) or because the trip has been over for the grace period, after which the driver's position is no longer shared (BR-013).",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "required": [
+    "sequence"
+  ],
+  "properties": {
+    "type": {
+      "const": "TRIP_UNSUBSCRIBED"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "tripId",
+        "reason"
+      ],
+      "properties": {
+        "inReplyTo": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tripId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "reason": {
+          "enum": [
+            "CLIENT_REQUEST",
+            "TRIP_ENDED"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
