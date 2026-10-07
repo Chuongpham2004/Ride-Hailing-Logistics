@@ -27,6 +27,7 @@
         <module>services/trip-service</module>
         <module>services/pricing-service</module>
         <module>services/payment-service</module>
+        <module>services/realtime-gateway</module>
     </modules>
 
     <properties>

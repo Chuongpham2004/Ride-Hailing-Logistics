@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:PONG:v1",
+  "title": "PONG v1 (server -> client)",
+  "description": "Answer to PING; inReplyTo is the messageId of the PING.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "required": [
+    "sequence"
+  ],
+  "properties": {
+    "type": {
+      "const": "PONG"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "inReplyTo"
+      ],
+      "properties": {
+        "inReplyTo": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

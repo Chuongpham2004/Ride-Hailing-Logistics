@@ -1,0 +1,15 @@
+{
+  "messageId": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e23",
+  "type": "DRIVER_LOCATION_UPDATED",
+  "version": 1,
+  "sentAt": "2026-10-07T09:00:00Z",
+  "sequence": 1842,
+  "data": {
+    "latitude": 10.7769,
+    "longitude": 106.7009,
+    "accuracyMeters": 8.5,
+    "headingDegrees": 125,
+    "speedMetersPerSecond": 7.2,
+    "deviceTimestamp": "2026-10-07T08:59:59Z"
+  }
+}

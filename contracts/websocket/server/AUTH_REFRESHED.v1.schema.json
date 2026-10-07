@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:AUTH_REFRESHED:v1",
+  "title": "AUTH_REFRESHED v1 (server -> client)",
+  "description": "The token sent with AUTH was accepted; the session now lasts until tokenExpiresAt.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "required": [
+    "sequence"
+  ],
+  "properties": {
+    "type": {
+      "const": "AUTH_REFRESHED"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "inReplyTo",
+        "tokenExpiresAt"
+      ],
+      "properties": {
+        "inReplyTo": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tokenExpiresAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
