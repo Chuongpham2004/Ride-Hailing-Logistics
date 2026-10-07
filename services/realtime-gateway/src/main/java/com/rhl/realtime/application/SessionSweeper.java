@@ -13,21 +13,23 @@ import java.time.Instant;
 
 /**
  * Closes sessions whose token expired or was revoked (COM-005: logout and password changes
- * revoke tokens in Redis) and sessions that stopped sending (COM-006), then refreshes this
- * instance's entries in the session directory.
+ * revoke tokens in Redis) and sessions that stopped sending (COM-006), refreshes this
+ * instance's entries in the session directory and ends following of trips that are over.
  */
 @Slf4j
 @Component
 public class SessionSweeper {
 
     private final SessionRegistry registry;
+    private final TripChannel trips;
     private final StringRedisTemplate redis;
     private final RealtimeProperties.Realtime config;
     private final Clock clock;
 
-    public SessionSweeper(SessionRegistry registry, StringRedisTemplate redis, RealtimeProperties properties,
-                          Clock clock) {
+    public SessionSweeper(SessionRegistry registry, TripChannel trips, StringRedisTemplate redis,
+                          RealtimeProperties properties, Clock clock) {
         this.registry = registry;
+        this.trips = trips;
         this.redis = redis;
         this.config = properties.realtime();
         this.clock = clock;
@@ -46,6 +48,7 @@ public class SessionSweeper {
             }
         }
         registry.refreshDirectory();
+        trips.sweep();
     }
 
     private boolean revoked(String tokenId) {

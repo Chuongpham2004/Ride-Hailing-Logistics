@@ -72,6 +72,11 @@ rhl:
     send-buffer-bytes: 524288
     # Driver location reports closer together than this are refused (NFR-SEC-007).
     telemetry-min-interval: 1s
+    trip:
+      # Placeholder until the tracking grace period is decided (FR-RT: revoke after trip end + grace).
+      grace: 2m
+      participants-ttl: 24h
+      max-subscriptions: 5
   kafka:
     partitions: 3
     replicas: 1

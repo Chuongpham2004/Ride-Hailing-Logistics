@@ -13,6 +13,7 @@ import com.rhl.realtime.application.ClientSession;
 import com.rhl.realtime.application.CloseCodes;
 import com.rhl.realtime.application.Messages;
 import com.rhl.realtime.application.SessionRegistry;
+import com.rhl.realtime.application.TripChannel;
 import com.rhl.realtime.infrastructure.messaging.TelemetryPublisher;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.GrantedAuthority;
@@ -38,8 +39,8 @@ import java.util.regex.Pattern;
 /**
  * The WebSocket endpoint (CON-03, README §8.4). The handshake was authenticated by the security
  * filter chain; this handler binds the session to that user, answers heartbeats (COM-006),
- * accepts fresh tokens (COM-005) and forwards driver locations. Pushes to the client come from
- * {@code EventRouter}.
+ * accepts fresh tokens (COM-005), forwards driver locations and manages trip subscriptions.
+ * Pushes to the client come from {@code EventRouter} and {@code TripChannel}.
  */
 @Slf4j
 @Component
@@ -48,6 +49,8 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
     public static final String PING = "PING";
     public static final String AUTH = "AUTH";
     public static final String DRIVER_LOCATION_UPDATED = "DRIVER_LOCATION_UPDATED";
+    public static final String SUBSCRIBE_TRIP = "SUBSCRIBE_TRIP";
+    public static final String UNSUBSCRIBE_TRIP = "UNSUBSCRIBE_TRIP";
 
     private static final String SESSION = "rhl.session";
     private static final int MAX_ERROR_LENGTH = 500;
@@ -58,18 +61,20 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
     private final Messages messages;
     private final ClientMessageSchemas schemas;
     private final TelemetryPublisher telemetry;
+    private final TripChannel trips;
     private final JwtDecoder jwtDecoder;
     private final RealtimeProperties.Realtime config;
     private final ObjectMapper objectMapper;
     private final Clock clock;
 
     public RealtimeWebSocketHandler(SessionRegistry registry, Messages messages, ClientMessageSchemas schemas,
-                                    TelemetryPublisher telemetry, JwtDecoder jwtDecoder, RealtimeProperties properties,
-                                    ObjectMapper objectMapper, Clock clock) {
+                                    TelemetryPublisher telemetry, TripChannel trips, JwtDecoder jwtDecoder,
+                                    RealtimeProperties properties, ObjectMapper objectMapper, Clock clock) {
         this.registry = registry;
         this.messages = messages;
         this.schemas = schemas;
         this.telemetry = telemetry;
+        this.trips = trips;
         this.jwtDecoder = jwtDecoder;
         this.config = properties.realtime();
         this.objectMapper = objectMapper;
@@ -134,12 +139,17 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
             case PING -> pong(session, messageId);
             case AUTH -> reauthenticate(session, message.path("data").path("accessToken").asText(), messageId);
             case DRIVER_LOCATION_UPDATED -> locationReported(session, message, messageId, now);
+            case SUBSCRIBE_TRIP -> trips.subscribe(session, tripId(message), messageId);
+            case UNSUBSCRIBE_TRIP -> trips.unsubscribe(session, tripId(message), messageId);
             default -> reply(session, ErrorCode.VALIDATION_ERROR, "Unsupported message type", messageId);
         }
     }
 
     @Override
     public void afterConnectionClosed(WebSocketSession socket, CloseStatus status) {
+        if (socket.getAttributes().get(SESSION) instanceof ClientSession session) {
+            trips.disconnected(session);
+        }
         registry.unregister(socket.getId());
         log.debug("Session {} closed: {}", socket.getId(), status);
     }
@@ -205,6 +215,11 @@ public class RealtimeWebSocketHandler extends TextWebSocketHandler {
     private void reply(ClientSession session, ErrorCode code, String text, String inReplyTo) {
         String message = text.length() <= MAX_ERROR_LENGTH ? text : text.substring(0, MAX_ERROR_LENGTH - 3) + "...";
         session.send(messages.error(code.name(), message, inReplyTo), objectMapper);
+    }
+
+    /** Valid by schema (format uuid). */
+    private static UUID tripId(JsonNode message) {
+        return UUID.fromString(message.path("data").path("tripId").asText());
     }
 
     private static String uuidOrNull(JsonNode value) {

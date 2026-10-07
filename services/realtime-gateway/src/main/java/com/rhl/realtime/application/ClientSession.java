@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.rhl.common.security.Role;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.socket.CloseStatus;
@@ -16,6 +17,7 @@ import java.time.Instant;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * One authenticated WebSocket connection. Messages to the client are numbered in the order they
@@ -35,6 +37,8 @@ public final class ClientSession {
     private volatile Instant lastSeen;
     private volatile Instant lastTelemetryAt;
     private long sequence;
+    @Getter(AccessLevel.NONE)
+    private final Set<UUID> followedTrips = ConcurrentHashMap.newKeySet();
 
     public ClientSession(WebSocketSession socket, UUID userId, Set<Role> roles, String tokenId,
                          Instant tokenExpiresAt, Instant now) {
@@ -57,6 +61,19 @@ public final class ClientSession {
     /** Any client message proves the connection is alive (COM-006). */
     public void touch(Instant now) {
         lastSeen = now;
+    }
+
+    /** Trips this connection follows; managed by {@link TripChannel}. */
+    public Set<UUID> followedTrips() {
+        return Set.copyOf(followedTrips);
+    }
+
+    void follow(UUID tripId) {
+        followedTrips.add(tripId);
+    }
+
+    void unfollow(UUID tripId) {
+        followedTrips.remove(tripId);
     }
 
     public void reauthenticated(String newTokenId, Instant expiresAt) {

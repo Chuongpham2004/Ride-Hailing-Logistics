@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:TRIP_SUBSCRIBED:v1",
+  "title": "TRIP_SUBSCRIBED v1 (server -> client)",
+  "description": "The caller follows the trip. status and driverId are as last known to the gateway; the REST snapshot of the trip stays the reference.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "required": [
+    "sequence"
+  ],
+  "properties": {
+    "type": {
+      "const": "TRIP_SUBSCRIBED"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "inReplyTo",
+        "tripId",
+        "participant",
+        "status"
+      ],
+      "properties": {
+        "inReplyTo": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "tripId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "participant": {
+          "enum": [
+            "CUSTOMER",
+            "DRIVER"
+          ]
+        },
+        "status": {
+          "enum": [
+            "MATCHING",
+            "ACCEPTED",
+            "PICKING_UP",
+            "ARRIVED",
+            "IN_TRIP",
+            "COMPLETED",
+            "CANCELLED",
+            "NO_DRIVER"
+          ]
+        },
+        "driverId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -32,7 +32,9 @@
             "AUTHENTICATION_REQUIRED",
             "ACCESS_DENIED",
             "RATE_LIMIT_EXCEEDED",
-            "DEPENDENCY_UNAVAILABLE"
+            "DEPENDENCY_UNAVAILABLE",
+            "RESOURCE_NOT_FOUND",
+            "INVALID_TRIP_STATE"
           ]
         },
         "message": {

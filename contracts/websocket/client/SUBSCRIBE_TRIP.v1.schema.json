@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:SUBSCRIBE_TRIP:v1",
+  "title": "SUBSCRIBE_TRIP v1 (client -> server)",
+  "description": "Follow one trip of the caller (FR-RT): the customer then receives the assigned driver's position as TRIP_DRIVER_LOCATION (BR-013). Allowed only for the trip's customer or assigned driver, until the trip has been over for the grace period. Answered with TRIP_SUBSCRIBED, or ERROR RESOURCE_NOT_FOUND for any trip the caller may not follow (unknown and foreign trips look the same). Subscriptions end with the connection: subscribe again after reconnecting.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "SUBSCRIBE_TRIP"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "tripId"
+      ],
+      "properties": {
+        "tripId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

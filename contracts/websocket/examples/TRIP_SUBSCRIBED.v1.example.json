@@ -1,0 +1,14 @@
+{
+  "messageId": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e32",
+  "type": "TRIP_SUBSCRIBED",
+  "version": 1,
+  "sentAt": "2026-10-07T09:00:00Z",
+  "sequence": 6,
+  "data": {
+    "inReplyTo": "0199b9d0-1a2b-7c3d-8e4f-5a6b7c8d9e30",
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "participant": "CUSTOMER",
+    "status": "PICKING_UP",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12"
+  }
+}

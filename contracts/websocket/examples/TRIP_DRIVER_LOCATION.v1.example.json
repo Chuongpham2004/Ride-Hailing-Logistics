@@ -1,0 +1,20 @@
+{
+  "messageId": "0199b3a8-6a10-7c22-8e4f-1a2b3c4d5e70",
+  "type": "TRIP_DRIVER_LOCATION",
+  "version": 1,
+  "sentAt": "2026-10-07T09:00:00Z",
+  "sequence": 7,
+  "correlationId": "0199b3a8-6a10-7c22-8e4f-1a2b3c4d5e61",
+  "aggregateVersion": 1842,
+  "data": {
+    "tripId": "0199b3a9-1a2b-7c3d-8e4f-5a6b7c8d9e01",
+    "driverId": "0199b3a8-5c2e-7a41-9b6d-2f7e8c1d4a12",
+    "sequence": 1842,
+    "latitude": 10.7769,
+    "longitude": 106.7009,
+    "accuracyMeters": 8.5,
+    "headingDegrees": 125,
+    "speedMetersPerSecond": 7.2,
+    "serverTimestamp": "2026-10-07T08:59:59.400Z"
+  }
+}

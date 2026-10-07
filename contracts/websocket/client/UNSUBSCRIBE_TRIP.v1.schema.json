@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:rhl:ws:UNSUBSCRIBE_TRIP:v1",
+  "title": "UNSUBSCRIBE_TRIP v1 (client -> server)",
+  "description": "Stop following a trip. Answered with TRIP_UNSUBSCRIBED (reason CLIENT_REQUEST), also when it was not followed.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "urn:rhl:ws:message:v1"
+    }
+  ],
+  "properties": {
+    "type": {
+      "const": "UNSUBSCRIBE_TRIP"
+    },
+    "version": {
+      "const": 1
+    },
+    "data": {
+      "type": "object",
+      "required": [
+        "tripId"
+      ],
+      "properties": {
+        "tripId": {
+          "type": "string",
+          "format": "uuid"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
