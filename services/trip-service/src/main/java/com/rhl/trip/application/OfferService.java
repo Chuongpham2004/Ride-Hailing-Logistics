@@ -1,6 +1,7 @@
 package com.rhl.trip.application;
 
 import com.rhl.common.web.ApiException;
+import com.rhl.trip.domain.ActorType;
 import com.rhl.trip.domain.DomainException;
 import com.rhl.trip.domain.DriverCandidate;
 import com.rhl.trip.domain.DriverOffer;
@@ -12,6 +13,7 @@ import com.rhl.trip.domain.Transition;
 import com.rhl.trip.domain.Trip;
 import com.rhl.trip.domain.TripStatus;
 import com.rhl.trip.domain.TripStatusChange;
+import com.rhl.trip.infrastructure.persistence.DeliveryDetailsRepository;
 import com.rhl.trip.infrastructure.persistence.DriverOfferRepository;
 import com.rhl.trip.infrastructure.persistence.TripRepository;
 import com.rhl.trip.infrastructure.persistence.TripStatusChangeRepository;
@@ -41,6 +43,7 @@ public class OfferService {
 
     private final TripRepository trips;
     private final DriverOfferRepository offers;
+    private final DeliveryDetailsRepository deliveries;
     private final TripStatusChangeRepository history;
     private final TripEventPublisher events;
     private final ApplicationEventPublisher afterCommit;
@@ -70,7 +73,7 @@ public class OfferService {
         Trip trip = trips.findByIdForUpdate(tripOf(driverId, offerId)).orElseThrow();
         DriverOffer offer = offers.findByIdForUpdate(offerId).orElseThrow();
         if (offer.getStatus() == OfferStatus.ACCEPTED) {
-            return TripViews.TripView.of(trip);
+            return driverView(trip);
         }
         Instant now = clock.instant();
         offer.accept(now);
@@ -90,7 +93,12 @@ public class OfferService {
         history.save(TripStatusChange.of(transition));
         events.accepted(trip, offer);
         afterCommit.publishEvent(new AfterCommit.ReleaseHold(driverId, offerId));
-        return TripViews.TripView.of(trip);
+        return driverView(trip);
+    }
+
+    /** Once assigned, the driver needs the recipient of a delivery (UC-05); never the handover codes. */
+    private TripViews.TripView driverView(Trip trip) {
+        return TripViews.TripView.of(trip, deliveries.findById(trip.getId()).orElse(null), ActorType.DRIVER);
     }
 
     /** Declining twice is harmless; the trip moves on to the next candidate at once. */

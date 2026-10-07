@@ -31,10 +31,10 @@ class TripTest {
 
         assertThat(trip.assign(driver, NOW.plusSeconds(5)).to()).isEqualTo(TripStatus.ACCEPTED);
         assertThat(trip.getAcceptedAt()).isEqualTo(NOW.plusSeconds(5));
-        trip.advance(TripStatus.PICKING_UP, driver, NOW.plusSeconds(10));
-        trip.advance(TripStatus.ARRIVED, driver, NOW.plusSeconds(200));
-        trip.advance(TripStatus.IN_TRIP, driver, NOW.plusSeconds(260));
-        Transition done = trip.advance(TripStatus.COMPLETED, driver, NOW.plusSeconds(900));
+        trip.advance(TripStatus.PICKING_UP, driver, null, 5, NOW.plusSeconds(10));
+        trip.advance(TripStatus.ARRIVED, driver, null, 5, NOW.plusSeconds(200));
+        trip.advance(TripStatus.IN_TRIP, driver, null, 5, NOW.plusSeconds(260));
+        Transition done = trip.advance(TripStatus.COMPLETED, driver, null, 5, NOW.plusSeconds(900));
 
         assertThat(done.from()).isEqualTo(TripStatus.IN_TRIP);
         assertThat(done.actor()).isEqualTo(Actor.driver(driver));
@@ -47,7 +47,7 @@ class TripTest {
         Trip trip = matchingTrip();
         trip.assign(driver, NOW);
 
-        assertThatThrownBy(() -> trip.advance(TripStatus.PICKING_UP, UUID.randomUUID(), NOW))
+        assertThatThrownBy(() -> trip.advance(TripStatus.PICKING_UP, UUID.randomUUID(), null, 5, NOW))
                 .isInstanceOf(DomainException.class);
         assertThatThrownBy(() -> trip.cancel(Actor.driver(UUID.randomUUID()), CancelReason.OTHER, null, NOW))
                 .isInstanceOf(DomainException.class);
@@ -58,7 +58,7 @@ class TripTest {
         Trip trip = matchingTrip();
         trip.assign(driver, NOW);
 
-        assertThatThrownBy(() -> trip.advance(TripStatus.COMPLETED, driver, NOW))
+        assertThatThrownBy(() -> trip.advance(TripStatus.COMPLETED, driver, null, 5, NOW))
                 .isInstanceOf(DomainException.class)
                 .hasMessageContaining("ACCEPTED to COMPLETED");
     }
@@ -67,9 +67,9 @@ class TripTest {
     void customerCannotCancelOnceTheTripStarted() {
         Trip trip = matchingTrip();
         trip.assign(driver, NOW);
-        trip.advance(TripStatus.PICKING_UP, driver, NOW);
-        trip.advance(TripStatus.ARRIVED, driver, NOW);
-        trip.advance(TripStatus.IN_TRIP, driver, NOW);
+        trip.advance(TripStatus.PICKING_UP, driver, null, 5, NOW);
+        trip.advance(TripStatus.ARRIVED, driver, null, 5, NOW);
+        trip.advance(TripStatus.IN_TRIP, driver, null, 5, NOW);
 
         assertThatThrownBy(() -> trip.cancel(Actor.customer(customer), CancelReason.CHANGED_MIND, null, NOW))
                 .isInstanceOf(DomainException.class);
@@ -127,7 +127,7 @@ class TripTest {
 
     private Trip matchingTrip() {
         Trip trip = Trip.create(UUID.randomUUID(), customer, ServiceType.RIDE, PICKUP, DROPOFF, fare("1.00"), POLICY,
-                NOW);
+                null, null, NOW);
         trip.startMatching(NOW);
         return trip;
     }

@@ -7,11 +7,13 @@ import com.rhl.common.web.ApiResponse;
 import com.rhl.trip.application.TripService;
 import com.rhl.trip.application.TripViews;
 import com.rhl.trip.domain.CancelReason;
+import com.rhl.trip.domain.PackageSize;
 import com.rhl.trip.domain.TripStatus;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Pattern;
@@ -54,7 +56,26 @@ public class TripController {
      * @param acceptedSurgeMultiplier required when the quote has a surge above 1.00, and must equal it (BR-006)
      */
     public record CreateTripRequest(@NotNull UUID quoteId,
-                                    @DecimalMin("1.00") @DecimalMax("99.99") BigDecimal acceptedSurgeMultiplier) {
+                                    @DecimalMin("1.00") @DecimalMax("99.99") BigDecimal acceptedSurgeMultiplier,
+                                    @Valid DeliveryRequest delivery) {
+    }
+
+    /** Recipient and package of a DELIVERY trip; shown only to the trip's participants and staff. */
+    public record DeliveryRequest(@NotBlank @Size(max = 120) String recipientName,
+                                  @NotBlank @Size(max = 20) String recipientPhone,
+                                  @NotBlank @Size(max = 200) String packageDescription,
+                                  @NotNull PackageSize packageSize,
+                                  @NotNull @Min(1) Integer packageWeightGrams,
+                                  @Size(max = 300) String instructions) {
+
+        TripService.DeliveryCommand toCommand() {
+            return new TripService.DeliveryCommand(recipientName, recipientPhone, packageDescription, packageSize,
+                    packageWeightGrams, instructions);
+        }
+    }
+
+    /** What the customer (pickup) or the recipient (delivery) told the driver. */
+    public record CodeRequest(@Size(max = 8) String code) {
     }
 
     public record CancelRequest(@NotNull CancelReason reason, @Size(max = 300) String note) {
@@ -71,7 +92,8 @@ public class TripController {
             @RequestHeader(IDEMPOTENCY_KEY) @Pattern(regexp = "^[A-Za-z0-9_-]{8,100}$") String idempotencyKey,
             @Valid @RequestBody CreateTripRequest request) {
         return ApiResponse.ok(trips.create(CurrentUser.get().id(), idempotencyKey, hash(request),
-                new TripService.CreateCommand(request.quoteId(), request.acceptedSurgeMultiplier())));
+                new TripService.CreateCommand(request.quoteId(), request.acceptedSurgeMultiplier(),
+                        request.delivery() == null ? null : request.delivery().toCommand())));
     }
 
     @GetMapping
@@ -108,20 +130,29 @@ public class TripController {
         return advance(tripId, TripStatus.ARRIVED);
     }
 
+    /** Needs {@code {"code"}}, the customer's pickup code, when the trip has one. */
     @PostMapping("/{tripId}/start")
     @PreAuthorize("hasRole('DRIVER')")
-    public ApiResponse<TripViews.TripView> start(@PathVariable UUID tripId) {
-        return advance(tripId, TripStatus.IN_TRIP);
+    public ApiResponse<TripViews.TripView> start(@PathVariable UUID tripId,
+                                                 @Valid @RequestBody(required = false) CodeRequest request) {
+        return advance(tripId, TripStatus.IN_TRIP, request);
     }
 
+    /** A delivery needs {@code {"code"}}, the delivery code the recipient gives (proof of delivery). */
     @PostMapping("/{tripId}/complete")
     @PreAuthorize("hasRole('DRIVER')")
-    public ApiResponse<TripViews.TripView> complete(@PathVariable UUID tripId) {
-        return advance(tripId, TripStatus.COMPLETED);
+    public ApiResponse<TripViews.TripView> complete(@PathVariable UUID tripId,
+                                                    @Valid @RequestBody(required = false) CodeRequest request) {
+        return advance(tripId, TripStatus.COMPLETED, request);
     }
 
     private ApiResponse<TripViews.TripView> advance(UUID tripId, TripStatus target) {
-        return ApiResponse.ok(trips.advance(CurrentUser.get().id(), tripId, target));
+        return advance(tripId, target, null);
+    }
+
+    private ApiResponse<TripViews.TripView> advance(UUID tripId, TripStatus target, CodeRequest request) {
+        return ApiResponse.ok(trips.advance(CurrentUser.get().id(), tripId, target,
+                request == null ? null : request.code()));
     }
 
     /** SHA-256 of the canonical request body, to tell a retry from a different request under the same key. */
