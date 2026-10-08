@@ -27,5 +27,8 @@ replay_pid*
 .idea/
 *.iml
 
+# VS Code
+.vscode/
+
 # Maven
 target/
