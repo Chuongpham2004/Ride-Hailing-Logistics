@@ -10,11 +10,14 @@ import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.cloud.client.DefaultServiceInstance;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.web.client.RestClient;
 
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Set;
@@ -23,6 +26,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 /** README §8.5: bounded retry on transient failures, fail fast while the remote is down. */
 class RemoteCallsTest {
@@ -33,6 +40,7 @@ class RemoteCallsTest {
     private final AtomicInteger hits = new AtomicInteger();
     private volatile int status = 500;
     private volatile String body = "{}";
+    private final LoadBalancerClient registry = mock(LoadBalancerClient.class);
 
     @BeforeEach
     void start() throws IOException {
@@ -56,7 +64,7 @@ class RemoteCallsTest {
 
     @Test
     void transientFailuresAreRetriedOnceThenTheCircuitOpens() {
-        LocationClient location = new LocationClient(RestClient.builder(), properties());
+        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry);
 
         // Each call: 2 attempts (first + one retry).
         for (int i = 0; i < 2; i++) {
@@ -76,7 +84,7 @@ class RemoteCallsTest {
     void aClientErrorIsTheAnswerNotAFailure() {
         status = 404;
         body = "{\"code\":\"RESOURCE_NOT_FOUND\"}";
-        PricingClient pricing = new PricingClient(RestClient.builder(), properties());
+        PricingClient pricing = new PricingClient(RestClient.builder(), properties(), registry);
 
         for (int i = 0; i < 6; i++) {
             assertThatThrownBy(() -> pricing.validQuote(UUID.randomUUID(), UUID.randomUUID()))
@@ -89,7 +97,7 @@ class RemoteCallsTest {
 
     @Test
     void pricingDownIsARetryable503() {
-        PricingClient pricing = new PricingClient(RestClient.builder(), properties());
+        PricingClient pricing = new PricingClient(RestClient.builder(), properties(), registry);
         assertThatThrownBy(() -> pricing.cancellationFee(ServiceType.RIDE, "CUSTOMER", "ACCEPTED", "CHANGED_MIND",
                 null, 27_000L))
                 .isInstanceOf(ApiException.class)
@@ -106,8 +114,51 @@ class RemoteCallsTest {
         assertThat(RemoteCalls.isTransient(new IllegalStateException())).isFalse();
     }
 
+    @Test
+    void aRegistryUrlIsResolvedToARegisteredInstanceOnEachCall() {
+        status = 200;
+        body = "{\"data\":[]}";
+        DefaultServiceInstance instance = new DefaultServiceInstance("location-1", "location-service", "localhost",
+                server.getAddress().getPort(), false);
+        when(registry.choose("location-service")).thenReturn(instance);
+        when(registry.reconstructURI(any(), any())).thenAnswer(call -> {
+            URI original = call.getArgument(1);
+            return URI.create("http://localhost:" + instance.getPort() + original.getRawPath() + "?"
+                    + original.getRawQuery());
+        });
+        LocationClient location = new LocationClient(RestClient.builder(), properties("lb://location-service"),
+                registry);
+
+        assertThat(location.nearby(ServiceType.RIDE, PICKUP, 2000, 10)).isEmpty();
+        assertThat(hits.get()).isEqualTo(1);
+    }
+
+    @Test
+    void aServiceMissingFromTheRegistryCountsAsDown() {
+        LocationClient location = new LocationClient(RestClient.builder(), properties("lb://location-service"),
+                registry);
+
+        assertThatThrownBy(() -> location.nearby(ServiceType.RIDE, PICKUP, 2000, 10))
+                .isInstanceOf(LocationClient.LocationUnavailableException.class)
+                .hasMessageContaining("No instance of location-service");
+        assertThat(hits.get()).isZero();
+    }
+
+    @Test
+    void aFixedUrlBypassesTheRegistry() {
+        status = 200;
+        body = "{\"data\":[]}";
+        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry);
+
+        assertThat(location.nearby(ServiceType.RIDE, PICKUP, 2000, 10)).isEmpty();
+        verifyNoInteractions(registry);
+    }
+
     private TripServiceProperties properties() {
-        String url = "http://localhost:" + server.getAddress().getPort();
+        return properties("http://localhost:" + server.getAddress().getPort());
+    }
+
+    private TripServiceProperties properties(String url) {
         TripServiceProperties.Remote remote = new TripServiceProperties.Remote(url, Duration.ofMillis(500),
                 Duration.ofSeconds(1));
         return new TripServiceProperties(

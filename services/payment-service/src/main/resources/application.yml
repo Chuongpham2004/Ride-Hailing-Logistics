@@ -55,6 +55,15 @@ spring:
       fail-on-unknown-properties: false
     default-property-inclusion: non_null
 
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    # Address other services use to reach this one; set it (or prefer-ip-address) outside local dev.
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    prefer-ip-address: ${EUREKA_PREFER_IP_ADDRESS:false}
+
 management:
   endpoints:
     web:

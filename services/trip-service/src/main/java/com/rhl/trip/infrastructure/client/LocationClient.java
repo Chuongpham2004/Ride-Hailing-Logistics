@@ -1,18 +1,16 @@
 package com.rhl.trip.infrastructure.client;
 
-import com.rhl.common.web.CorrelationId;
 import com.rhl.trip.TripServiceProperties;
 import com.rhl.trip.domain.DriverCandidate;
 import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Stop;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import tools.jackson.databind.JsonNode;
 
-import java.net.http.HttpClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -28,22 +26,10 @@ public class LocationClient {
     private final RestClient rest;
     private final RemoteCalls calls;
 
-    public LocationClient(RestClient.Builder builder, TripServiceProperties properties) {
-        TripServiceProperties.Remote config = properties.location();
+    public LocationClient(RestClient.Builder builder, TripServiceProperties properties,
+                          LoadBalancerClient loadBalancer) {
         this.calls = new RemoteCalls("location-service", properties.resilience());
-        HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
-        factory.setReadTimeout(config.readTimeout());
-        this.rest = builder.baseUrl(config.baseUrl())
-                .requestFactory(factory)
-                .requestInterceptor((request, body, execution) -> {
-                    String correlationId = CorrelationId.current();
-                    if (correlationId != null) {
-                        request.getHeaders().set(CorrelationId.HEADER, correlationId);
-                    }
-                    return execution.execute(request, body);
-                })
-                .build();
+        this.rest = RemoteRestClient.create(builder, properties.location(), loadBalancer);
     }
 
     /** @throws LocationUnavailableException when location-service cannot be reached or answers with an error */
