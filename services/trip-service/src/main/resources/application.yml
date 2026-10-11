@@ -47,6 +47,15 @@ spring:
       fail-on-unknown-properties: false
     default-property-inclusion: non_null
 
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    # Address other services use to reach this one; set it (or prefer-ip-address) outside local dev.
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    prefer-ip-address: ${EUREKA_PREFER_IP_ADDRESS:false}
+
 management:
   endpoints:
     web:
@@ -93,12 +102,13 @@ rhl:
     open-for: 10s
     max-attempts: 2
     retry-wait: 200ms
+  # lb://<name> looks the service up in the Eureka registry on every call; a plain URL pins a fixed address.
   location:
-    base-url: ${LOCATION_SERVICE_URL:http://localhost:8082}
+    base-url: ${LOCATION_SERVICE_URL:lb://location-service}
     connect-timeout: 500ms
     read-timeout: 1s
   pricing:
-    base-url: ${PRICING_SERVICE_URL:http://localhost:8084}
+    base-url: ${PRICING_SERVICE_URL:lb://pricing-service}
     connect-timeout: 500ms
     read-timeout: 2s
   kafka:

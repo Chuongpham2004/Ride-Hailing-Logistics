@@ -39,30 +39,40 @@ spring:
                 allowed-headers: [Authorization, Content-Type, Idempotency-Key, X-Correlation-Id]
                 exposed-headers: [X-Correlation-Id]
                 max-age: 3600
+          # lb://<name> resolves through the Eureka registry; set <NAME>_SERVICE_URL to pin a fixed address.
           routes:
             - id: user-service
-              uri: ${USER_SERVICE_URL:http://localhost:8081}
+              uri: ${USER_SERVICE_URL:lb://user-service}
               predicates:
                 - Path=/api/v1/auth/**,/api/v1/users/**,/api/v1/drivers/**,/api/v1/admin/users/**,/api/v1/admin/drivers/**
             - id: location-service
-              uri: ${LOCATION_SERVICE_URL:http://localhost:8082}
+              uri: ${LOCATION_SERVICE_URL:lb://location-service}
               predicates:
                 - Path=/api/v1/locations/**
             - id: trip-service
-              uri: ${TRIP_SERVICE_URL:http://localhost:8083}
+              uri: ${TRIP_SERVICE_URL:lb://trip-service}
               predicates:
                 - Path=/api/v1/trips/**,/api/v1/offers/**,/api/v1/admin/trips/**
             - id: pricing-service
-              uri: ${PRICING_SERVICE_URL:http://localhost:8084}
+              uri: ${PRICING_SERVICE_URL:lb://pricing-service}
               predicates:
                 - Path=/api/v1/quotes/**,/api/v1/admin/pricing/**
             - id: payment-service
-              uri: ${PAYMENT_SERVICE_URL:http://localhost:8086}
+              uri: ${PAYMENT_SERVICE_URL:lb://payment-service}
               predicates:
                 - Path=/api/v1/payments/**,/api/v1/wallets/**,/api/v1/admin/payments/**,/api/v1/admin/wallets/**
           httpclient:
             connect-timeout: 2000
             response-timeout: 10s
+
+eureka:
+  client:
+    service-url:
+      defaultZone: ${EUREKA_URL:http://localhost:8761/eureka/}
+  instance:
+    # Address other services use to reach this one; set it (or prefer-ip-address) outside local dev.
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    prefer-ip-address: ${EUREKA_PREFER_IP_ADDRESS:false}
 
 management:
   endpoints:
