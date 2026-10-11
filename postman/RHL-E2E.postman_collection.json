@@ -10,7 +10,7 @@
       "name": "00. Chuẩn bị tài khoản",
       "item": [
         {
-          "name": "Tạo runId + đăng nhập admin",
+          "name": "Đăng nhập admin",
           "request": {
             "method": "POST",
             "header": [
@@ -36,24 +36,6 @@
           },
           "event": [
             {
-              "listen": "prerequest",
-              "script": {
-                "type": "text/javascript",
-                "exec": [
-                  "const runId = Date.now().toString(36);",
-                  "pm.collectionVariables.set(\"runId\", runId);",
-                  "// mailbox = hộp thư thật (vd. ten@gmail.com) → ten+drivera-<runId>@gmail.com, mail về đúng hộp thư đó.",
-                  "const mailbox = (pm.collectionVariables.get(\"mailbox\") || \"\").trim();",
-                  "const at = mailbox.indexOf(\"@\");",
-                  "[\"customer\", \"customer2\", \"driverA\", \"driverB\"].forEach(p => {",
-                  "  const tag = p.toLowerCase() + \"-\" + runId;",
-                  "  pm.collectionVariables.set(p + \"Email\",",
-                  "    at > 0 ? mailbox.slice(0, at) + \"+\" + tag + mailbox.slice(at) : tag + \"@e2e.local\");",
-                  "});"
-                ]
-              }
-            },
-            {
               "listen": "test",
               "script": {
                 "type": "text/javascript",
@@ -67,7 +49,7 @@
           ]
         },
         {
-          "name": "Đăng ký khách hàng 1",
+          "name": "Tạo runId + đăng ký khách hàng 1",
           "request": {
             "method": "POST",
             "header": [
@@ -88,9 +70,28 @@
                   "language": "json"
                 }
               }
-            }
+            },
+            "description": "Mở đầu một lượt chạy mới: sinh runId và 4 email. Gửi lại request này là bỏ bộ tài khoản cũ."
           },
           "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const runId = Date.now().toString(36);",
+                  "pm.collectionVariables.set(\"runId\", runId);",
+                  "// mailbox = hộp thư thật (vd. ten@gmail.com) → ten+drivera-<runId>@gmail.com, mail về đúng hộp thư đó.",
+                  "const mailbox = (pm.collectionVariables.get(\"mailbox\") || \"\").trim();",
+                  "const at = mailbox.indexOf(\"@\");",
+                  "[\"customer\", \"customer2\", \"driverA\", \"driverB\"].forEach(p => {",
+                  "  const tag = p.toLowerCase() + \"-\" + runId;",
+                  "  pm.collectionVariables.set(p + \"Email\",",
+                  "    at > 0 ? mailbox.slice(0, at) + \"+\" + tag + mailbox.slice(at) : tag + \"@e2e.local\");",
+                  "});"
+                ]
+              }
+            },
             {
               "listen": "test",
               "script": {

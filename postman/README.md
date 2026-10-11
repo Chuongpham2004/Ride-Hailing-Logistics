@@ -40,7 +40,8 @@ Collection được sinh từ `gen_collection.py`: muốn thêm/sửa request th
   ghép được), và **nhận offer trong 15 s**.
 - Mỗi lượt chạy tạo tài khoản mới (`...-<runId>@e2e.local`), nên chạy lại bao nhiêu lần cũng được. Muốn chạy lại
   từ giữa (ví dụ UC-05) thì token/id cũ vẫn còn trong biến; token hết hạn sau 15 phút → chạy lại các request
-  *Đăng nhập* trong `00`.
+  *Đăng nhập* trong `00` (kể cả *Đăng nhập admin*). Chỉ *Tạo runId + đăng ký khách hàng 1* mới sinh `runId` và
+  email mới — gửi lại request đó là bắt đầu một bộ tài khoản khác.
 - Request có nhãn `[NEG]` là ca âm: test xanh nghĩa là hệ thống **từ chối đúng**.
 - user-service chỉ cho **10 lượt đăng ký/giờ/IP**, mà thư mục `00` dùng 7 lượt (kể cả 2 ca âm). Chạy lại trong
   cùng một giờ sẽ gặp `429`. Ở máy dev, xoá bộ đếm:
