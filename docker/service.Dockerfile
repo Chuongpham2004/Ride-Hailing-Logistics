@@ -25,6 +25,10 @@ RUN java -Djarmode=tools -jar app.jar extract --layers --launcher --destination 
 FROM eclipse-temurin:${JAVA_VERSION}-jre
 RUN groupadd --system --gid 10001 app \
     && useradd --system --uid 10001 --gid app --no-create-home --shell /usr/sbin/nologin app
+# The Ubuntu base ships /usr/bin/pebble, a Go service manager no package owns, so apt cannot patch
+# it. The services never run it and its bundled Go stdlib fails the image scan
+# (CVE-2026-78667, CVE-2026-78669, CVE-2026-97031).
+RUN rm -f /usr/bin/pebble
 WORKDIR /app
 COPY --from=extract /workspace/extracted/dependencies/ ./
 COPY --from=extract /workspace/extracted/spring-boot-loader/ ./
