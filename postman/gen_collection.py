@@ -278,8 +278,9 @@ def onboarding(x, expired_license=False):
                      "/api/v1/drivers/me/profile/submit", token=tok, tests=status4xx()))
     items.append(req(f"[{x}] Gửi mã xác minh email", "POST", "/api/v1/users/me/contacts/email/verification",
                      token=tok, tests=status(202),
-                     desc=f"Mở log user-service, tìm dòng `DEV NOTIFICATION EMAIL to ... code XXXXXX`, "
-                          f"điền 6 số vào biến collection `otpDriver{x}` rồi chạy request kế tiếp."))
+                     desc=f"Mở log user-service, tìm dòng `DEV NOTIFICATION EMAIL to ... code XXXXXX` "
+                          f"(hoặc mở email nếu user-service chạy `NOTIFICATION_SENDER=smtp` và đã đặt biến "
+                          f"`mailbox`), điền 6 số vào biến collection `otpDriver{x}` rồi chạy request kế tiếp."))
     items.append(req(f"[{x}] Xác nhận mã (điền biến otpDriver{x} trước)", "POST",
                      "/api/v1/users/me/contacts/email/verification/confirm", token=tok,
                      raw_body='{\n  "code": "{{otpDriver' + x + '}}"\n}',
@@ -317,8 +318,14 @@ setup = folder("00. Chuẩn bị tài khoản", [
         pre="""
 const runId = Date.now().toString(36);
 pm.collectionVariables.set("runId", runId);
-["customer", "customer2", "driverA", "driverB"].forEach(p =>
-  pm.collectionVariables.set(p + "Email", p.toLowerCase() + "-" + runId + "@e2e.local"));
+// mailbox = hộp thư thật (vd. ten@gmail.com) → ten+drivera-<runId>@gmail.com, mail về đúng hộp thư đó.
+const mailbox = (pm.collectionVariables.get("mailbox") || "").trim();
+const at = mailbox.indexOf("@");
+["customer", "customer2", "driverA", "driverB"].forEach(p => {
+  const tag = p.toLowerCase() + "-" + runId;
+  pm.collectionVariables.set(p + "Email",
+    at > 0 ? mailbox.slice(0, at) + "+" + tag + mailbox.slice(at) : tag + "@e2e.local");
+});
 """,
         raw_body='{\n  "identifier": "{{adminIdentifier}}",\n  "password": "{{adminPassword}}"\n}',
         tests=status(200) + "\n" + DATA + '\npm.collectionVariables.set("adminToken", d.accessToken);',
@@ -777,6 +784,7 @@ variables = [
     ("adminPassword", "admin-password-123"),
     ("password", "Passw0rd!E2e"),
     ("webhookSecret", "dev-only-webhook-secret-change-me"),
+    ("mailbox", ""),
     ("otpDriverA", ""),
     ("otpDriverB", ""),
 ]

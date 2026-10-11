@@ -7,6 +7,12 @@ server:
 spring:
   application:
     name: user-service
+  config:
+    # Local secrets (.env at the repository root, git-ignored); the service may be started from
+    # the root or from its own directory. Real environment variables win.
+    import:
+      - optional:file:.env[.properties]
+      - optional:file:../../.env[.properties]
   threads:
     virtual:
       enabled: true
@@ -52,6 +58,19 @@ spring:
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
     listener:
       ack-mode: record
+  mail:
+    # Used when rhl.notifications.sender=smtp. Gmail: smtp.gmail.com:587 with an app password.
+    host: ${SMTP_HOST:}
+    port: ${SMTP_PORT:587}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      "[mail.smtp.auth]": true
+      "[mail.smtp.starttls.enable]": true
+      "[mail.smtp.starttls.required]": true
+      "[mail.smtp.connectiontimeout]": 5000
+      "[mail.smtp.timeout]": 10000
+      "[mail.smtp.writetimeout]": 10000
   jackson:
     deserialization:
       fail-on-unknown-properties: false
@@ -66,6 +85,10 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    # The service stays up when the mail server is unreachable: only code emails are affected.
+    mail:
+      enabled: false
 
 springdoc:
   api-docs:
@@ -91,9 +114,11 @@ rhl:
     registrations-per-hour: 10
     password-resets-per-hour: 10
   notifications:
-    # Only "log" exists until an email/SMS provider is chosen: it writes codes to the log and is for
-    # local development only. Anything else refuses to start.
+    # log  = codes are written to the log, local development only (default).
+    # smtp = codes are emailed through spring.mail.*; there is no SMS provider yet.
+    # Anything else refuses to start.
     sender: ${NOTIFICATION_SENDER:log}
+    from: ${SMTP_FROM:${SMTP_USERNAME:}}
   documents:
     max-file-size: 5MB
     max-pixels: 40000000

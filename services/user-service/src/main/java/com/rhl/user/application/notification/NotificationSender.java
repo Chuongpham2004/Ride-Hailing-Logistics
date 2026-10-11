@@ -5,8 +5,8 @@ import com.rhl.user.domain.user.ContactChannel;
 import java.time.Duration;
 
 /**
- * Delivers one-time codes by email or SMS. The provider is not chosen yet; until then only the
- * development sender exists ({@code rhl.notifications.sender=log}).
+ * Delivers one-time codes by email or SMS. {@code rhl.notifications.sender} picks the sender:
+ * {@code log} for development, {@code smtp} for email; no SMS provider is chosen yet.
  */
 public interface NotificationSender {
 
