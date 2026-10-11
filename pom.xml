@@ -54,6 +54,11 @@
         <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
         <jackson-bom.version>3.2.3</jackson-bom.version>
         <tomcat.version>11.0.26</tomcat.version>
+        <!--
+          kafka-clients 4.1.2 brings lz4-java 1.10.1 (CVE-2026-106451 HIGH, found by the v0.12.0
+          image scan). Drop once Spring Boot ships a kafka-clients with an equal or newer version.
+        -->
+        <lz4-java.version>1.11.4</lz4-java.version>
         <!-- Raised per module once real coverage exists; 0 keeps the gate wired but non-blocking. -->
         <jacoco.minimum.line.coverage>0.00</jacoco.minimum.line.coverage>
     </properties>
@@ -74,6 +79,12 @@
                 <version>${awssdk.version}</version>
                 <type>pom</type>
                 <scope>import</scope>
+            </dependency>
+            <!-- Pulled in by kafka-clients; see lz4-java.version above. -->
+            <dependency>
+                <groupId>at.yawk.lz4</groupId>
+                <artifactId>lz4-java</artifactId>
+                <version>${lz4-java.version}</version>
             </dependency>
             <!-- Pulled in by Spring Cloud Gateway; see bouncycastle.version above. -->
             <dependency>
