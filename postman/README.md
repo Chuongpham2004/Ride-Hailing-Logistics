@@ -24,6 +24,7 @@ Collection được sinh từ `gen_collection.py`: muốn thêm/sửa request th
 | `adminIdentifier` / `adminPassword` | `admin@rhl.local` / `admin-password-123` | đóng vai reviewer, support, finance |
 | `password` | `Passw0rd!E2e` | mật khẩu của mọi tài khoản E2E |
 | `webhookSecret` | `dev-only-webhook-secret-change-me` | = `PAYMENT_WEBHOOK_SECRET` của payment-service |
+| `mailbox` | *(trống)* | hộp thư thật, vd. `ten@gmail.com`: tài khoản E2E thành `ten+drivera-<runId>@gmail.com` để nhận mã qua email (cần `NOTIFICATION_SENDER=smtp`); đặt **trước khi** chạy thư mục `00` |
 | `otpDriverA` / `otpDriverB` | *(trống)* | điền tay ở UC-01 |
 
 ## 2. Cách chạy
@@ -32,6 +33,7 @@ Collection được sinh từ `gen_collection.py`: muốn thêm/sửa request th
   (UC-04 tiếp trip của UC-03, UC-08 tiếp trip `wsTripId` của UC-07).
 - **UC-01 chạy tay từng request** vì có 2 bước OTP: sau request *“Gửi mã xác minh email”*, mở log user-service,
   tìm dòng `DEV NOTIFICATION EMAIL to ... code 123456`, điền vào `otpDriverA` (hoặc `otpDriverB`), rồi chạy tiếp.
+  Nếu user-service chạy `NOTIFICATION_SENDER=smtp` thì mã không còn trong log: đặt biến `mailbox` rồi đọc mã trong email.
 - Từ UC-02 trở đi dùng **Collection Runner** cho từng thư mục được (bỏ chọn request có nhãn `[THỦ CÔNG]`).
   Một số request tự chờ (2–3 s chờ dispatch/payment, 17 s chờ offer hết hạn, 35 s chờ `NO_DRIVER`).
 - Nếu chạy tay, **đừng để quá 30 s** giữa *“Tài xế gửi vị trí”* và *“Khách đặt chuyến”* (vị trí hết hạn → không

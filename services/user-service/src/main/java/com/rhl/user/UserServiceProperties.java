@@ -11,7 +11,7 @@ import java.util.Set;
 @ConfigurationProperties("rhl")
 public record UserServiceProperties(Jwt jwt, Login login, Verification verification, RateLimits rateLimits,
                                     Driver driver, Documents documents, Storage storage, Bootstrap bootstrap,
-                                    Kafka kafka) {
+                                    Kafka kafka, Notifications notifications) {
 
     /**
      * @param privateKey PKCS#8 PEM; when both keys are empty an ephemeral key pair is generated (dev only)
@@ -77,5 +77,14 @@ public record UserServiceProperties(Jwt jwt, Login login, Verification verificat
     }
 
     public record Kafka(int partitions, short replicas) {
+    }
+
+    /**
+     * How one-time codes reach people.
+     *
+     * @param sender {@code log} (development: codes go to the log) or {@code smtp} (email)
+     * @param from   sender address of the emails; required for {@code smtp}
+     */
+    public record Notifications(String sender, String from) {
     }
 }

@@ -32,3 +32,6 @@ replay_pid*
 
 # Maven
 target/
+
+# Local secrets (SMTP password, ...): never commit
+.env
