@@ -42,8 +42,14 @@
                 "exec": [
                   "const runId = Date.now().toString(36);",
                   "pm.collectionVariables.set(\"runId\", runId);",
-                  "[\"customer\", \"customer2\", \"driverA\", \"driverB\"].forEach(p =>",
-                  "  pm.collectionVariables.set(p + \"Email\", p.toLowerCase() + \"-\" + runId + \"@e2e.local\"));"
+                  "// mailbox = hộp thư thật (vd. ten@gmail.com) → ten+drivera-<runId>@gmail.com, mail về đúng hộp thư đó.",
+                  "const mailbox = (pm.collectionVariables.get(\"mailbox\") || \"\").trim();",
+                  "const at = mailbox.indexOf(\"@\");",
+                  "[\"customer\", \"customer2\", \"driverA\", \"driverB\"].forEach(p => {",
+                  "  const tag = p.toLowerCase() + \"-\" + runId;",
+                  "  pm.collectionVariables.set(p + \"Email\",",
+                  "    at > 0 ? mailbox.slice(0, at) + \"+\" + tag + mailbox.slice(at) : tag + \"@e2e.local\");",
+                  "});"
                 ]
               }
             },
@@ -918,7 +924,7 @@
                 }
               ]
             },
-            "description": "Mở log user-service, tìm dòng `DEV NOTIFICATION EMAIL to ... code XXXXXX`, điền 6 số vào biến collection `otpDriverA` rồi chạy request kế tiếp."
+            "description": "Mở log user-service, tìm dòng `DEV NOTIFICATION EMAIL to ... code XXXXXX` (hoặc mở email nếu user-service chạy `NOTIFICATION_SENDER=smtp` và đã đặt biến `mailbox`), điền 6 số vào biến collection `otpDriverA` rồi chạy request kế tiếp."
           },
           "event": [
             {
@@ -1372,7 +1378,7 @@
                 }
               ]
             },
-            "description": "Mở log user-service, tìm dòng `DEV NOTIFICATION EMAIL to ... code XXXXXX`, điền 6 số vào biến collection `otpDriverB` rồi chạy request kế tiếp."
+            "description": "Mở log user-service, tìm dòng `DEV NOTIFICATION EMAIL to ... code XXXXXX` (hoặc mở email nếu user-service chạy `NOTIFICATION_SENDER=smtp` và đã đặt biến `mailbox`), điền 6 số vào biến collection `otpDriverB` rồi chạy request kế tiếp."
           },
           "event": [
             {
@@ -8568,6 +8574,11 @@
     {
       "key": "webhookSecret",
       "value": "dev-only-webhook-secret-change-me",
+      "type": "string"
+    },
+    {
+      "key": "mailbox",
+      "value": "",
       "type": "string"
     },
     {
