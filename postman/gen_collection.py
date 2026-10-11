@@ -85,11 +85,11 @@ def login(name, ident_var, pass_var, token_var, id_var=None):
     return items
 
 
-def register(name, email_var, full_name, role="CUSTOMER", expect=201):
+def register(name, email_var, full_name, role="CUSTOMER", expect=201, pre="", desc=None):
     return req(name, "POST", "/api/v1/auth/register",
                raw_body='{\n  "email": "{{' + email_var + '}}",\n  "password": "{{password}}",\n  "fullName": "'
                         + full_name + '",\n  "role": "' + role + '"\n}',
-               tests=status(expect) if expect != "4xx" else status4xx())
+               tests=status(expect) if expect != "4xx" else status4xx(), pre=pre, desc=desc)
 
 
 def report_location(name, token, lat, lng, accuracy=8, seq_expr="Date.now()", seq_var="lastSeq",
@@ -314,8 +314,13 @@ def decide(name, x, verdict, reason=None, version_expr=None, expect_ok=True):
 # ---------- folders ----------
 
 setup = folder("00. Chuẩn bị tài khoản", [
-    req("Tạo runId + đăng nhập admin", "POST", "/api/v1/auth/login",
-        pre="""
+    # Không sinh runId ở đây: adminToken hết hạn sau 15 phút, đăng nhập lại không được làm đổi email của lượt chạy.
+    req("Đăng nhập admin", "POST", "/api/v1/auth/login",
+        raw_body='{\n  "identifier": "{{adminIdentifier}}",\n  "password": "{{adminPassword}}"\n}',
+        tests=status(200) + "\n" + DATA + '\npm.collectionVariables.set("adminToken", d.accessToken);',
+        desc="Admin được tạo qua BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD khi khởi động user-service."),
+    register("Tạo runId + đăng ký khách hàng 1", "customerEmail", "Khách Hàng Một",
+             pre="""
 const runId = Date.now().toString(36);
 pm.collectionVariables.set("runId", runId);
 // mailbox = hộp thư thật (vd. ten@gmail.com) → ten+drivera-<runId>@gmail.com, mail về đúng hộp thư đó.
@@ -327,10 +332,7 @@ const at = mailbox.indexOf("@");
     at > 0 ? mailbox.slice(0, at) + "+" + tag + mailbox.slice(at) : tag + "@e2e.local");
 });
 """,
-        raw_body='{\n  "identifier": "{{adminIdentifier}}",\n  "password": "{{adminPassword}}"\n}',
-        tests=status(200) + "\n" + DATA + '\npm.collectionVariables.set("adminToken", d.accessToken);',
-        desc="Admin được tạo qua BOOTSTRAP_ADMIN_EMAIL / BOOTSTRAP_ADMIN_PASSWORD khi khởi động user-service."),
-    register("Đăng ký khách hàng 1", "customerEmail", "Khách Hàng Một"),
+             desc="Mở đầu một lượt chạy mới: sinh runId và 4 email. Gửi lại request này là bỏ bộ tài khoản cũ."),
     register("[NEG] Đăng ký trùng email → 409", "customerEmail", "Khách Trùng", expect=409),
     req("[NEG] Tự đăng ký vai trò ADMINISTRATOR → bị chặn", "POST", "/api/v1/auth/register",
         raw_body='{\n  "email": "hacker-{{runId}}@e2e.local",\n  "password": "{{password}}",\n  "fullName": "Hacker",\n  "role": "ADMINISTRATOR"\n}',
