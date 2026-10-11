@@ -60,6 +60,16 @@
           image scan). Drop once Spring Boot ships a kafka-clients with an equal or newer version.
         -->
         <lz4-java.version>1.11.4</lz4-java.version>
+        <!--
+          The Eureka client and server pull in Apache HttpClient 5 and FreeMarker; Spring Boot 4.0.8
+          manages httpcore5 5.3.6 (CVE-2026-54399, CVE-2026-54428 HIGH) and freemarker 2.3.34
+          (CVE-2026-84939 CRITICAL), found by the v0.13.0 image scan. httpclient5 moves with
+          httpcore5 because the 5.5 line is built on httpcore5 5.3 and the 5.6 line on 5.4. Drop
+          once Spring Boot ships equal or newer.
+        -->
+        <httpcore5.version>5.4.4</httpcore5.version>
+        <httpclient5.version>5.6.5</httpclient5.version>
+        <freemarker.version>2.3.35</freemarker.version>
         <!-- Raised per module once real coverage exists; 0 keeps the gate wired but non-blocking. -->
         <jacoco.minimum.line.coverage>0.00</jacoco.minimum.line.coverage>
     </properties>
