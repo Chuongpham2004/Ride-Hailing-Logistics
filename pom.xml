@@ -21,6 +21,7 @@
         <module>libs/common-web</module>
         <module>libs/common-security</module>
         <module>libs/common-messaging</module>
+        <module>services/eureka-server</module>
         <module>services/api-gateway</module>
         <module>services/user-service</module>
         <module>services/location-service</module>
@@ -154,6 +155,10 @@
                     <artifactId>maven-surefire-plugin</artifactId>
                     <configuration>
                         <argLine>@{argLine} -Duser.timezone=UTC</argLine>
+                        <!-- Tests run without a registry; callers get explicit URLs or mocks. -->
+                        <systemPropertyVariables>
+                            <eureka.client.enabled>false</eureka.client.enabled>
+                        </systemPropertyVariables>
                     </configuration>
                 </plugin>
                 <plugin>
@@ -161,6 +166,10 @@
                     <artifactId>maven-failsafe-plugin</artifactId>
                     <configuration>
                         <argLine>@{argLine} -Duser.timezone=UTC</argLine>
+                        <!-- Tests run without a registry; callers get explicit URLs or mocks. -->
+                        <systemPropertyVariables>
+                            <eureka.client.enabled>false</eureka.client.enabled>
+                        </systemPropertyVariables>
                     </configuration>
                     <executions>
                         <execution>

@@ -1,22 +1,20 @@
 package com.rhl.trip.infrastructure.client;
 
 import com.rhl.common.web.ApiException;
-import com.rhl.common.web.CorrelationId;
 import com.rhl.common.web.ErrorCode;
 import com.rhl.trip.TripServiceProperties;
 import com.rhl.trip.domain.FareSnapshot;
 import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Stop;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import tools.jackson.databind.JsonNode;
 
-import java.net.http.HttpClient;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -32,22 +30,10 @@ public class PricingClient {
     private final RestClient rest;
     private final RemoteCalls calls;
 
-    public PricingClient(RestClient.Builder builder, TripServiceProperties properties) {
-        TripServiceProperties.Remote config = properties.pricing();
+    public PricingClient(RestClient.Builder builder, TripServiceProperties properties,
+                         LoadBalancerClient loadBalancer) {
         this.calls = new RemoteCalls("pricing-service", properties.resilience());
-        HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
-        factory.setReadTimeout(config.readTimeout());
-        this.rest = builder.baseUrl(config.baseUrl())
-                .requestFactory(factory)
-                .requestInterceptor((request, body, execution) -> {
-                    String correlationId = CorrelationId.current();
-                    if (correlationId != null) {
-                        request.getHeaders().set(CorrelationId.HEADER, correlationId);
-                    }
-                    return execution.execute(request, body);
-                })
-                .build();
+        this.rest = RemoteRestClient.create(builder, properties.pricing(), loadBalancer);
     }
 
     /** What trip-service copies from a quote when booking (BR-007). */

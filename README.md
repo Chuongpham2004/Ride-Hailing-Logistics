@@ -97,6 +97,7 @@ RBAC tối thiểu: `Customer`, `Driver`, `Reviewer`, `SupportStaff`, `FinanceSt
 |---|---|---|
 | Ngôn ngữ / framework | **Java 21 (LTS) + Spring Boot 4.0 (Spring Framework 7) + Spring Cloud 2025.1, Jackson 3** | Nền tảng cho mọi service |
 | API Gateway | Spring Cloud Gateway | Định tuyến, xác thực JWT, rate limit, gắn correlation ID |
+| Service discovery | Spring Cloud Netflix Eureka + Spring Cloud LoadBalancer | Service tự đăng ký vào `eureka-server`; bên gọi tìm instance theo tên (`lb://<service>`) thay vì địa chỉ cố định |
 | Realtime | Spring WebSocket | Kênh WSS cho telemetry, offer, trạng thái chuyến |
 | Bảo mật | Spring Security (OAuth2 Resource Server, JWT) | AuthN/AuthZ, RBAC, kiểm tra quyền sở hữu tài nguyên |
 | Gọi đồng bộ giữa service | Spring `RestClient` / OpenFeign + Resilience4j | REST nội bộ có timeout, retry giới hạn, circuit breaker |
@@ -124,6 +125,8 @@ flowchart LR
         RT[realtime-gateway<br/>Spring WebSocket]
     end
 
+    EUR[eureka-server<br/>Service registry]
+
     subgraph SVC[Domain services]
         USR[user-service<br/>User & Driver Profile]
         LOC[location-service<br/>Location & Telemetry]
@@ -139,6 +142,7 @@ flowchart LR
     DA -- WSS telemetry 3-5s --> RT
 
     GW --> USR & LOC & TRP & PRC & PAY
+    GW & RT & USR & LOC & TRP & PRC & PAY -. đăng ký / tra cứu .-> EUR
 
     TRP -- REST: nearby drivers --> LOC
     TRP -- REST: validate quote --> PRC
@@ -171,6 +175,9 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 | `pricing-service` | 8084 | Bảng giá, gọi Map Provider, surge, quote, cước cuối | `pricing_rules`, `surge_rules`, `surge_snapshots`, `fare_quotes`, `final_fares`, `outbox_events` | Cache quote, bộ đếm cung/cầu theo ô H3, hệ số surge hiện hành, cache tuyến đường |
 | `realtime-gateway` | 8085 | Quản lý phiên WSS, xác thực, heartbeat, subscribe theo quyền, đẩy bản tin xuống client | — | Registry phiên (user → instance), danh sách người tham gia chuyến |
 | `payment-service` | 8086 | Thanh toán, callback provider, hoàn tiền, ví, ledger, hoa hồng | `payments`, `payment_attempts`, `refunds`, `wallets`, `wallet_entries`, `commission_rules`, `outbox_events` | Không dùng cho số dư (số dư chỉ lấy từ ledger trong DB) |
+| `eureka-server` | 8761 | Service registry: nhận đăng ký và heartbeat của 7 service trên, trả danh sách instance theo tên | — | — |
+
+**Service discovery.** SRS không yêu cầu thành phần này; nó được thêm để các service không phải biết địa chỉ cố định của nhau. Cả 7 service đăng ký vào `eureka-server` (`EUREKA_URL`, mặc định `http://localhost:8761/eureka/`). `api-gateway` định tuyến tới `lb://<service>` và `trip-service` gọi location/pricing cũng qua `lb://<service>`, cân bằng tải bằng Spring Cloud LoadBalancer. Đặt `<TÊN>_SERVICE_URL` (ví dụ `TRIP_SERVICE_URL=http://trip:8083`) thì kết nối đó dùng địa chỉ cố định và bỏ qua registry. JWKS của user-service (`USER_SERVICE_URL`, mặc định `http://localhost:8081`) vẫn lấy theo địa chỉ cố định. Registry chạy một node, không xác thực: chỉ để trong mạng nội bộ.
 
 ### 4.4. Ràng buộc kiến trúc bắt buộc
 
@@ -396,6 +403,7 @@ ride-hailing-logistics/
 │   ├── common-security/            #   JWT converter, RBAC helper
 │   └── common-messaging/           #   Event envelope, Outbox relay, idempotent consumer
 ├── services/
+│   ├── eureka-server/
 │   ├── api-gateway/
 │   ├── realtime-gateway/
 │   ├── user-service/
@@ -531,6 +539,7 @@ docker compose up -d
 ./mvnw install -DskipTests -pl libs/common-web,libs/common-security,libs/common-messaging -am
 
 # 4. Chạy service (mỗi lệnh một terminal). Không thêm -am: Maven sẽ cố chạy cả libs/ và báo lỗi thiếu main class.
+./mvnw -pl services/eureka-server spring-boot:run    # :8761, chạy trước; dashboard http://localhost:8761
 BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-123   ./mvnw -pl services/user-service spring-boot:run   # :8081
 ./mvnw -pl services/location-service spring-boot:run # :8082
 ./mvnw -pl services/trip-service spring-boot:run     # :8083 (cần location-service để ghép tài xế)
@@ -540,6 +549,7 @@ BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-12
 ./mvnw -pl services/api-gateway spring-boot:run      # :8080, gọi API qua gateway
 ```
 
+- **Service discovery:** chạy `eureka-server` trước. Service nào khởi động khi registry chưa lên vẫn chạy được và tự đăng ký lại sau. Sau khi một service lên, gateway cần tới khoảng 1 phút mới thấy nó (chu kỳ làm mới registry 30 giây ở mỗi phía); trong lúc đó gateway trả `503 DEPENDENCY_UNAVAILABLE`. Mỗi service đăng ký với hostname `localhost` (`EUREKA_INSTANCE_HOSTNAME`); khi chạy trên nhiều máy hoặc container, đặt biến này hoặc `EUREKA_PREFER_IP_ADDRESS=true`. Test tắt Eureka client (`eureka.client.enabled=false` trong parent POM).
 - **Không tạo bảng bằng tay.** Khi service khởi động, Flyway chạy các file `src/main/resources/db/migration/V{n}__*.sql` chưa chạy (lịch sử trong `flyway_schema_history`), rồi Hibernate chỉ đối chiếu entity với schema (`ddl-auto: validate`). Đổi schema = thêm file `V{n+1}__...sql`; không sửa migration đã chạy ở môi trường nào.
 - Entity dùng Lombok giới hạn: `@Getter` + `@NoArgsConstructor(access = PROTECTED)`; bean Spring dùng `@RequiredArgsConstructor`. `@Data`, `@Setter`, `@EqualsAndHashCode`, `@ToString` bị chặn trong `lombok.config` (proxy Hibernate, lazy loading, lộ PII qua log, bỏ qua quy tắc nghiệp vụ).
 - Admin đầu tiên được tạo khi khởi động nếu đặt `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 ký tự); vai trò nhân viên không tự đăng ký được.
@@ -563,7 +573,8 @@ BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-12
 | `libs/common-security` | ✅ | `Role`, quy ước claim JWT, converter `roles` → `ROLE_*`, `CurrentUser`, handler 401/403 |
 | `libs/common-messaging` | ✅ | Envelope event, Outbox writer + relay (`SKIP LOCKED`), `processed_events`, validate JSON Schema, DLT |
 | `contracts/events` | 🟡 | `envelope.v1`, `DriverAvailabilityChanged.v1`, `DriverLocationReported.v1`, `DriverLocationUpdated.v1`, 5 event `trip/*` và 4 event `dispatch/*`; pricing/payment/wallet thêm cùng service sở hữu |
-| `api-gateway` | ✅ | Định tuyến 5 service, JWT qua JWKS, kiểm tra token thu hồi, rate limit Redis, CORS |
+| `eureka-server` | ✅ | Service registry một node (cổng 8761); 7 service đăng ký, gateway và trip-service tra cứu theo tên |
+| `api-gateway` | ✅ | Định tuyến 5 service qua registry (`lb://`), JWT qua JWKS, kiểm tra token thu hồi, rate limit Redis, CORS |
 | `user-service` | 🟡 | Xong: đăng ký/đăng nhập, refresh xoay vòng + phát hiện dùng lại, logout, RBAC, hồ sơ tài xế, xe, giấy tờ, xét duyệt, Online/Offline, audit, consumer `dispatch.offers` + `trip.events` (OFFERED/BUSY, phát lại `DriverAvailabilityChanged`). Xong thêm: xác minh email/SĐT bằng mã một lần (băm trong Redis, giới hạn lần thử/gửi lại, tài xế phải xác minh trước khi nộp hồ sơ), quên mật khẩu (không lộ tài khoản, thu hồi mọi phiên), rate limit đăng ký và đặt lại theo IP client. Xong thêm: upload file giấy tờ lên object store S3/MinIO (kiểm tra loại thật, kích thước, nội dung nguy hiểm; bỏ metadata ảnh; tải về có kiểm tra quyền và audit). Còn: nhà cung cấp email/SMS thật, thu hồi access token ngay khi đặt lại mật khẩu, dọn file đã upload nhưng không gắn vào giấy tờ, quét virus file |
 | `location-service` | 🟡 | Xong: consume `DriverAvailabilityChanged` (projection `driver_presence`, bỏ event cũ theo `aggregateVersion`), validate telemetry (phạm vi, thời gian, accuracy, nhảy vị trí bất khả thi, gửi bù), Lua cập nhật vị trí + GEO nguyên tử, dọn GEO quá hạn, `telemetry_history` phân vùng theo ngày, publish `DriverLocationUpdated`, API tìm tài xế gần; tài xế `OFFERED`/`BUSY` (qua `DriverAvailabilityChanged` từ user-service) giữ vị trí nhưng rời GEO. Còn: xác thực giữa các service cho `/internal/**` |
 | `trip-service` | 🟡 | Xong: tạo chuyến idempotent, state machine tường minh, lịch sử trạng thái bất biến (trigger chặn sửa/xóa), matching (location-service + giữ tài xế bằng Redis + nới bán kính + `NO_DRIVER`), offer có hạn, accept nguyên tử (khóa dòng + unique partial index), hủy chuyến, 9 event qua outbox. Xong thêm: tạo chuyến từ quote (kiểm tra qua pricing-service, snapshot giá trên chuyến, mỗi quote một chuyến, khách xác nhận surge). Xong thêm: chuyến giao hàng (snapshot người nhận và kiện hàng, chỉ người liên quan thấy), mã đón để bắt đầu chuyến (bật theo loại dịch vụ), mã giao làm bằng chứng giao (giới hạn số lần nhập sai). Xong thêm: xem trước phí hủy, API tra cứu cho nhân viên hỗ trợ (có audit), hủy ngoại lệ bắt buộc ghi chú và có audit, circuit breaker + retry giới hạn (Resilience4j) cho lời gọi location-service/pricing-service. Còn: bằng chứng giao bằng ảnh/chữ ký (nếu TBD-08 cần), mở khóa mã đón/giao cho nhân viên |
@@ -896,8 +907,9 @@ Mỗi bước chuyển phải:
 |---|---|---|
 | Mobile ↔ api-gateway | HTTPS/JSON | Tài khoản, quote, chuyến, thanh toán, lịch sử |
 | Mobile ↔ realtime-gateway | WSS/JSON | Vị trí, offer, trạng thái realtime |
-| trip-service ↔ location-service | REST (RestClient + Resilience4j) | Tìm tài xế gần, lấy vị trí mới nhất |
-| trip-service ↔ pricing-service | REST (RestClient + Resilience4j) | Tạo & xác thực quote |
+| trip-service ↔ location-service | REST (RestClient + Resilience4j), địa chỉ lấy từ Eureka | Tìm tài xế gần, lấy vị trí mới nhất |
+| trip-service ↔ pricing-service | REST (RestClient + Resilience4j), địa chỉ lấy từ Eureka | Tạo & xác thực quote |
+| Mọi service ↔ eureka-server | HTTP (Eureka REST) | Đăng ký, heartbeat, lấy danh sách instance |
 | Pricing ↔ Map Provider | HTTPS | Geocoding, tuyến, khoảng cách, ETA |
 | Services ↔ Kafka | Kafka protocol (Spring Kafka) | Trip / payment / wallet events |
 | Payment ↔ Payment Provider | HTTPS | Tạo thanh toán, xác minh, hoàn tiền |
