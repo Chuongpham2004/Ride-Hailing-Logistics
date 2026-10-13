@@ -48,5 +48,7 @@ jobs:
             ci
             docs
           requireScope: false
-          subjectPattern: ^(?![A-Z]).+$
+          # Dependabot always capitalises its subject ("Bump ..."), so the
+          # lowercase rule only applies to PRs opened by people.
+          subjectPattern: ${{ github.event.pull_request.user.login == 'dependabot[bot]' && '^.+$' || '^(?![A-Z]).+$' }}
           subjectPatternError: The subject "{subject}" must not start with an uppercase letter.
