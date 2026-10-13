@@ -47,7 +47,7 @@
         -->
         <bouncycastle.version>1.86</bouncycastle.version>
         <!--
-          Overrides newer than what Spring Boot 4.0.8 ships; the BOM brings Jackson 2.21.5 and
+          Overrides newer than what Spring Boot 4.1.1 ships; the BOM brings Jackson 2.21.5 and
           Tomcat 11.0.24, which the v0.1.0 image scan flagged (CVE-2026-89407/89425/68497/91776/91777
           on both com.fasterxml.jackson.core and tools.jackson.core, plus Tomcat 11.0.24 had
           CVE-2026-65182 CRITICAL, 65905, 68525). Drop once Spring Boot ships equal or newer.
@@ -56,16 +56,19 @@
         <jackson-bom.version>3.2.3</jackson-bom.version>
         <tomcat.version>11.0.26</tomcat.version>
         <!--
-          kafka-clients 4.1.2 brings lz4-java 1.10.1 (CVE-2026-106451 HIGH, found by the v0.12.0
-          image scan). Drop once Spring Boot ships a kafka-clients with an equal or newer version.
+          kafka-clients brings lz4-java 1.10.1 (CVE-2026-106451 HIGH, found by the v0.12.0 image
+          scan), and still does in the 4.2.1 that Spring Boot 4.1.1 manages. Drop once Spring Boot
+          ships a kafka-clients with an equal or newer version.
         -->
         <lz4-java.version>1.12.0</lz4-java.version>
         <!--
-          The Eureka client and server pull in Apache HttpClient 5 and FreeMarker; Spring Boot 4.0.8
-          manages httpcore5 5.3.6 (CVE-2026-54399, CVE-2026-54428 HIGH) and freemarker 2.3.34
-          (CVE-2026-84939 CRITICAL), found by the v0.13.0 image scan. httpclient5 moves with
-          httpcore5 because the 5.5 line is built on httpcore5 5.3 and the 5.6 line on 5.4. Drop
-          once Spring Boot ships equal or newer.
+          The Eureka client and server pull in Apache HttpClient 5 and FreeMarker. The v0.13.0 image
+          scan (Spring Boot 4.0.8) flagged httpcore5 5.3.6 (CVE-2026-54399, CVE-2026-54428 HIGH) and
+          freemarker 2.3.34 (CVE-2026-84939 CRITICAL). Spring Boot 4.1.1 moved to httpcore5 5.4.3
+          and httpclient5 5.6.4 but still manages freemarker 2.3.34, so all three stay pinned at
+          the versions that scan was fixed with. httpclient5 moves with httpcore5 because the 5.5
+          line is built on httpcore5 5.3 and the 5.6 line on 5.4. Drop once Spring Boot ships equal
+          or newer.
         -->
         <httpcore5.version>5.4.4</httpcore5.version>
         <httpclient5.version>5.6.5</httpclient5.version>

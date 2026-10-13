@@ -95,7 +95,7 @@ RBAC tối thiểu: `Customer`, `Driver`, `Reviewer`, `SupportStaff`, `FinanceSt
 
 | Lớp | Công nghệ | Vai trò trong hệ thống |
 |---|---|---|
-| Ngôn ngữ / framework | **Java 21 (LTS) + Spring Boot 4.0 (Spring Framework 7) + Spring Cloud 2025.1, Jackson 3** | Nền tảng cho mọi service |
+| Ngôn ngữ / framework | **Java 21 (LTS) + Spring Boot 4.1 (Spring Framework 7) + Spring Cloud 2025.1, Jackson 3** | Nền tảng cho mọi service |
 | API Gateway | Spring Cloud Gateway | Định tuyến, xác thực JWT, rate limit, gắn correlation ID |
 | Service discovery | Spring Cloud Netflix Eureka + Spring Cloud LoadBalancer | Service tự đăng ký vào `eureka-server`; bên gọi tìm instance theo tên (`lb://<service>`) thay vì địa chỉ cố định |
 | Realtime | Spring WebSocket | Kênh WSS cho telemetry, offer, trạng thái chuyến |
