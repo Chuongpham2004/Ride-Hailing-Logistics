@@ -1,0 +1,730 @@
+<!doctype html>
+<!--
+  RHL test console: one customer and two drivers side by side, for clicking through the trip
+  flows by hand instead of Postman. Dev tool only; it keeps test accounts in localStorage.
+
+  Serve it from localhost (the gateway's CORS allows http://localhost:*; file:// is refused):
+      python -m http.server 5500 -d tools/test-console
+  then open http://localhost:5500
+-->
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RHL Test Console</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #fff; --line: #d9dce3; --text: #1c2030; --muted: #667085;
+    --accent: #2456d6; --ok: #12824c; --warn: #b45309; --err: #c0262d; --chip: #eef1f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c; --panel: #1d2029; --line: #333846; --text: #e6e8ee; --muted: #9aa3b5;
+      --accent: #7aa2ff; --ok: #4ccb8b; --warn: #f0b35a; --err: #ff7b81; --chip: #2a2f3c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header, section.box, article { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  header { margin: 12px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; }
+  header h1 { font-size: 16px; margin: 0 8px 4px 0; }
+  label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+  label.inline { flex-direction: row; align-items: center; gap: 6px; }
+  input, select, button { font: inherit; color: inherit; }
+  input, select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; min-width: 0; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button.ghost { background: var(--chip); color: var(--text); }
+  button.danger { background: var(--err); }
+  button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 12px 12px; }
+  @media (max-width: 1100px) { main { grid-template-columns: 1fr; } }
+  article { padding: 12px; }
+  article h2 { font-size: 15px; margin: 0 0 8px; display: flex; align-items: center; gap: 8px; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; margin-bottom: 6px; }
+  .row > label { flex: 1 1 90px; }
+  .row > label.wide { flex: 3 1 180px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.on { background: var(--ok); }
+  .chip { background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+  .card { border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+  .card.offer { border-color: var(--warn); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; margin-bottom: 6px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .big { font-size: 20px; font-weight: 600; letter-spacing: .08em; }
+  .muted { color: var(--muted); } .hidden { display: none !important; }
+  section.box { margin: 0 12px 12px; padding: 10px 12px; }
+  #log { height: 260px; overflow: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; background: var(--bg);
+         border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  #log div { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #log .ws { color: var(--accent); } #log .err { color: var(--err); } #log .info { color: var(--ok); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RHL Test Console</h1>
+  <label>Gateway<input data-cfg="baseUrl" size="22"></label>
+  <label>WebSocket<input data-cfg="wsUrl" size="22"></label>
+  <label>Admin<input data-cfg="adminId" size="16"></label>
+  <label>Mật khẩu admin<input data-cfg="adminPw" type="password" size="14"></label>
+  <label>Hộp thư nhận mã (tuỳ chọn)<input data-cfg="mailbox" size="22" placeholder="ten@gmail.com"></label>
+  <label>Mật khẩu tài khoản test<input data-cfg="password" size="12"></label>
+  <button data-act="newAccounts" title="Đăng ký khách + tài xế A + tài xế B với email mới">Tạo bộ tài khoản mới</button>
+  <button class="ghost" data-act="loginAll">Đăng nhập lại tất cả</button>
+</header>
+
+<main>
+  <article id="p-customer">
+    <h2><span class="dot" id="customer-dot"></span>Khách <span class="chip" id="customer-id"></span></h2>
+    <div class="row">
+      <label class="wide">Email<input id="customer-email"></label>
+      <label>Mật khẩu<input id="customer-password"></label>
+      <button class="ghost" data-act="login" data-actor="customer">Đăng nhập</button>
+    </div>
+
+    <h3>Đặt chuyến</h3>
+    <div class="row">
+      <label>Dịch vụ<select id="c-service"><option>RIDE</option><option>DELIVERY</option></select></label>
+    </div>
+    <div class="row">
+      <label>Đón: lat<input id="c-plat" value="10.7725"></label>
+      <label>lng<input id="c-plng" value="106.6980"></label>
+      <label class="wide">Địa chỉ<input id="c-paddr" value="Chợ Bến Thành, Quận 1"></label>
+    </div>
+    <div class="row">
+      <label>Trả: lat<input id="c-dlat" value="10.7949"></label>
+      <label>lng<input id="c-dlng" value="106.7219"></label>
+      <label class="wide">Địa chỉ<input id="c-daddr" value="Landmark 81, Bình Thạnh"></label>
+    </div>
+    <div id="c-delivery" class="hidden">
+      <div class="row">
+        <label>Người nhận<input id="c-rname" value="Nguyễn Văn Nhận"></label>
+        <label>SĐT<input id="c-rphone" value="0901234567"></label>
+      </div>
+      <div class="row">
+        <label class="wide">Món hàng<input id="c-pdesc" value="Hộp tài liệu"></label>
+        <label>Cỡ<select id="c-psize"><option>SMALL</option><option>MEDIUM</option><option>LARGE</option></select></label>
+        <label>Gram<input id="c-pweight" value="1500"></label>
+      </div>
+    </div>
+    <div class="row">
+      <button data-act="quote">Lấy báo giá</button>
+      <button data-act="book">Đặt chuyến</button>
+      <button data-act="quoteAndBook">Báo giá + đặt luôn</button>
+    </div>
+    <div class="card hidden" id="c-quote"></div>
+
+    <h3>Chuyến hiện tại</h3>
+    <div class="card" id="c-trip"><span class="muted">Chưa có chuyến.</span></div>
+    <div class="row">
+      <label>Lý do huỷ<select id="c-reason">
+        <option>CHANGED_MIND</option><option>WAIT_TOO_LONG</option><option>DRIVER_NOT_MOVING</option>
+        <option>WRONG_PICKUP</option><option>SAFETY_CONCERN</option></select></label>
+      <button class="danger" data-act="cancel" data-actor="customer">Huỷ chuyến</button>
+      <button class="ghost" data-act="refreshTrip" data-actor="customer">Tải lại</button>
+      <button class="ghost" data-act="latestTrip" data-actor="customer">Chuyến gần nhất</button>
+      <button class="ghost" data-act="payments">Thanh toán</button>
+    </div>
+  </article>
+  <!-- driver panels are rendered here -->
+</main>
+
+<section class="box">
+  <div class="row">
+    <h3 style="margin:0;flex:1">Nhật ký (REST + WebSocket)</h3>
+    <label class="inline"><input type="checkbox" id="log-loc"> hiện từng bản tin vị trí</label>
+    <button class="ghost" data-act="clearLog">Xoá</button>
+  </div>
+  <div id="log"></div>
+</section>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('rhl.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('rhl.' + k, JSON.stringify(v)); } catch { /* private mode */ } }
+};
+const TERMINAL = ['COMPLETED', 'CANCELLED', 'NO_DRIVER'];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+// ---------- settings ----------
+const cfg = Object.assign({
+  baseUrl: 'http://localhost:8080', wsUrl: 'ws://localhost:8085/ws', adminId: 'admin@rhl.local',
+  adminPw: 'admin-password-123', mailbox: '', password: 'Passw0rd!E2e'
+}, store.get('cfg', {}));
+document.querySelectorAll('[data-cfg]').forEach(el => {
+  el.value = cfg[el.dataset.cfg];
+  el.addEventListener('change', () => { cfg[el.dataset.cfg] = el.value.trim(); store.set('cfg', cfg); });
+});
+
+// ---------- actors ----------
+const actors = {
+  customer: { key: 'customer', label: 'Khách', role: 'CUSTOMER', fullName: 'Khách Hàng Test' },
+  driverA: { key: 'driverA', label: 'Tài xế A', role: 'DRIVER', fullName: 'Tài Xế A Test', lat: '10.7730', lng: '106.6985' },
+  driverB: { key: 'driverB', label: 'Tài xế B', role: 'DRIVER', fullName: 'Tài Xế B Test', lat: '10.7735', lng: '106.6990' }
+};
+const admin = { key: 'admin', label: 'Admin' };
+const drivers = [actors.driverA, actors.driverB];
+
+function driverPanel(a) {
+  const k = a.key;
+  return `
+  <article id="p-${k}">
+    <h2><span class="dot" id="${k}-dot"></span>${a.label} <span class="chip" id="${k}-id"></span>
+        <span class="chip" id="${k}-review"></span><span class="chip" id="${k}-avail"></span></h2>
+    <div class="row">
+      <label class="wide">Email<input id="${k}-email"></label>
+      <label>Mật khẩu<input id="${k}-password"></label>
+      <button class="ghost" data-act="login" data-actor="${k}">Đăng nhập</button>
+    </div>
+
+    <h3>Hồ sơ (làm một lần cho tài khoản mới)</h3>
+    <div class="row">
+      <button class="ghost" data-act="onboard" data-actor="${k}">1. Tạo hồ sơ + xe + giấy tờ, gửi mã email</button>
+    </div>
+    <div class="row">
+      <label>Mã 6 số<input id="${k}-otp" inputmode="numeric" maxlength="6"></label>
+      <button class="ghost" data-act="verifyApprove" data-actor="${k}">2. Xác nhận mã, gửi duyệt, admin duyệt</button>
+      <button class="ghost" data-act="resendCode" data-actor="${k}">Gửi lại mã</button>
+    </div>
+
+    <h3>Trực tuyến &amp; vị trí</h3>
+    <div class="row">
+      <button data-act="online" data-actor="${k}">Bật online</button>
+      <button class="ghost" data-act="offline" data-actor="${k}">Tắt online</button>
+    </div>
+    <div class="row">
+      <label>lat<input id="${k}-lat" value="${a.lat}"></label>
+      <label>lng<input id="${k}-lng" value="${a.lng}"></label>
+      <button class="ghost" data-act="sendLocation" data-actor="${k}">Gửi vị trí</button>
+      <label class="inline"><input type="checkbox" id="${k}-auto" data-auto="${k}"> tự gửi mỗi 3 s</label>
+    </div>
+
+    <h3>Offer</h3>
+    <div class="card" id="${k}-offer"><span class="muted">Chưa có offer.</span></div>
+    <div class="row">
+      <button data-act="accept" data-actor="${k}">Nhận chuyến</button>
+      <button class="ghost" data-act="decline" data-actor="${k}">Từ chối</button>
+      <button class="ghost" data-act="loadOffers" data-actor="${k}">Tải offer (REST)</button>
+    </div>
+
+    <h3>Chuyến hiện tại</h3>
+    <div class="card" id="${k}-trip"><span class="muted">Chưa có chuyến.</span></div>
+    <div class="row">
+      <button data-act="advance" data-step="start-pickup" data-actor="${k}">Đi đón</button>
+      <button data-act="advance" data-step="arrive" data-actor="${k}">Đã đến</button>
+      <label>Mã<input id="${k}-code" inputmode="numeric" maxlength="8"></label>
+      <button data-act="advance" data-step="start" data-actor="${k}">Bắt đầu</button>
+      <button data-act="advance" data-step="complete" data-actor="${k}">Hoàn tất</button>
+    </div>
+    <div class="row">
+      <label>Lý do huỷ<select id="${k}-reason">
+        <option>CUSTOMER_NO_SHOW</option><option>VEHICLE_ISSUE</option><option>WRONG_PICKUP</option>
+        <option>SAFETY_CONCERN</option></select></label>
+      <button class="danger" data-act="cancel" data-actor="${k}">Huỷ chuyến</button>
+      <button class="ghost" data-act="refreshTrip" data-actor="${k}">Tải lại</button>
+      <button class="ghost" data-act="latestTrip" data-actor="${k}">Chuyến gần nhất</button>
+      <button class="ghost" data-act="wallet" data-actor="${k}">Ví</button>
+    </div>
+  </article>`;
+}
+document.querySelector('main').insertAdjacentHTML('beforeend', drivers.map(driverPanel).join(''));
+
+for (const a of Object.values(actors)) {
+  Object.assign(a, store.get('actor.' + a.key, {}));
+  $(a.key + '-email').value = a.email || '';
+  $(a.key + '-password').value = a.password || cfg.password;
+  renderIdentity(a);
+}
+function saveActor(a) {
+  store.set('actor.' + a.key, { email: a.email, password: a.password, userId: a.userId, runTag: a.runTag });
+}
+
+// ---------- log ----------
+function log(a, kind, text) {
+  const box = $('log');
+  const line = document.createElement('div');
+  line.className = kind;
+  line.textContent = `${new Date().toLocaleTimeString('vi-VN', { hour12: false })}  ${(a ? a.label : '—').padEnd(9)} ${text}`;
+  box.appendChild(line);
+  while (box.childElementCount > 600) box.firstElementChild.remove();
+  box.scrollTop = box.scrollHeight;
+}
+
+// ---------- REST ----------
+async function api(a, method, path, body, headers = {}, retried = false) {
+  const h = { ...headers };
+  if (a && a.token) h.Authorization = 'Bearer ' + a.token;
+  if (body !== undefined) h['Content-Type'] = 'application/json';
+  let res;
+  try {
+    res = await fetch(cfg.baseUrl + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch (e) {
+    log(a, 'err', `${method} ${path} → không gọi được (gateway chưa chạy, hoặc trang không mở từ http://localhost)`);
+    e.status = 0;
+    throw e;
+  }
+  if (res.status === 401 && a && a.email && !retried && !path.startsWith('/api/v1/auth/')) {
+    await refreshToken(a);
+    return api(a, method, path, body, headers, true);
+  }
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+  if (!res.ok) {
+    let msg = json ? `${json.code || ''} ${json.message || ''}`.trim() : text.slice(0, 200);
+    if (json && json.details && json.details.length) msg += ' ' + JSON.stringify(json.details);
+    log(a, 'err', `${method} ${path} → ${res.status} ${msg}`);
+    const err = new Error(msg);
+    err.status = res.status;
+    err.code = json && json.code;
+    throw err;
+  }
+  log(a, 'rest', `${method} ${path} → ${res.status}`);
+  return json ? json.data : null;
+}
+
+// ---------- auth ----------
+async function refreshToken(a) {
+  const d = await api(null, 'POST', '/api/v1/auth/login', { identifier: a.email, password: a.password });
+  a.token = d.accessToken;
+  if (a.ws && a.ws.readyState === WebSocket.OPEN) wsSend(a, 'AUTH', { accessToken: a.token });
+}
+async function login(a) {
+  if (a !== admin) {
+    a.email = $(a.key + '-email').value.trim();
+    a.password = $(a.key + '-password').value;
+  } else {
+    a.email = cfg.adminId;
+    a.password = cfg.adminPw;
+  }
+  if (!a.email) throw new Error('Chưa có email');
+  await refreshToken(a);
+  if (a === admin) return;
+  const me = await api(a, 'GET', '/api/v1/users/me');
+  a.userId = me.id;
+  saveActor(a);
+  renderIdentity(a);
+  connectWs(a);
+  if (a.role === 'DRIVER') await loadProfile(a);
+}
+function renderIdentity(a) {
+  $(a.key + '-id').textContent = a.userId ? a.userId.slice(0, 8) + '…' : 'chưa đăng nhập';
+  $(a.key + '-id').title = a.userId || '';
+}
+async function newAccounts() {
+  const runId = Date.now().toString(36);
+  const at = cfg.mailbox.indexOf('@');
+  for (const a of Object.values(actors)) {
+    const tag = a.key.toLowerCase() + '-' + runId;
+    a.email = at > 0 ? cfg.mailbox.slice(0, at) + '+' + tag + cfg.mailbox.slice(at) : tag + '@e2e.local';
+    a.password = cfg.password;
+    a.runTag = runId;
+    a.profile = a.trip = a.offer = a.quote = null;
+    $(a.key + '-email').value = a.email;
+    $(a.key + '-password').value = a.password;
+    await api(null, 'POST', '/api/v1/auth/register',
+        { email: a.email, password: a.password, fullName: a.fullName, role: a.role });
+    await login(a);
+  }
+  renderAll();
+  log(null, 'info', 'Đã tạo 3 tài khoản. Tiếp theo: bấm bước 1 ở từng tài xế.');
+}
+async function loginAll() {
+  for (const a of Object.values(actors)) {
+    if ($(a.key + '-email').value.trim()) await login(a);
+  }
+}
+// Access tokens live 15 minutes; renew them before that and tell the open sockets.
+setInterval(() => {
+  for (const a of Object.values(actors)) {
+    if (a.token) refreshToken(a).catch(() => {});
+  }
+}, 10 * 60 * 1000);
+
+// ---------- WebSocket ----------
+function connectWs(a) {
+  clearInterval(a.pingTimer);
+  if (a.ws) { const old = a.ws; a.ws = null; old.close(); }
+  const ws = new WebSocket(cfg.wsUrl + '?access_token=' + encodeURIComponent(a.token));
+  a.ws = ws;
+  ws.onopen = () => {
+    $(a.key + '-dot').classList.add('on');
+    a.pingTimer = setInterval(() => wsSend(a, 'PING', {}), 15000);
+  };
+  ws.onmessage = e => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    onWsMessage(a, m);
+  };
+  ws.onclose = e => {
+    if (a.ws !== ws) return; // replaced by a newer connection
+    clearInterval(a.pingTimer);
+    if ($(a.key + '-dot').classList.contains('on')) {
+      log(a, 'err', `WebSocket đóng (mã ${e.code} ${e.reason || ''}), sẽ tự kết nối lại`);
+    }
+    $(a.key + '-dot').classList.remove('on');
+    setTimeout(async () => {
+      if (a.ws !== ws) return;
+      try {
+        if (e.code === 4401) await refreshToken(a);
+        connectWs(a);
+      } catch { /* logged by api(); the user logs in again */ }
+    }, 5000);
+  };
+}
+function wsSend(a, type, data, extra = {}) {
+  if (!a.ws || a.ws.readyState !== WebSocket.OPEN) return false;
+  a.ws.send(JSON.stringify({ messageId: crypto.randomUUID(), type, version: 1,
+    sentAt: new Date().toISOString(), ...extra, data }));
+  return true;
+}
+function subscribeTrip(a) {
+  if (a.trip && !TERMINAL.includes(a.trip.status)) wsSend(a, 'SUBSCRIBE_TRIP', { tripId: a.trip.id });
+}
+function onWsMessage(a, m) {
+  const d = m.data || {};
+  if (m.type === 'PONG' || m.type === 'AUTH_REFRESHED') return;
+  if (m.type === 'TRIP_DRIVER_LOCATION') {
+    a.driverLocation = d;
+    renderTrip(a);
+    if (!$('log-loc').checked) return;
+  }
+  log(a, m.type === 'ERROR' ? 'err' : 'ws', `⇦ ${m.type} ${JSON.stringify(d)}`);
+
+  if (m.type === 'SESSION_READY' && a.role === 'CUSTOMER') subscribeTrip(a);
+  if (m.type === 'DRIVER_OFFER_CREATED') {
+    a.offer = { id: d.offerId, tripId: d.tripId, serviceType: d.serviceType, pickup: d.pickup,
+      estimatedPickupDistanceMeters: d.estimatedPickupDistanceMeters, expiresAt: d.expiresAt };
+    renderOffer(a);
+  }
+  if (/^DRIVER_OFFER_(EXPIRED|DECLINED|CANCELLED)$/.test(m.type) && a.offer && a.offer.id === d.offerId) {
+    a.offer = null;
+    renderOffer(a, 'Offer vừa rồi: ' + m.type.replace('DRIVER_OFFER_', ''));
+  }
+  if (m.type.startsWith('TRIP_') && m.type !== 'TRIP_DRIVER_LOCATION' && d.tripId) {
+    if (a.role === 'DRIVER' && m.type === 'TRIP_ACCEPTED' && !a.trip) a.trip = { id: d.tripId };
+    if (a.trip && a.trip.id === d.tripId) {
+      refreshTrip(a).then(() => {
+        if (a.role === 'CUSTOMER' && m.type === 'TRIP_ACCEPTED') subscribeTrip(a);
+      }).catch(() => {});
+      if (a.role === 'DRIVER' && /COMPLETED|CANCELLED/.test(m.type)) {
+        setTimeout(() => loadProfile(a).catch(() => {}), 1500);
+      }
+    }
+  }
+}
+
+// ---------- customer ----------
+const customer = actors.customer;
+const num = id => Number($(id).value);
+$('c-service').addEventListener('change', () =>
+    $('c-delivery').classList.toggle('hidden', $('c-service').value !== 'DELIVERY'));
+
+async function quote() {
+  customer.quote = await api(customer, 'POST', '/api/v1/quotes', {
+    serviceType: $('c-service').value,
+    pickup: { latitude: num('c-plat'), longitude: num('c-plng'), address: $('c-paddr').value },
+    dropoff: { latitude: num('c-dlat'), longitude: num('c-dlng'), address: $('c-daddr').value }
+  });
+  renderQuote();
+}
+async function book() {
+  const q = customer.quote;
+  if (!q) throw new Error('Chưa có báo giá');
+  const body = { quoteId: q.id };
+  if (q.surgeConfirmationRequired) body.acceptedSurgeMultiplier = Number(q.surgeMultiplier);
+  if (q.serviceType === 'DELIVERY') {
+    body.delivery = { recipientName: $('c-rname').value, recipientPhone: $('c-rphone').value,
+      packageDescription: $('c-pdesc').value, packageSize: $('c-psize').value,
+      packageWeightGrams: num('c-pweight') };
+  }
+  customer.driverLocation = null;
+  customer.trip = await api(customer, 'POST', '/api/v1/trips', body,
+      { 'Idempotency-Key': 'console-' + crypto.randomUUID() });
+  customer.quote = null; // a quote buys one trip
+  renderQuote();
+  renderTrip(customer);
+}
+async function payments() {
+  if (!customer.trip) throw new Error('Chưa có chuyến');
+  const list = await api(customer, 'GET', '/api/v1/payments?tripId=' + customer.trip.id);
+  if (!list.length) log(customer, 'info', 'Chưa có khoản thanh toán nào cho chuyến này (Kafka có thể chậm vài giây).');
+  for (const p of list) log(customer, 'info', `Thanh toán ${p.purpose}: ${p.amount} ${p.currency || ''} — ${p.status}`);
+}
+function renderQuote() {
+  const q = customer.quote, el = $('c-quote');
+  el.classList.toggle('hidden', !q);
+  if (!q) return;
+  el.replaceChildren(kv([
+    ['Giá', `${q.total.toLocaleString('vi-VN')} ${q.currency}`],
+    ['Quãng đường', `${(q.distanceMeters / 1000).toFixed(1)} km · ${Math.round(q.durationSeconds / 60)} phút`],
+    ['Surge', `×${q.surgeMultiplier}${q.surgeConfirmationRequired ? ' (cần xác nhận, sẽ tự gửi)' : ''}`],
+    ['Hết hạn', countdown(q.expiresAt)]
+  ]));
+}
+
+// ---------- driver ----------
+async function loadProfile(a) {
+  try {
+    a.profile = await api(a, 'GET', '/api/v1/drivers/me/profile');
+  } catch (e) {
+    if (e.status !== 404) throw e;
+    a.profile = null;
+  }
+  renderProfile(a);
+  return a.profile;
+}
+function renderProfile(a) {
+  const p = a.profile;
+  $(a.key + '-review').textContent = p ? p.reviewStatus : 'chưa có hồ sơ';
+  $(a.key + '-avail').textContent = p ? p.availability : '';
+}
+/** Every step is skipped when already done, so the button can be pressed again after a failure. */
+async function onboard(a) {
+  let p = await loadProfile(a);
+  if (!p) {
+    p = a.profile = await api(a, 'POST', '/api/v1/drivers/me/profile',
+        { fullName: a.fullName, dateOfBirth: '1990-05-20', serviceTypes: ['RIDE', 'DELIVERY'] });
+  }
+  let vehicleId = p.vehicles && p.vehicles.length ? p.vehicles[0].id : null;
+  if (!vehicleId) {
+    const v = await api(a, 'POST', '/api/v1/drivers/me/vehicles', { type: 'MOTORBIKE',
+      plateNumber: '59X' + String(Date.now()).slice(-6), brand: 'Honda', model: 'Wave Alpha', color: 'Đen',
+      manufactureYear: 2022 });
+    vehicleId = v.id;
+  }
+  const have = new Set((p.documents || []).map(d => d.type));
+  const tag = (a.runTag || Date.now().toString(36)) + '-' + a.key.slice(-1);
+  for (const [type, forVehicle] of [['NATIONAL_ID', false], ['DRIVER_LICENSE', false],
+      ['VEHICLE_REGISTRATION', true], ['VEHICLE_INSURANCE', true]]) {
+    if (have.has(type)) continue;
+    const doc = { type, documentNumber: type.slice(0, 3) + '-' + tag, issuedOn: '2024-01-01', expiresOn: '2030-01-01' };
+    if (forVehicle) doc.vehicleId = vehicleId;
+    await api(a, 'POST', '/api/v1/drivers/me/documents', doc);
+  }
+  await loadProfile(a);
+  const me = await api(a, 'GET', '/api/v1/users/me');
+  if (me.emailVerified) {
+    log(a, 'info', 'Email đã xác minh rồi: bấm bước 2 (không cần mã).');
+  } else {
+    await resendCode(a);
+  }
+}
+async function resendCode(a) {
+  const d = await api(a, 'POST', '/api/v1/users/me/contacts/email/verification');
+  log(a, 'info', `Đã gửi mã tới ${(d && d.destination) || a.email}. Nhập 6 số rồi bấm bước 2.`);
+}
+async function verifyApprove(a) {
+  const me = await api(a, 'GET', '/api/v1/users/me');
+  if (!me.emailVerified) {
+    const code = $(a.key + '-otp').value.trim();
+    if (!/^\d{6}$/.test(code)) throw new Error('Nhập mã 6 số trước');
+    await api(a, 'POST', '/api/v1/users/me/contacts/email/verification/confirm', { code });
+  }
+  let p = await loadProfile(a);
+  if (!p) throw new Error('Chưa có hồ sơ: bấm bước 1 trước');
+  if (p.reviewStatus !== 'PENDING_REVIEW' && p.reviewStatus !== 'APPROVED') {
+    p = a.profile = await api(a, 'POST', '/api/v1/drivers/me/profile/submit');
+  }
+  if (p.reviewStatus === 'PENDING_REVIEW') {
+    await login(admin);
+    const review = await api(admin, 'GET', '/api/v1/admin/drivers/' + a.userId);
+    await api(admin, 'POST', `/api/v1/admin/drivers/${a.userId}/decisions`,
+        { verdict: 'APPROVE', profileVersion: review.profile.profileVersion });
+  }
+  await loadProfile(a);
+  log(a, 'info', 'Hồ sơ đã duyệt. Bật online rồi gửi vị trí để nhận offer.');
+}
+async function online(a) {
+  const p = a.profile || await loadProfile(a);
+  if (!p || !p.vehicles || !p.vehicles.length) throw new Error('Tài xế chưa có xe: làm phần Hồ sơ trước');
+  await api(a, 'POST', '/api/v1/drivers/me/availability/online',
+      { vehicleId: p.activeVehicleId || p.vehicles[0].id, serviceTypes: ['RIDE', 'DELIVERY'] });
+  await loadProfile(a);
+  // location-service learns about it through Kafka; a location sent earlier is not used for matching.
+  await sleep(2000);
+  await sendLocation(a);
+}
+async function offline(a) {
+  $(a.key + '-auto').checked = false;
+  toggleAuto(a);
+  await api(a, 'POST', '/api/v1/drivers/me/availability/offline');
+  await loadProfile(a);
+}
+async function sendLocation(a) {
+  const d = await api(a, 'POST', '/api/v1/locations/me', { sequence: Date.now(), latitude: num(a.key + '-lat'),
+    longitude: num(a.key + '-lng'), accuracyMeters: 8, headingDegrees: 90, speedMetersPerSecond: 5,
+    deviceTimestamp: new Date().toISOString() });
+  if (d && d.outcome !== 'CURRENT') log(a, 'err', 'Vị trí không được ghi nhận: ' + d.outcome);
+}
+function toggleAuto(a) {
+  clearInterval(a.autoTimer);
+  if ($(a.key + '-auto').checked) a.autoTimer = setInterval(() => sendLocation(a).catch(() => {}), 3000);
+}
+document.querySelectorAll('[data-auto]').forEach(el =>
+    el.addEventListener('change', () => toggleAuto(actors[el.dataset.auto])));
+
+async function loadOffers(a) {
+  const list = await api(a, 'GET', '/api/v1/offers');
+  const o = (list || []).find(x => x.status === 'PENDING');
+  a.offer = o || null;
+  renderOffer(a, o ? null : 'Không có offer đang chờ.');
+}
+async function accept(a) {
+  if (!a.offer) throw new Error('Không có offer');
+  a.trip = await api(a, 'POST', `/api/v1/offers/${a.offer.id}/accept`);
+  a.offer = null;
+  renderOffer(a);
+  renderTrip(a);
+  loadProfile(a).catch(() => {});
+}
+async function decline(a) {
+  if (!a.offer) throw new Error('Không có offer');
+  await api(a, 'POST', `/api/v1/offers/${a.offer.id}/decline`);
+  a.offer = null;
+  renderOffer(a, 'Đã từ chối.');
+}
+async function advance(a, step) {
+  if (!a.trip) throw new Error('Chưa có chuyến');
+  const code = $(a.key + '-code').value.trim();
+  const needsCode = step === 'start' || step === 'complete';
+  a.trip = await api(a, 'POST', `/api/v1/trips/${a.trip.id}/${step}`, needsCode && code ? { code } : undefined);
+  if (needsCode) $(a.key + '-code').value = '';
+  renderTrip(a);
+}
+async function wallet(a) {
+  const w = await api(a, 'GET', '/api/v1/wallets/me?limit=10');
+  log(a, 'info', `Ví: số dư ${w.balance}`);
+  for (const e of w.entries || []) log(a, 'info', `  ${e.type} ${e.amount} (trip ${String(e.tripId || '').slice(0, 8)})`);
+}
+function renderOffer(a, note) {
+  const el = $(a.key + '-offer'), o = a.offer;
+  el.classList.toggle('offer', Boolean(o));
+  if (!o) {
+    const s = document.createElement('span');
+    s.className = 'muted';
+    s.textContent = note || 'Chưa có offer.';
+    el.replaceChildren(s);
+    return;
+  }
+  el.replaceChildren(kv([
+    ['Dịch vụ', o.serviceType],
+    ['Điểm đón', o.pickup ? o.pickup.address : ''],
+    ['Cách', `${o.estimatedPickupDistanceMeters} m`],
+    ['Hết hạn', countdown(o.expiresAt)],
+    ['Trip', o.tripId]
+  ]));
+}
+
+// ---------- shared trip actions ----------
+async function refreshTrip(a) {
+  if (!a.trip) throw new Error('Chưa có chuyến');
+  a.trip = await api(a, 'GET', '/api/v1/trips/' + a.trip.id);
+  renderTrip(a);
+}
+async function latestTrip(a) {
+  const page = await api(a, 'GET', '/api/v1/trips');
+  const items = (page && page.items) || [];
+  const t = items.find(x => !TERMINAL.includes(x.status)) || items[0];
+  if (!t) return log(a, 'info', 'Chưa có chuyến nào.');
+  a.trip = { id: t.id };
+  await refreshTrip(a);
+  if (a.role === 'CUSTOMER') subscribeTrip(a);
+}
+async function cancel(a) {
+  if (!a.trip) throw new Error('Chưa có chuyến');
+  const reason = $((a.role === 'CUSTOMER' ? 'c' : a.key) + '-reason').value;
+  a.trip = await api(a, 'POST', `/api/v1/trips/${a.trip.id}/cancel`, { reason });
+  renderTrip(a);
+}
+function renderTrip(a) {
+  const el = $((a.role === 'CUSTOMER' ? 'c' : a.key) + '-trip'), t = a.trip;
+  if (!t || !t.status) {
+    const s = document.createElement('span');
+    s.className = 'muted';
+    s.textContent = 'Chưa có chuyến.';
+    el.replaceChildren(s);
+    return;
+  }
+  const rows = [
+    ['Trạng thái', t.status + (t.cancelReason ? ` (${t.cancelReason}, bởi ${t.cancelledBy})` : '')],
+    ['Dịch vụ', t.serviceType],
+    ['Đón', t.pickup ? t.pickup.address : ''],
+    ['Trả', t.dropoff ? t.dropoff.address : '']
+  ];
+  if (t.fare) rows.push(['Giá', `${Number(t.fare.quotedFare).toLocaleString('vi-VN')} ${t.fare.currency}`]);
+  if (a.role === 'CUSTOMER') rows.push(['Tài xế', t.driverId || 'đang tìm…']);
+  if (t.delivery) rows.push(['Người nhận', `${t.delivery.recipientName} · ${t.delivery.recipientPhone}`]);
+  if (t.pickupCode) rows.push(['Mã đón', big(t.pickupCode)]);
+  if (t.deliveryCode) rows.push(['Mã giao', big(t.deliveryCode)]);
+  const loc = a.driverLocation;
+  if (a.role === 'CUSTOMER' && loc && loc.tripId === t.id) {
+    rows.push(['Vị trí tài xế', `${loc.latitude}, ${loc.longitude} (seq ${loc.sequence})`]);
+  }
+  rows.push(['Trip', t.id]);
+  el.replaceChildren(kv(rows));
+}
+
+// ---------- small DOM helpers ----------
+function kv(rows) {
+  const dl = document.createElement('dl');
+  dl.className = 'kv';
+  for (const [k, v] of rows) {
+    const dt = document.createElement('dt'), dd = document.createElement('dd');
+    dt.textContent = k;
+    if (v instanceof Node) dd.appendChild(v); else dd.textContent = v == null ? '' : String(v);
+    dl.append(dt, dd);
+  }
+  return dl;
+}
+function big(text) {
+  const s = document.createElement('span');
+  s.className = 'big';
+  s.textContent = text;
+  return s;
+}
+function countdown(iso) {
+  const s = document.createElement('span');
+  s.dataset.until = iso;
+  tick(s);
+  return s;
+}
+function tick(el) {
+  const left = Math.ceil((new Date(el.dataset.until).getTime() - Date.now()) / 1000);
+  el.textContent = left > 0 ? `còn ${left} s` : 'đã hết hạn';
+}
+setInterval(() => document.querySelectorAll('[data-until]').forEach(tick), 500);
+function renderAll() {
+  renderQuote();
+  renderTrip(customer);
+  for (const d of drivers) { renderProfile(d); renderOffer(d); renderTrip(d); }
+}
+
+// ---------- buttons ----------
+const actions = {
+  newAccounts, loginAll, quote, book, payments,
+  quoteAndBook: async () => { await quote(); await book(); },
+  clearLog: () => $('log').replaceChildren(),
+  login, onboard, verifyApprove, resendCode, online, offline, sendLocation, loadOffers, accept, decline,
+  wallet, refreshTrip, latestTrip, cancel,
+  advance: (a, btn) => advance(a, btn.dataset.step)
+};
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const a = btn.dataset.actor ? actors[btn.dataset.actor] : null;
+  btn.disabled = true;
+  try {
+    await (a ? actions[btn.dataset.act](a, btn) : actions[btn.dataset.act]());
+  } catch (err) {
+    if (err.status === undefined) log(a, 'err', err.message); // HTTP errors were logged by api()
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
