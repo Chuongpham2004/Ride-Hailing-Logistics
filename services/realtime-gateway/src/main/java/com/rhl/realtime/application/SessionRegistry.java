@@ -52,11 +52,7 @@ public class SessionRegistry {
             return sessions.isEmpty() ? null : sessions;
         }) == null;
         if (last) {
-            try {
-                redis.opsForSet().remove(DIRECTORY_PREFIX + userId, config.instanceId());
-            } catch (DataAccessException e) {
-                log.warn("Could not remove session directory entry: {}", e.getMostSpecificCause().getMessage());
-            }
+            withdraw(userId);
         }
     }
 
@@ -77,6 +73,19 @@ public class SessionRegistry {
     public void refreshDirectory() {
         for (UUID userId : byUser.keySet()) {
             announce(userId);
+            // The user's last session may have closed since the key set was read; its removal
+            // could then have run before the write above, which would leave the entry until it expires.
+            if (!byUser.containsKey(userId)) {
+                withdraw(userId);
+            }
+        }
+    }
+
+    private void withdraw(UUID userId) {
+        try {
+            redis.opsForSet().remove(DIRECTORY_PREFIX + userId, config.instanceId());
+        } catch (DataAccessException e) {
+            log.warn("Could not remove session directory entry: {}", e.getMostSpecificCause().getMessage());
         }
     }
 

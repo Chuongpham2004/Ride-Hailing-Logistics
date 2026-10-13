@@ -1,0 +1,1212 @@
+<!doctype html>
+<!--
+  RHL test console: two customers, two drivers and a staff member side by side, for clicking
+  through UC-01..UC-09 by hand instead of Postman. Dev tool only; it keeps test accounts in
+  localStorage. See README.md next to this file for what to press per use case.
+
+  Serve it from localhost (the gateway's CORS allows http://localhost:*; file:// is refused):
+      python -m http.server 5500 -d tools/test-console
+  then open http://localhost:5500
+-->
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RHL Test Console</title>
+<style>
+  :root {
+    --bg: #f4f5f7; --panel: #fff; --line: #d9dce3; --text: #1c2030; --muted: #667085;
+    --accent: #2456d6; --ok: #12824c; --warn: #b45309; --err: #c0262d; --chip: #eef1f6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161c; --panel: #1d2029; --line: #333846; --text: #e6e8ee; --muted: #9aa3b5;
+      --accent: #7aa2ff; --ok: #4ccb8b; --warn: #f0b35a; --err: #ff7b81; --chip: #2a2f3c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+  header, section.box, article { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  header { margin: 12px; padding: 10px 12px; display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: end; }
+  header h1 { font-size: 16px; margin: 0 8px 4px 0; }
+  label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+  label.inline { flex-direction: row; align-items: center; gap: 6px; }
+  input, select, button { font: inherit; color: inherit; }
+  input, select { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px; min-width: 0; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 6px 10px; cursor: pointer; }
+  button.ghost { background: var(--chip); color: var(--text); }
+  button.danger { background: var(--err); }
+  button:disabled { opacity: .5; cursor: default; }
+  main { display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 12px; margin: 0 12px 12px; }
+  article { padding: 12px; min-width: 0; }
+  article h2 { font-size: 15px; margin: 0 0 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+  h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+  details { border-top: 1px dashed var(--line); margin-top: 10px; padding-top: 6px; }
+  summary { cursor: pointer; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 6px; }
+  .row { display: flex; flex-wrap: wrap; gap: 6px; align-items: end; margin-bottom: 6px; }
+  .row > label { flex: 1 1 90px; }
+  .row > label.wide { flex: 3 1 180px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); display: inline-block; }
+  .dot.on { background: var(--ok); }
+  .chip { background: var(--chip); border-radius: 999px; padding: 1px 8px; font-size: 12px; }
+  .card { border: 1px solid var(--line); border-radius: 6px; padding: 8px; margin-bottom: 6px; }
+  .card.offer { border-color: var(--warn); }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 13px; margin: 0; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; overflow-wrap: anywhere; }
+  .big { font-size: 20px; font-weight: 600; letter-spacing: .08em; }
+  .muted { color: var(--muted); } .hidden { display: none !important; }
+  section.box { margin: 0 12px 12px; padding: 10px 12px; }
+  #log { height: 300px; overflow: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; background: var(--bg);
+         border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  #log div { white-space: pre-wrap; overflow-wrap: anywhere; }
+  #log .ws { color: var(--accent); } #log .err { color: var(--err); } #log .info { color: var(--ok); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RHL Test Console</h1>
+  <label>Gateway<input data-cfg="baseUrl" size="22"></label>
+  <label>WebSocket<input data-cfg="wsUrl" size="22"></label>
+  <label>Admin<input data-cfg="adminId" size="16"></label>
+  <label>Mật khẩu admin<input data-cfg="adminPw" type="password" size="14"></label>
+  <label>Hộp thư nhận mã (tuỳ chọn)<input data-cfg="mailbox" size="22" placeholder="ten@gmail.com"></label>
+  <label>Mật khẩu tài khoản test<input data-cfg="password" size="12"></label>
+  <button data-act="newAccounts" title="Đăng ký 2 khách + 2 tài xế với email mới">Tạo bộ tài khoản mới</button>
+  <button class="ghost" data-act="loginAll">Đăng nhập lại tất cả</button>
+</header>
+
+<main><!-- panels are rendered here --></main>
+
+<section class="box">
+  <div class="row">
+    <h3 style="margin:0;flex:1">Nhật ký (REST + WebSocket) — ✔ đúng mong đợi · ✘ sai mong đợi</h3>
+    <label class="inline"><input type="checkbox" id="log-loc"> hiện từng bản tin vị trí</label>
+    <button class="ghost" data-act="clearLog">Xoá</button>
+  </div>
+  <div id="log"></div>
+</section>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('rhl.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('rhl.' + k, JSON.stringify(v)); } catch { /* private mode */ } }
+};
+const TERMINAL = ['COMPLETED', 'CANCELLED', 'NO_DRIVER'];
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const iso = (offsetMs = 0) => new Date(Date.now() + offsetMs).toISOString();
+const short = id => String(id || '').slice(0, 8);
+const money = n => Number(n).toLocaleString('vi-VN');
+function need(value, message) {
+  if (!value) throw new Error(message);
+  return value;
+}
+
+// ---------- settings ----------
+const cfg = Object.assign({
+  baseUrl: 'http://localhost:8080', wsUrl: 'ws://localhost:8085/ws', adminId: 'admin@rhl.local',
+  adminPw: 'admin-password-123', mailbox: '', password: 'Passw0rd!E2e'
+}, store.get('cfg', {}));
+document.querySelectorAll('[data-cfg]').forEach(el => {
+  el.value = cfg[el.dataset.cfg];
+  el.addEventListener('change', () => { cfg[el.dataset.cfg] = el.value.trim(); store.set('cfg', cfg); });
+});
+
+// ---------- actors ----------
+const actors = {
+  customer: { key: 'customer', label: 'Khách 1', role: 'CUSTOMER', fullName: 'Khách Hàng Một', peer: 'customer2' },
+  driverA: { key: 'driverA', label: 'Tài xế A', role: 'DRIVER', fullName: 'Tài Xế A Test', peer: 'driverB',
+    lat: '10.7730', lng: '106.6985' },
+  driverB: { key: 'driverB', label: 'Tài xế B', role: 'DRIVER', fullName: 'Tài Xế B Test', peer: 'driverA',
+    lat: '10.7735', lng: '106.6990' },
+  customer2: { key: 'customer2', label: 'Khách 2', role: 'CUSTOMER', fullName: 'Khách Hàng Hai', peer: 'customer' }
+};
+const admin = { key: 'staff', label: 'Nhân viên' };
+const everyone = { ...actors, staff: admin };
+const customers = [actors.customer, actors.customer2];
+const drivers = [actors.driverA, actors.driverB];
+const peer = a => actors[a.peer];
+
+function loginRow(k) {
+  return `
+    <div class="row">
+      <label class="wide">Email<input id="${k}-email"></label>
+      <label>Mật khẩu<input id="${k}-password"></label>
+      <button class="ghost" data-act="login" data-actor="${k}">Đăng nhập</button>
+    </div>`;
+}
+function tripTools(k) {
+  return `
+      <button class="ghost" data-act="refreshTrip" data-actor="${k}">Tải lại</button>
+      <button class="ghost" data-act="latestTrip" data-actor="${k}">Chuyến gần nhất</button>
+      <button class="ghost" data-act="feePreview" data-actor="${k}" title="Phí nếu huỷ ngay với lý do đang chọn">Xem trước phí huỷ</button>
+      <button class="ghost" data-act="history" data-actor="${k}">Lịch sử trạng thái</button>
+      <button class="ghost" data-act="wsToggle" data-actor="${k}" title="UC-07: ngắt rồi nối lại, chuyến được đồng bộ từ snapshot">Ngắt / nối WebSocket</button>`;
+}
+
+function customerPanel(a) {
+  const k = a.key;
+  return `
+  <article id="p-${k}">
+    <h2><span class="dot" id="${k}-dot"></span>${a.label} <span class="chip" id="${k}-id"></span></h2>
+    ${loginRow(k)}
+
+    <h3>Đặt chuyến</h3>
+    <div class="row">
+      <label>Dịch vụ<select id="${k}-service" data-service="${k}"><option>RIDE</option><option>DELIVERY</option></select></label>
+    </div>
+    <div class="row">
+      <label>Đón: lat<input id="${k}-plat" value="10.7725"></label>
+      <label>lng<input id="${k}-plng" value="106.6980"></label>
+      <label class="wide">Địa chỉ<input id="${k}-paddr" value="Chợ Bến Thành, Quận 1"></label>
+    </div>
+    <div class="row">
+      <label>Trả: lat<input id="${k}-dlat" value="10.7949"></label>
+      <label>lng<input id="${k}-dlng" value="106.7219"></label>
+      <label class="wide">Địa chỉ<input id="${k}-daddr" value="Landmark 81, Bình Thạnh"></label>
+    </div>
+    <div id="${k}-delivery" class="hidden">
+      <div class="row">
+        <label>Người nhận<input id="${k}-rname" value="Nguyễn Văn Nhận"></label>
+        <label>SĐT<input id="${k}-rphone" value="0901234567"></label>
+      </div>
+      <div class="row">
+        <label class="wide">Món hàng<input id="${k}-pdesc" value="Hộp tài liệu"></label>
+        <label>Cỡ<select id="${k}-psize"><option>SMALL</option><option>MEDIUM</option><option>LARGE</option></select></label>
+        <label>Gram<input id="${k}-pweight" value="1500"></label>
+      </div>
+    </div>
+    <div class="row">
+      <button data-act="quote" data-actor="${k}">Lấy báo giá</button>
+      <button data-act="book" data-actor="${k}">Đặt chuyến</button>
+      <button data-act="quoteAndBook" data-actor="${k}">Báo giá + đặt luôn</button>
+    </div>
+    <div class="card hidden" id="${k}-quote"></div>
+
+    <h3>Chuyến hiện tại</h3>
+    <div class="card" id="${k}-trip"><span class="muted">Chưa có chuyến.</span></div>
+    <div class="row">
+      <label>Lý do huỷ<select id="${k}-reason">
+        <option>CHANGED_MIND</option><option>WAIT_TOO_LONG</option><option>DRIVER_NOT_MOVING</option>
+        <option>WRONG_PICKUP</option><option>SAFETY_CONCERN</option></select></label>
+      <button class="danger" data-act="cancel" data-actor="${k}">Huỷ chuyến</button>
+      <button class="ghost" data-act="payments" data-actor="${k}">Thanh toán</button>
+    </div>
+    <div class="row">${tripTools(k)}</div>
+
+    <details>
+      <summary>Gửi lặp &amp; ca bị chặn</summary>
+      <div class="row">
+        <button class="ghost" data-act="rereadQuote" data-actor="${k}" title="UC-02: đọc lại phải ra cùng tổng tiền">Đọc lại báo giá</button>
+        <button class="ghost" data-act="resendBooking" data-actor="${k}" title="UC-03: cùng khoá, cùng nội dung → cùng chuyến">Gửi lại lệnh đặt (cùng khoá)</button>
+        <button class="ghost" data-act="reuseKey" data-actor="${k}" title="UC-03: cùng khoá, nội dung khác → 409">Cùng khoá, nội dung khác</button>
+      </div>
+      <div class="row">
+        <label class="wide">Ca phải bị từ chối<select id="${k}-blocked">
+          <option value="otherTrip">Xem chuyến của khách kia</option>
+          <option value="otherQuote">Đọc báo giá của khách kia</option>
+          <option value="bookOtherQuote">Đặt chuyến bằng báo giá của khách kia</option>
+          <option value="otherPayment">Xem thanh toán của khách kia</option>
+          <option value="subscribeOtherTrip">Theo dõi chuyến của khách kia (WebSocket)</option>
+          <option value="deliveryNoRecipient">Đặt giao hàng thiếu người nhận</option>
+          <option value="badCoords">Báo giá với toạ độ sai (lat 91)</option>
+          <option value="completeOwnTrip">Tự bấm hoàn tất chuyến</option>
+          <option value="reviewQueue">Xem hàng chờ duyệt tài xế</option>
+          <option value="sendLocation">Gửi vị trí như tài xế</option>
+          <option value="readLocation">Đọc vị trí tài xế</option>
+          <option value="registerAdmin">Tự đăng ký vai trò ADMINISTRATOR</option>
+        </select></label>
+        <button class="ghost" data-act="tryBlocked" data-actor="${k}">Thử</button>
+      </div>
+    </details>
+  </article>`;
+}
+
+function driverPanel(a) {
+  const k = a.key;
+  return `
+  <article id="p-${k}">
+    <h2><span class="dot" id="${k}-dot"></span>${a.label} <span class="chip" id="${k}-id"></span>
+        <span class="chip" id="${k}-review"></span><span class="chip" id="${k}-avail"></span></h2>
+    ${loginRow(k)}
+
+    <h3>Hồ sơ (làm một lần cho tài khoản mới)</h3>
+    <div class="row">
+      <button class="ghost" data-act="onboard" data-actor="${k}">1. Tạo hồ sơ + xe + giấy tờ, gửi mã email</button>
+    </div>
+    <div class="row">
+      <label>Mã 6 số<input id="${k}-otp" inputmode="numeric" maxlength="6"></label>
+      <button class="ghost" data-act="verifySubmit" data-actor="${k}">2. Xác nhận mã, gửi duyệt</button>
+      <button class="ghost" data-act="approveNow" data-actor="${k}" title="Đi tắt: nhân viên duyệt ngay">3. Duyệt luôn</button>
+      <button class="ghost" data-act="resendCode" data-actor="${k}">Gửi lại mã</button>
+    </div>
+    <details>
+      <summary>UC-01: hồ sơ thiếu / hết hạn</summary>
+      <div class="row">
+        <button class="ghost" data-act="expiredLicense" data-actor="${k}">Nộp bằng lái đã hết hạn</button>
+        <button class="ghost" data-act="validLicense" data-actor="${k}">Nộp bằng lái còn hạn</button>
+        <button class="ghost" data-act="missing" data-actor="${k}">Hồ sơ còn thiếu gì</button>
+        <button class="ghost" data-act="submitProfile" data-actor="${k}" title="Bị chặn khi còn thiếu">Gửi duyệt</button>
+      </div>
+    </details>
+
+    <h3>Trực tuyến &amp; vị trí</h3>
+    <div class="row">
+      <button data-act="online" data-actor="${k}" title="Bật online rồi tự gửi vị trí mỗi 3 s">Bật online</button>
+      <button class="ghost" data-act="offline" data-actor="${k}">Tắt online</button>
+    </div>
+    <div class="row">
+      <label>lat<input id="${k}-lat" value="${a.lat}"></label>
+      <label>lng<input id="${k}-lng" value="${a.lng}"></label>
+      <button class="ghost" data-act="sendLocation" data-actor="${k}">Gửi vị trí</button>
+    </div>
+    <div class="row">
+      <label class="inline"><input type="checkbox" id="${k}-auto" data-auto="${k}"> tự gửi mỗi 3 s</label>
+      <label class="inline" title="Gửi DRIVER_LOCATION_UPDATED qua WebSocket thay vì REST"><input type="checkbox" id="${k}-viaws"> gửi qua WebSocket</label>
+    </div>
+    <details>
+      <summary>UC-07 / UC-09: bản tin vị trí bất thường</summary>
+      <div class="row">
+        <label class="wide">Bản tin<select id="${k}-anomaly">
+          <option value="duplicate">Trùng sequence → DUPLICATE</option>
+          <option value="lower">Sequence nhỏ hơn → DUPLICATE (không lùi)</option>
+          <option value="outOfOrder">Sequence mới, giờ thiết bị lùi 5 s → OUT_OF_ORDER</option>
+          <option value="backfill">Gửi muộn 10 phút → BACKFILL</option>
+          <option value="lowAccuracy">Độ chính xác 120 m → LOW_ACCURACY</option>
+          <option value="suspicious">Nhảy ra Hà Nội → SUSPICIOUS</option>
+          <option value="future">Giờ thiết bị ở tương lai 1 giờ → bị chặn</option>
+        </select></label>
+        <button class="ghost" data-act="sendAnomaly" data-actor="${k}">Gửi</button>
+        <button class="ghost" data-act="currentLocation" data-actor="${k}">Vị trí server đang giữ</button>
+      </div>
+    </details>
+
+    <h3>Offer</h3>
+    <div class="card" id="${k}-offer"><span class="muted">Chưa có offer.</span></div>
+    <div class="row">
+      <button data-act="accept" data-actor="${k}">Nhận chuyến</button>
+      <button class="ghost" data-act="decline" data-actor="${k}">Từ chối</button>
+      <button class="ghost" data-act="loadOffers" data-actor="${k}">Tải offer (REST)</button>
+    </div>
+
+    <h3>Chuyến hiện tại</h3>
+    <div class="card" id="${k}-trip"><span class="muted">Chưa có chuyến.</span></div>
+    <div class="row">
+      <button data-act="advance" data-step="start-pickup" data-actor="${k}">Đi đón</button>
+      <button data-act="advance" data-step="arrive" data-actor="${k}">Đã đến</button>
+      <label>Mã<input id="${k}-code" inputmode="numeric" maxlength="8"></label>
+      <button data-act="advance" data-step="start" data-actor="${k}">Bắt đầu</button>
+      <button data-act="advance" data-step="complete" data-actor="${k}">Hoàn tất</button>
+    </div>
+    <div class="row">
+      <label>Lý do huỷ<select id="${k}-reason">
+        <option>CUSTOMER_NO_SHOW</option><option>VEHICLE_ISSUE</option><option>WRONG_PICKUP</option>
+        <option>SAFETY_CONCERN</option></select></label>
+      <button class="danger" data-act="cancel" data-actor="${k}">Huỷ chuyến</button>
+      <button class="ghost" data-act="wallet" data-actor="${k}">Ví</button>
+    </div>
+    <div class="row">${tripTools(k)}</div>
+
+    <details>
+      <summary>Ca bị chặn</summary>
+      <div class="row">
+        <label class="wide">Ca phải bị từ chối<select id="${k}-blocked">
+          <option value="acceptOtherOffer">Nhận offer của tài xế kia</option>
+          <option value="acceptOldOffer">Nhận lại offer đã từ chối / hết hạn</option>
+          <option value="otherTrip">Xem chuyến của tài xế kia</option>
+          <option value="otherDocument">Tải file giấy tờ của tài xế kia</option>
+          <option value="driverQuote">Xin báo giá như khách</option>
+          <option value="reviewQueue">Xem hàng chờ duyệt tài xế</option>
+        </select></label>
+        <button class="ghost" data-act="tryBlocked" data-actor="${k}">Thử</button>
+      </div>
+    </details>
+  </article>`;
+}
+
+function staffPanel() {
+  return `
+  <article id="p-staff">
+    <h2>Nhân viên <span class="chip" id="staff-id"></span></h2>
+    <div class="row">
+      <span class="muted" style="flex:1">Dùng tài khoản Admin ở thanh trên cùng (đóng vai reviewer, support, finance).</span>
+      <button class="ghost" data-act="login" data-actor="staff">Đăng nhập</button>
+    </div>
+
+    <h3>UC-01: duyệt hồ sơ tài xế</h3>
+    <div class="row">
+      <label>Tài xế<select id="staff-driver"><option value="driverA">Tài xế A</option><option value="driverB">Tài xế B</option></select></label>
+      <label class="wide">Lý do từ chối<input id="staff-reason" value="Ảnh CCCD bị mờ, vui lòng chụp lại"></label>
+    </div>
+    <div class="row">
+      <button class="ghost" data-act="reviewQueue" data-actor="staff">Hàng chờ duyệt</button>
+      <button class="ghost" data-act="reviewShow" data-actor="staff">Xem hồ sơ + lịch sử quyết định</button>
+      <button data-act="approve" data-actor="staff">Duyệt</button>
+      <button class="danger" data-act="reject" data-actor="staff">Từ chối</button>
+      <button class="ghost" data-act="approveStale" data-actor="staff" title="Phải bị chặn">Duyệt với phiên bản hồ sơ sai</button>
+    </div>
+
+    <h3>UC-05 / UC-08: chuyến</h3>
+    <div class="row">
+      <label class="wide">Trip id<input id="staff-trip"></label>
+      <button class="ghost" data-act="takeTrip" data-from="customer" data-actor="staff">← Khách 1</button>
+      <button class="ghost" data-act="takeTrip" data-from="customer2" data-actor="staff">← Khách 2</button>
+    </div>
+    <div class="row">
+      <label class="wide">Ghi chú huỷ (≥ 10 ký tự)<input id="staff-note" value="Khách gọi tổng đài nhờ huỷ hộ"></label>
+    </div>
+    <div class="row">
+      <button class="ghost" data-act="tripDetail" data-actor="staff" title="Lịch sử, offer, bằng chứng giao, số lần sai mã">Chi tiết chuyến</button>
+      <button class="danger" data-act="staffCancel" data-actor="staff">Huỷ hộ</button>
+      <button class="ghost" data-act="staffCancelShort" data-actor="staff" title="Phải bị chặn">Huỷ hộ với ghi chú quá ngắn</button>
+    </div>
+
+    <h3>UC-08: hoàn tiền</h3>
+    <div class="row">
+      <label class="wide">Payment id<input id="staff-payment"></label>
+      <button class="ghost" data-act="findPayments" data-actor="staff" title="Tìm thanh toán của trip id ở trên">Thanh toán của chuyến</button>
+    </div>
+    <div class="row">
+      <label>Số tiền<input id="staff-amount" value="10000"></label>
+      <button data-act="refund" data-actor="staff">Hoàn tiền</button>
+      <button class="ghost" data-act="refundResend" data-actor="staff" title="Cùng khoá → cùng refund">Gửi lại (cùng khoá)</button>
+      <button class="ghost" data-act="refundOtherAmount" data-actor="staff" title="Phải bị chặn">Cùng khoá, số tiền khác</button>
+      <button class="ghost" data-act="refundTooMuch" data-actor="staff" title="Phải bị chặn">Hoàn vượt số đã thu</button>
+    </div>
+
+    <h3>UC-08: ví tài xế</h3>
+    <div class="row">
+      <label>Số tiền (âm = trừ)<input id="staff-adjust" value="-8000"></label>
+      <label>Lý do<select id="staff-adjust-reason"><option>REFUND_CLAWBACK</option><option>EARNING_CORRECTION</option>
+        <option>INCENTIVE</option><option>OTHER</option></select></label>
+    </div>
+    <div class="row">
+      <button data-act="adjust" data-actor="staff" title="Áp dụng cho tài xế đang chọn ở trên">Điều chỉnh ví</button>
+      <button class="ghost" data-act="adjustResend" data-actor="staff" title="Cùng khoá → không trừ hai lần">Gửi lại (cùng khoá)</button>
+      <button class="ghost" data-act="staffWallet" data-actor="staff">Xem ví</button>
+    </div>
+  </article>`;
+}
+
+document.querySelector('main').innerHTML =
+    customerPanel(actors.customer) + drivers.map(driverPanel).join('') + customerPanel(actors.customer2) + staffPanel();
+
+for (const a of Object.values(actors)) {
+  Object.assign(a, store.get('actor.' + a.key, {}));
+  $(a.key + '-email').value = a.email || '';
+  $(a.key + '-password').value = a.password || cfg.password;
+  renderIdentity(a);
+}
+renderIdentity(admin);
+function saveActor(a) {
+  store.set('actor.' + a.key, { email: a.email, password: a.password, userId: a.userId, runTag: a.runTag });
+}
+
+// ---------- log ----------
+function log(a, kind, text) {
+  const box = $('log');
+  const line = document.createElement('div');
+  line.className = kind;
+  line.textContent = `${new Date().toLocaleTimeString('vi-VN', { hour12: false })}  ${(a ? a.label : '—').padEnd(9)} ${text}`;
+  box.appendChild(line);
+  while (box.childElementCount > 800) box.firstElementChild.remove();
+  box.scrollTop = box.scrollHeight;
+}
+const pass = (a, text) => log(a, 'info', '✔ ' + text);
+const fail = (a, text) => log(a, 'err', '✘ ' + text);
+
+// ---------- REST ----------
+let expectingRefusal = 0; // > 0 while a refusal is the wanted answer: it is then not logged as an error
+
+async function api(a, method, path, body, headers = {}, retried = false) {
+  const h = { ...headers };
+  if (a && a.token) h.Authorization = 'Bearer ' + a.token;
+  if (body !== undefined) h['Content-Type'] = 'application/json';
+  let res;
+  try {
+    res = await fetch(cfg.baseUrl + path, { method, headers: h, body: body === undefined ? undefined : JSON.stringify(body) });
+  } catch (e) {
+    log(a, 'err', `${method} ${path} → không gọi được (gateway chưa chạy, hoặc trang không mở từ http://localhost)`);
+    e.status = 0;
+    throw e;
+  }
+  if (res.status === 401 && a && a.email && !retried && !path.startsWith('/api/v1/auth/')) {
+    await refreshToken(a);
+    return api(a, method, path, body, headers, true);
+  }
+  const text = await res.text();
+  let json = null;
+  try { json = text ? JSON.parse(text) : null; } catch { /* not JSON */ }
+  if (!res.ok) {
+    let msg = json ? `${json.code || ''} ${json.message || ''}`.trim() : text.slice(0, 200);
+    if (json && json.details && json.details.length) msg += ' ' + JSON.stringify(json.details);
+    log(a, expectingRefusal ? 'rest' : 'err', `${method} ${path} → ${res.status} ${msg}`);
+    const err = new Error(msg);
+    err.status = res.status;
+    err.code = json && json.code;
+    throw err;
+  }
+  log(a, 'rest', `${method} ${path} → ${res.status}`);
+  return json ? json.data : null;
+}
+
+/** Runs a call the server must refuse and says whether it did. */
+async function expectBlocked(a, label, call) {
+  expectingRefusal++;
+  try {
+    await call();
+    fail(a, `${label}: KHÔNG bị chặn`);
+  } catch (e) {
+    if (!e.status) throw e; // a missing precondition or no connection, not a refusal
+    pass(a, `${label}: bị chặn (${e.status} ${e.code || ''})`);
+  } finally {
+    expectingRefusal--;
+  }
+}
+
+// ---------- auth ----------
+async function refreshToken(a) {
+  const d = await api(null, 'POST', '/api/v1/auth/login', { identifier: a.email, password: a.password });
+  a.token = d.accessToken;
+  if (a.ws && a.ws.readyState === WebSocket.OPEN) wsSend(a, 'AUTH', { accessToken: a.token });
+}
+async function login(a) {
+  if (a === admin) {
+    a.email = cfg.adminId;
+    a.password = cfg.adminPw;
+    await refreshToken(a);
+    a.userId = (await api(a, 'GET', '/api/v1/users/me')).id;
+    renderIdentity(a);
+    return;
+  }
+  a.email = $(a.key + '-email').value.trim();
+  a.password = $(a.key + '-password').value;
+  need(a.email, 'Chưa có email');
+  await refreshToken(a);
+  const me = await api(a, 'GET', '/api/v1/users/me');
+  a.userId = me.id;
+  saveActor(a);
+  renderIdentity(a);
+  connectWs(a);
+  if (a.role === 'DRIVER') {
+    const p = await loadProfile(a);
+    // Still online from before a page reload: pick the reporting back up.
+    if (p && p.availability !== 'OFFLINE') {
+      $(a.key + '-auto').checked = true;
+      toggleAuto(a);
+    }
+  }
+}
+async function staff(method, path, body, headers) {
+  if (!admin.token) await login(admin);
+  return api(admin, method, path, body, headers);
+}
+function renderIdentity(a) {
+  $(a.key + '-id').textContent = a.userId ? short(a.userId) + '…' : 'chưa đăng nhập';
+  $(a.key + '-id').title = a.userId || '';
+}
+function runEmail(tag) {
+  const at = cfg.mailbox.indexOf('@');
+  return at > 0 ? cfg.mailbox.slice(0, at) + '+' + tag + cfg.mailbox.slice(at) : tag + '@e2e.local';
+}
+async function newAccounts() {
+  const runId = Date.now().toString(36);
+  for (const a of Object.values(actors)) {
+    a.email = runEmail(a.key.toLowerCase() + '-' + runId);
+    a.password = cfg.password;
+    a.runTag = runId;
+    a.profile = a.trip = a.offer = a.quote = a.lastQuote = a.lastBooking = a.lastPaymentId = null;
+    $(a.key + '-email').value = a.email;
+    $(a.key + '-password').value = a.password;
+    await api(null, 'POST', '/api/v1/auth/register',
+        { email: a.email, password: a.password, fullName: a.fullName, role: a.role });
+    await login(a);
+  }
+  renderAll();
+  log(null, 'info', 'Đã tạo 4 tài khoản. Tiếp theo: bấm bước 1 ở từng tài xế.');
+}
+async function loginAll() {
+  for (const a of Object.values(actors)) {
+    if ($(a.key + '-email').value.trim()) await login(a);
+  }
+}
+// Access tokens live 15 minutes; renew them before that and tell the open sockets.
+setInterval(() => {
+  for (const a of Object.values(everyone)) {
+    if (a.token) refreshToken(a).catch(() => {});
+  }
+}, 10 * 60 * 1000);
+
+// ---------- WebSocket ----------
+function connectWs(a) {
+  clearInterval(a.pingTimer);
+  if (a.ws) { const old = a.ws; a.ws = null; old.close(); }
+  const ws = new WebSocket(cfg.wsUrl + '?access_token=' + encodeURIComponent(a.token));
+  a.ws = ws;
+  a.subscribedTrip = null;
+  ws.onopen = () => {
+    $(a.key + '-dot').classList.add('on');
+    a.pingTimer = setInterval(() => wsSend(a, 'PING', {}), 15000);
+  };
+  ws.onmessage = e => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    onWsMessage(a, m);
+  };
+  ws.onclose = e => {
+    if (a.ws !== ws) return; // replaced by a newer connection, or closed on purpose
+    clearInterval(a.pingTimer);
+    if ($(a.key + '-dot').classList.contains('on')) {
+      log(a, 'err', `WebSocket đóng (mã ${e.code} ${e.reason || ''}), sẽ tự kết nối lại`);
+    }
+    $(a.key + '-dot').classList.remove('on');
+    setTimeout(async () => {
+      if (a.ws !== ws) return;
+      try {
+        if (e.code === 4401) await refreshToken(a);
+        connectWs(a);
+      } catch { /* logged by api(); the user logs in again */ }
+    }, 5000);
+  };
+}
+function wsToggle(a) {
+  need(a.token, 'Chưa đăng nhập');
+  if (a.ws) {
+    const ws = a.ws;
+    a.ws = null;
+    clearInterval(a.pingTimer);
+    ws.close();
+    $(a.key + '-dot').classList.remove('on');
+    log(a, 'info', 'Đã ngắt WebSocket. Thay đổi trạng thái lúc này sẽ không tới; bấm lần nữa để nối lại.');
+  } else {
+    connectWs(a);
+    log(a, 'info', 'Đang nối lại WebSocket; chuyến sẽ được tải lại từ snapshot khi có SESSION_READY.');
+  }
+}
+function wsSend(a, type, data, extra = {}) {
+  if (!a.ws || a.ws.readyState !== WebSocket.OPEN) return false;
+  a.ws.send(JSON.stringify({ messageId: crypto.randomUUID(), type, version: 1,
+    sentAt: new Date().toISOString(), ...extra, data }));
+  return true;
+}
+/** Customers follow the driver of their running trip; the gateway forgets it on every new connection. */
+function ensureSubscribed(a) {
+  const t = a.trip;
+  if (a.role !== 'CUSTOMER' || !t || !t.driverId || TERMINAL.includes(t.status) || a.subscribedTrip === t.id) return;
+  if (wsSend(a, 'SUBSCRIBE_TRIP', { tripId: t.id })) a.subscribedTrip = t.id;
+}
+function onWsMessage(a, m) {
+  const d = m.data || {};
+  if (m.type === 'PONG' || m.type === 'AUTH_REFRESHED') return;
+  if (m.type === 'TRIP_DRIVER_LOCATION') {
+    a.driverLocation = d;
+    renderTrip(a);
+    if (!$('log-loc').checked) return;
+  }
+  log(a, m.type === 'ERROR' ? 'err' : 'ws', `⇦ ${m.type} ${JSON.stringify(d)}`);
+
+  if (m.type === 'SESSION_READY' && a.trip && a.trip.id) {
+    // UC-07: whatever happened while disconnected comes from a snapshot, not from missed messages.
+    refreshTrip(a).catch(() => {});
+  }
+  if (m.type === 'DRIVER_OFFER_CREATED') {
+    a.offer = { id: d.offerId, tripId: d.tripId, serviceType: d.serviceType, pickup: d.pickup,
+      estimatedPickupDistanceMeters: d.estimatedPickupDistanceMeters, expiresAt: d.expiresAt };
+    a.lastOfferId = d.offerId;
+    renderOffer(a);
+  }
+  if (/^DRIVER_OFFER_(EXPIRED|DECLINED|CANCELLED)$/.test(m.type) && a.offer && a.offer.id === d.offerId) {
+    a.offer = null;
+    renderOffer(a, 'Offer vừa rồi: ' + m.type.replace('DRIVER_OFFER_', ''));
+  }
+  if (/^TRIP_(REQUESTED|ACCEPTED|STATUS_CHANGED|COMPLETED|CANCELLED)$/.test(m.type) && d.tripId) {
+    if (a.role === 'DRIVER' && m.type === 'TRIP_ACCEPTED' && !a.trip) a.trip = { id: d.tripId };
+    if (!a.trip || a.trip.id !== d.tripId) return;
+    if (a.trip.version != null && m.aggregateVersion != null && m.aggregateVersion <= a.trip.version) {
+      log(a, 'rest', `   bỏ qua ${m.type}: aggregateVersion ${m.aggregateVersion} ≤ version ${a.trip.version} đang giữ`);
+      return;
+    }
+    refreshTrip(a).catch(() => {});
+    if (a.role === 'DRIVER' && /COMPLETED|CANCELLED/.test(m.type)) {
+      setTimeout(() => loadProfile(a).catch(() => {}), 1500);
+    }
+  }
+}
+
+// ---------- customer ----------
+const field = (a, name) => $(a.key + '-' + name);
+const num = (a, name) => Number(field(a, name).value);
+document.querySelectorAll('[data-service]').forEach(el => el.addEventListener('change', () =>
+    $(el.dataset.service + '-delivery').classList.toggle('hidden', el.value !== 'DELIVERY')));
+
+function quoteBody(a, overrides = {}) {
+  return {
+    serviceType: field(a, 'service').value,
+    pickup: { latitude: num(a, 'plat'), longitude: num(a, 'plng'), address: field(a, 'paddr').value, ...overrides },
+    dropoff: { latitude: num(a, 'dlat'), longitude: num(a, 'dlng'), address: field(a, 'daddr').value }
+  };
+}
+async function quote(a) {
+  a.quote = a.lastQuote = await api(a, 'POST', '/api/v1/quotes', quoteBody(a));
+  renderQuote(a);
+}
+async function book(a) {
+  const q = need(a.quote, 'Chưa có báo giá');
+  const body = { quoteId: q.id };
+  if (q.surgeConfirmationRequired) body.acceptedSurgeMultiplier = Number(q.surgeMultiplier);
+  if (q.serviceType === 'DELIVERY') {
+    body.delivery = { recipientName: field(a, 'rname').value, recipientPhone: field(a, 'rphone').value,
+      packageDescription: field(a, 'pdesc').value, packageSize: field(a, 'psize').value,
+      packageWeightGrams: num(a, 'pweight') };
+  }
+  const key = 'console-' + crypto.randomUUID();
+  a.driverLocation = null;
+  a.trip = await api(a, 'POST', '/api/v1/trips', body, { 'Idempotency-Key': key });
+  a.lastBooking = { key, body, tripId: a.trip.id };
+  a.quote = null; // a quote buys one trip
+  renderQuote(a);
+  renderTrip(a);
+}
+async function quoteAndBook(a) {
+  await quote(a);
+  await book(a);
+}
+async function rereadQuote(a) {
+  const q = need(a.lastQuote, 'Chưa lấy báo giá nào');
+  const again = await api(a, 'GET', '/api/v1/quotes/' + q.id);
+  (again.total === q.total && again.ruleVersion === q.ruleVersion ? pass : fail)(a,
+      `Đọc lại báo giá: tổng ${money(again.total)} (lần đầu ${money(q.total)}), rule v${again.ruleVersion}`);
+}
+async function resendBooking(a) {
+  const b = need(a.lastBooking, 'Chưa đặt chuyến nào');
+  const t = await api(a, 'POST', '/api/v1/trips', b.body, { 'Idempotency-Key': b.key });
+  (t.id === b.tripId ? pass : fail)(a, `Gửi lại cùng khoá: chuyến ${short(t.id)} (lần đầu ${short(b.tripId)})`);
+}
+async function reuseKey(a) {
+  const b = need(a.lastBooking, 'Chưa đặt chuyến nào');
+  await expectBlocked(a, 'Cùng khoá, nội dung khác', () => api(a, 'POST', '/api/v1/trips',
+      { quoteId: '00000000-0000-0000-0000-000000000001' }, { 'Idempotency-Key': b.key }));
+}
+async function payments(a) {
+  const t = need(a.trip, 'Chưa có chuyến');
+  const list = await api(a, 'GET', '/api/v1/payments?tripId=' + t.id);
+  if (!list.length) log(a, 'info', 'Chưa có khoản thanh toán nào cho chuyến này (Kafka có thể chậm vài giây).');
+  for (const p of list) {
+    log(a, 'info', `Thanh toán ${p.purpose}: ${money(p.amount)} ${p.currency} — ${p.status}, đã hoàn ${money(p.refundedAmount)} (id ${p.id})`);
+  }
+  const fare = list.find(p => p.purpose === 'TRIP_FARE') || list[0];
+  if (fare) a.lastPaymentId = fare.id;
+}
+function renderQuote(a) {
+  const q = a.quote, el = field(a, 'quote');
+  el.classList.toggle('hidden', !q);
+  if (!q) return;
+  el.replaceChildren(kv([
+    ['Giá', `${money(q.total)} ${q.currency}`],
+    ['Quãng đường', `${(q.distanceMeters / 1000).toFixed(1)} km · ${Math.round(q.durationSeconds / 60)} phút`],
+    ['Surge', `×${q.surgeMultiplier}${q.surgeConfirmationRequired ? ' (cần xác nhận, sẽ tự gửi)' : ''}`],
+    ['Rule', 'v' + q.ruleVersion],
+    ['Hết hạn', countdown(q.expiresAt)]
+  ]));
+}
+
+// ---------- driver ----------
+async function loadProfile(a) {
+  try {
+    a.profile = await api(a, 'GET', '/api/v1/drivers/me/profile');
+  } catch (e) {
+    if (e.status !== 404) throw e;
+    a.profile = null;
+  }
+  renderProfile(a);
+  return a.profile;
+}
+function renderProfile(a) {
+  const p = a.profile;
+  field(a, 'review').textContent = p ? p.reviewStatus : 'chưa có hồ sơ';
+  field(a, 'avail').textContent = p ? p.availability : '';
+}
+function docTag(a) {
+  return (a.runTag || Date.now().toString(36)) + '-' + a.key.slice(-1);
+}
+/** Every step is skipped when already done, so the button can be pressed again after a failure. */
+async function onboard(a) {
+  let p = await loadProfile(a);
+  if (!p) {
+    p = a.profile = await api(a, 'POST', '/api/v1/drivers/me/profile',
+        { fullName: a.fullName, dateOfBirth: '1990-05-20', serviceTypes: ['RIDE', 'DELIVERY'] });
+  }
+  let vehicleId = p.vehicles && p.vehicles.length ? p.vehicles[0].id : null;
+  if (!vehicleId) {
+    const v = await api(a, 'POST', '/api/v1/drivers/me/vehicles', { type: 'MOTORBIKE',
+      plateNumber: '59X' + String(Date.now()).slice(-6), brand: 'Honda', model: 'Wave Alpha', color: 'Đen',
+      manufactureYear: 2022 });
+    vehicleId = v.id;
+  }
+  const have = new Set((p.documents || []).map(d => d.type));
+  for (const [type, forVehicle] of [['NATIONAL_ID', false], ['DRIVER_LICENSE', false],
+      ['VEHICLE_REGISTRATION', true], ['VEHICLE_INSURANCE', true]]) {
+    if (have.has(type)) continue;
+    const doc = { type, documentNumber: type.slice(0, 3) + '-' + docTag(a), issuedOn: '2024-01-01', expiresOn: '2030-01-01' };
+    if (forVehicle) doc.vehicleId = vehicleId;
+    await api(a, 'POST', '/api/v1/drivers/me/documents', doc);
+  }
+  await loadProfile(a);
+  const me = await api(a, 'GET', '/api/v1/users/me');
+  if (me.emailVerified) {
+    log(a, 'info', 'Email đã xác minh rồi: bấm bước 2 (không cần mã).');
+  } else {
+    await resendCode(a);
+  }
+}
+async function resendCode(a) {
+  const d = await api(a, 'POST', '/api/v1/users/me/contacts/email/verification');
+  log(a, 'info', `Đã gửi mã tới ${(d && d.destination) || a.email}. Nhập 6 số rồi bấm bước 2.`);
+}
+async function verifySubmit(a) {
+  const me = await api(a, 'GET', '/api/v1/users/me');
+  if (!me.emailVerified) {
+    const code = field(a, 'otp').value.trim();
+    need(/^\d{6}$/.test(code), 'Nhập mã 6 số trước');
+    await api(a, 'POST', '/api/v1/users/me/contacts/email/verification/confirm', { code });
+  }
+  const p = need(await loadProfile(a), 'Chưa có hồ sơ: bấm bước 1 trước');
+  if (p.reviewStatus !== 'PENDING_REVIEW' && p.reviewStatus !== 'APPROVED') await submitProfile(a);
+  log(a, 'info', 'Hồ sơ đang chờ duyệt: bấm "3. Duyệt luôn", hoặc duyệt / từ chối ở cột Nhân viên.');
+}
+async function submitProfile(a) {
+  a.profile = await api(a, 'POST', '/api/v1/drivers/me/profile/submit');
+  renderProfile(a);
+}
+async function license(a, issuedOn, expiresOn) {
+  await api(a, 'POST', '/api/v1/drivers/me/documents',
+      { type: 'DRIVER_LICENSE', documentNumber: 'DRI-' + docTag(a), issuedOn, expiresOn });
+  await missing(a);
+}
+async function missing(a) {
+  const p = need(await loadProfile(a), 'Chưa có hồ sơ');
+  const list = p.missingRequirements || [];
+  log(a, 'info', list.length ? 'Hồ sơ còn thiếu: ' + list.join('; ') : 'Hồ sơ không còn thiếu gì.');
+}
+async function online(a) {
+  const p = a.profile || await loadProfile(a);
+  need(p && p.vehicles && p.vehicles.length, 'Tài xế chưa có xe: làm phần Hồ sơ trước');
+  await api(a, 'POST', '/api/v1/drivers/me/availability/online',
+      { vehicleId: p.activeVehicleId || p.vehicles[0].id, serviceTypes: ['RIDE', 'DELIVERY'] });
+  await loadProfile(a);
+  // location-service learns about it through Kafka; a location sent earlier is not used for matching.
+  await sleep(2000);
+  await sendLocation(a);
+  // Matching only uses a location younger than 30 s, so keep reporting while online.
+  field(a, 'auto').checked = true;
+  toggleAuto(a);
+}
+async function offline(a) {
+  field(a, 'auto').checked = false;
+  toggleAuto(a);
+  await api(a, 'POST', '/api/v1/drivers/me/availability/offline');
+  await loadProfile(a);
+}
+function locationBody(a, overrides = {}) {
+  return { sequence: Date.now(), latitude: num(a, 'lat'), longitude: num(a, 'lng'), accuracyMeters: 8,
+    headingDegrees: 90, speedMetersPerSecond: 5, deviceTimestamp: iso(), ...overrides };
+}
+async function sendLocation(a) {
+  const body = locationBody(a);
+  if (field(a, 'viaws').checked) {
+    const { sequence, ...data } = body;
+    need(wsSend(a, 'DRIVER_LOCATION_UPDATED', data, { sequence }), 'WebSocket chưa nối');
+    a.lastSeq = sequence;
+    return;
+  }
+  const d = await api(a, 'POST', '/api/v1/locations/me', body);
+  if (d.outcome === 'CURRENT') a.lastSeq = d.sequence;
+  else log(a, 'err', 'Vị trí không được ghi nhận: ' + d.outcome);
+}
+function toggleAuto(a) {
+  clearInterval(a.autoTimer);
+  if (field(a, 'auto').checked) a.autoTimer = setInterval(() => sendLocation(a).catch(() => {}), 3000);
+}
+document.querySelectorAll('[data-auto]').forEach(el =>
+    el.addEventListener('change', () => toggleAuto(actors[el.dataset.auto])));
+
+// The outcome location-service must give each odd report (README §7, UC-07 and UC-09).
+const ANOMALIES = {
+  duplicate: { expect: 'DUPLICATE', make: seq => ({ sequence: seq }) },
+  lower: { expect: 'DUPLICATE', make: seq => ({ sequence: seq - 1, latitude: 10.76, longitude: 106.69 }) },
+  outOfOrder: { expect: 'OUT_OF_ORDER',
+    make: seq => ({ sequence: seq + 1, latitude: 10.76, longitude: 106.69, deviceTimestamp: iso(-5000) }) },
+  backfill: { expect: 'BACKFILL',
+    make: seq => ({ sequence: seq + 2, latitude: 10.76, longitude: 106.69, deviceTimestamp: iso(-600e3) }) },
+  lowAccuracy: { expect: 'LOW_ACCURACY', make: () => ({ accuracyMeters: 120 }) },
+  suspicious: { expect: 'SUSPICIOUS', make: () => ({ latitude: 21.0285, longitude: 105.8542 }) },
+  future: { expect: null, make: () => ({ deviceTimestamp: iso(3600e3) }) }
+};
+async function sendAnomaly(a) {
+  const name = field(a, 'anomaly').value, anomaly = ANOMALIES[name];
+  const label = field(a, 'anomaly').selectedOptions[0].textContent;
+  const seq = Number(need(a.lastSeq, 'Gửi một vị trí bình thường trước (để có sequence gốc)'));
+  const body = locationBody(a, anomaly.make(seq));
+  if (!anomaly.expect) {
+    return expectBlocked(a, label, () => api(a, 'POST', '/api/v1/locations/me', body));
+  }
+  const d = await api(a, 'POST', '/api/v1/locations/me', body);
+  (d.outcome === anomaly.expect ? pass : fail)(a, `${label}: server trả ${d.outcome}`);
+}
+async function currentLocation(a) {
+  const d = await api(a, 'GET', '/api/v1/locations/me');
+  const kept = String(d.sequence) === String(a.lastSeq);
+  log(a, 'info', `Server đang giữ: seq ${d.sequence} tại ${d.latitude}, ${d.longitude}`
+      + (a.lastSeq ? ` — ${kept ? 'đúng' : 'KHÁC'} bản tin CURRENT gần nhất (seq ${a.lastSeq})` : ''));
+}
+
+async function loadOffers(a) {
+  const list = await api(a, 'GET', '/api/v1/offers');
+  const o = (list || []).find(x => x.status === 'PENDING');
+  a.offer = o || null;
+  if (o) a.lastOfferId = o.id;
+  renderOffer(a, o ? null : 'Không có offer đang chờ.');
+}
+async function accept(a) {
+  const o = need(a.offer, 'Không có offer');
+  a.trip = await api(a, 'POST', `/api/v1/offers/${o.id}/accept`);
+  a.offer = null;
+  renderOffer(a);
+  renderTrip(a);
+  loadProfile(a).catch(() => {});
+}
+async function decline(a) {
+  const o = need(a.offer, 'Không có offer');
+  await api(a, 'POST', `/api/v1/offers/${o.id}/decline`);
+  a.offer = null;
+  renderOffer(a, 'Đã từ chối.');
+}
+async function advance(a, btn) {
+  const t = need(a.trip, 'Chưa có chuyến'), step = btn.dataset.step;
+  const code = field(a, 'code').value.trim();
+  const takesCode = step === 'start' || step === 'complete';
+  a.trip = await api(a, 'POST', `/api/v1/trips/${t.id}/${step}`, takesCode && code ? { code } : undefined);
+  if (takesCode) field(a, 'code').value = '';
+  renderTrip(a);
+}
+async function wallet(a) {
+  logWallet(a, await api(a, 'GET', '/api/v1/wallets/me?limit=10'));
+}
+function logWallet(a, w) {
+  log(a, 'info', `Ví: số dư ${money(w.balance)} ${w.currency}`);
+  for (const e of w.entries || []) {
+    log(a, 'info', `   ${e.type} ${money(e.amount)} → ${money(e.balanceAfter)}${e.tripId ? ' (trip ' + short(e.tripId) + ')' : ''}`);
+  }
+}
+function renderOffer(a, note) {
+  const el = field(a, 'offer'), o = a.offer;
+  el.classList.toggle('offer', Boolean(o));
+  if (!o) return el.replaceChildren(mutedText(note || 'Chưa có offer.'));
+  el.replaceChildren(kv([
+    ['Dịch vụ', o.serviceType],
+    ['Điểm đón', o.pickup ? o.pickup.address : ''],
+    ['Cách', `${o.estimatedPickupDistanceMeters} m`],
+    ['Hết hạn', countdown(o.expiresAt)],
+    ['Trip', o.tripId]
+  ]));
+}
+
+// ---------- trip actions shared by customers and drivers ----------
+async function refreshTrip(a) {
+  const t = need(a.trip, 'Chưa có chuyến');
+  a.trip = await api(a, 'GET', '/api/v1/trips/' + t.id);
+  renderTrip(a);
+  ensureSubscribed(a);
+}
+async function latestTrip(a) {
+  const page = await api(a, 'GET', '/api/v1/trips');
+  const items = (page && page.items) || [];
+  const t = items.find(x => !TERMINAL.includes(x.status)) || items[0];
+  if (!t) return log(a, 'info', 'Chưa có chuyến nào.');
+  a.trip = { id: t.id };
+  await refreshTrip(a);
+}
+async function cancel(a) {
+  const t = need(a.trip, 'Chưa có chuyến');
+  a.trip = await api(a, 'POST', `/api/v1/trips/${t.id}/cancel`, { reason: field(a, 'reason').value });
+  renderTrip(a);
+}
+async function feePreview(a) {
+  const t = need(a.trip, 'Chưa có chuyến'), reason = field(a, 'reason').value;
+  const f = await api(a, 'GET', `/api/v1/trips/${t.id}/cancellation-fee?reason=${reason}`);
+  log(a, 'info', `Phí nếu huỷ ngay (${reason}): ${money(f.fee)} ${f.currency} — ${f.decision}, rule v${f.ruleVersion}`
+      + (f.freeUntil ? `, miễn phí tới ${new Date(f.freeUntil).toLocaleTimeString('vi-VN', { hour12: false })}` : ''));
+}
+async function history(a) {
+  const t = need(a.trip, 'Chưa có chuyến');
+  logHistory(a, await api(a, 'GET', `/api/v1/trips/${t.id}/history`));
+}
+function logHistory(a, rows) {
+  log(a, 'info', 'Lịch sử: ' + rows.map(r => r.toStatus).join(' → '));
+  for (const r of rows) {
+    log(a, 'info', `   ${new Date(r.occurredAt).toLocaleTimeString('vi-VN', { hour12: false })} `
+        + `${r.fromStatus || '∅'} → ${r.toStatus} bởi ${r.actorType}${r.reason ? ' (' + r.reason + ')' : ''}`);
+  }
+}
+function renderTrip(a) {
+  const el = field(a, 'trip'), t = a.trip;
+  if (!t || !t.status) return el.replaceChildren(mutedText('Chưa có chuyến.'));
+  const rows = [
+    ['Trạng thái', t.status + (t.cancelReason ? ` (${t.cancelReason}, bởi ${t.cancelledBy})` : '')],
+    ['Dịch vụ', t.serviceType],
+    ['Đón', t.pickup ? t.pickup.address : ''],
+    ['Trả', t.dropoff ? t.dropoff.address : '']
+  ];
+  if (t.fare) rows.push(['Giá', `${money(t.fare.quotedFare)} ${t.fare.currency}`]);
+  if (a.role === 'CUSTOMER') rows.push(['Tài xế', t.driverId || 'đang tìm…']);
+  if (t.delivery) rows.push(['Người nhận', `${t.delivery.recipientName} · ${t.delivery.recipientPhone}`]);
+  if (t.pickupCode) rows.push(['Mã đón', big(t.pickupCode)]);
+  if (t.deliveryCode) rows.push(['Mã giao', big(t.deliveryCode)]);
+  const loc = a.driverLocation;
+  if (a.role === 'CUSTOMER' && loc && loc.tripId === t.id) {
+    rows.push(['Vị trí tài xế', `${loc.latitude}, ${loc.longitude} (seq ${loc.sequence})`]);
+  }
+  rows.push(['Trip', `${t.id} · v${t.version}`]);
+  el.replaceChildren(kv(rows));
+}
+
+// ---------- calls the server must refuse ----------
+const BLOCKED = {
+  // customers
+  otherTrip: a => api(a, 'GET', '/api/v1/trips/' + need(peer(a).trip, `${peer(a).label} chưa có chuyến`).id),
+  otherQuote: a => api(a, 'GET', '/api/v1/quotes/' + need(peer(a).lastQuote, `${peer(a).label} chưa lấy báo giá`).id),
+  bookOtherQuote: a => api(a, 'POST', '/api/v1/trips',
+      { quoteId: need(peer(a).lastQuote, `${peer(a).label} chưa lấy báo giá`).id },
+      { 'Idempotency-Key': 'console-' + crypto.randomUUID() }),
+  otherPayment: a => api(a, 'GET', '/api/v1/payments/'
+      + need(peer(a).lastPaymentId, `Bấm "Thanh toán" ở ${peer(a).label} trước`)),
+  deliveryNoRecipient: a => {
+    const q = need(a.quote && a.quote.serviceType === 'DELIVERY' && a.quote, 'Lấy báo giá DELIVERY trước (chưa đặt)');
+    return api(a, 'POST', '/api/v1/trips', { quoteId: q.id }, { 'Idempotency-Key': 'console-' + crypto.randomUUID() });
+  },
+  badCoords: a => api(a, 'POST', '/api/v1/quotes', quoteBody(a, { latitude: 91 })),
+  completeOwnTrip: a => api(a, 'POST', `/api/v1/trips/${need(a.trip, 'Chưa có chuyến').id}/complete`),
+  reviewQueue: a => api(a, 'GET', '/api/v1/admin/drivers'),
+  sendLocation: a => api(a, 'POST', '/api/v1/locations/me',
+      { sequence: Date.now(), latitude: 10.773, longitude: 106.6985, accuracyMeters: 8, deviceTimestamp: iso() }),
+  readLocation: a => api(a, 'GET', '/api/v1/locations/me'),
+  registerAdmin: () => api(null, 'POST', '/api/v1/auth/register', { email: runEmail('hacker-' + Date.now().toString(36)),
+    password: cfg.password, fullName: 'Hacker', role: 'ADMINISTRATOR' }),
+  // drivers
+  acceptOtherOffer: a => api(a, 'POST', `/api/v1/offers/${need(peer(a).offer, `${peer(a).label} không có offer đang chờ`).id}/accept`),
+  acceptOldOffer: a => {
+    need(!a.offer, 'Offer vẫn đang chờ: từ chối hoặc đợi hết hạn trước');
+    return api(a, 'POST', `/api/v1/offers/${need(a.lastOfferId, 'Chưa từng có offer')}/accept`);
+  },
+  otherDocument: a => {
+    const docs = (peer(a).profile && peer(a).profile.documents) || [];
+    return api(a, 'GET', `/api/v1/drivers/me/documents/${need(docs[0], `${peer(a).label} chưa có giấy tờ`).id}/file`);
+  },
+  driverQuote: a => api(a, 'POST', '/api/v1/quotes', { serviceType: 'RIDE',
+    pickup: { latitude: 10.7725, longitude: 106.698, address: 'Chợ Bến Thành' },
+    dropoff: { latitude: 10.7949, longitude: 106.7219, address: 'Landmark 81' } })
+};
+async function tryBlocked(a) {
+  const select = field(a, 'blocked'), label = select.selectedOptions[0].textContent;
+  if (select.value === 'subscribeOtherTrip') {
+    const t = need(peer(a).trip, `${peer(a).label} chưa có chuyến`);
+    need(wsSend(a, 'SUBSCRIBE_TRIP', { tripId: t.id }), 'WebSocket chưa nối');
+    return log(a, 'info', `${label}: đã gửi; dòng ⇦ ERROR ngay dưới là kết quả đúng, ⇦ TRIP_SUBSCRIBED là sai.`);
+  }
+  await expectBlocked(a, label, () => BLOCKED[select.value](a));
+}
+
+// ---------- staff ----------
+const staffDriver = () => {
+  const d = actors[$('staff-driver').value];
+  need(d.userId, `${d.label} chưa đăng nhập`);
+  return d;
+};
+const staffTripId = () => need($('staff-trip').value.trim(), 'Nhập trip id (hoặc bấm ← Khách)');
+
+async function reviewQueue() {
+  const page = await staff('GET', '/api/v1/admin/drivers?status=PENDING_REVIEW&size=100');
+  const ids = page.items.map(i => i.driverId);
+  log(admin, 'info', `Hàng chờ duyệt: ${ids.length} hồ sơ. `
+      + drivers.map(d => `${d.label}: ${ids.includes(d.userId) ? 'có' : 'không'}`).join(', '));
+}
+async function reviewShow() {
+  const d = staffDriver();
+  const r = await staff('GET', '/api/v1/admin/drivers/' + d.userId);
+  const p = r.profile;
+  log(admin, 'info', `${d.label}: ${p.reviewStatus}, hồ sơ v${p.profileVersion}, ${p.documents.length} giấy tờ`
+      + (p.missingRequirements && p.missingRequirements.length ? ', thiếu: ' + p.missingRequirements.join('; ') : ''));
+  for (const doc of p.documents) {
+    log(admin, 'info', `   ${doc.type} ${doc.documentNumber} hết hạn ${doc.expiresOn} — ${doc.status}${doc.hasFile ? ', có file' : ''}`);
+  }
+  log(admin, 'info', '   Quyết định: ' + (r.decisions.length
+      ? r.decisions.map(x => `${x.decision} (v${x.profileVersion}${x.reason ? ', ' + x.reason : ''})`).join(' → ')
+      : 'chưa có'));
+}
+async function decide(d, verdict, version) {
+  const body = { verdict, profileVersion: version };
+  if (!version) {
+    body.profileVersion = (await staff('GET', '/api/v1/admin/drivers/' + d.userId)).profile.profileVersion;
+  }
+  if (verdict === 'REJECT') body.reason = need($('staff-reason').value.trim(), 'Nhập lý do từ chối');
+  await staff('POST', `/api/v1/admin/drivers/${d.userId}/decisions`, body);
+  await loadProfile(d);
+}
+const approve = () => decide(staffDriver(), 'APPROVE');
+const reject = () => decide(staffDriver(), 'REJECT');
+const approveStale = () => expectBlocked(admin, 'Duyệt với phiên bản hồ sơ sai',
+    () => decide(staffDriver(), 'APPROVE', 999));
+async function approveNow(a) {
+  need(a.userId, 'Chưa đăng nhập');
+  await decide(a, 'APPROVE');
+  log(a, 'info', 'Hồ sơ đã duyệt. Bật online để nhận offer.');
+}
+
+function takeTrip(_, btn) {
+  const from = actors[btn.dataset.from];
+  $('staff-trip').value = need(from.trip, `${from.label} chưa có chuyến`).id;
+}
+async function tripDetail() {
+  const d = await staff('GET', '/api/v1/admin/trips/' + staffTripId());
+  const t = d.trip;
+  log(admin, 'info', `Chuyến ${short(t.id)}: ${t.status}, ${t.serviceType}, tài xế ${short(t.driverId) || '—'}`
+      + (d.cancelNote ? `, ghi chú huỷ: "${d.cancelNote}"` : ''));
+  log(admin, 'info', `   Sai mã đón ${d.pickupCodeFailures} lần, sai mã giao ${d.deliveryCodeFailures} lần, `
+      + `bằng chứng giao: ${d.deliveryProof ? JSON.stringify(d.deliveryProof) : 'không có'}`);
+  log(admin, 'info', `   Offer: ${d.offers.length ? d.offers.map(o => `${short(o.driverId)} ${o.status}`).join(', ') : 'không có'}`);
+  logHistory(admin, d.history);
+}
+const staffCancelCall = note => staff('POST', `/api/v1/trips/${staffTripId()}/cancel`, { reason: 'OTHER', note });
+async function staffCancel() {
+  const t = await staffCancelCall($('staff-note').value.trim());
+  (t.cancelledBy === 'STAFF' ? pass : fail)(admin, `Huỷ hộ: ${t.status}, bởi ${t.cancelledBy}`);
+}
+const staffCancelShort = () => expectBlocked(admin, 'Huỷ hộ với ghi chú quá ngắn', () => staffCancelCall('ngắn'));
+
+async function findPayments() {
+  const tripId = staffTripId();
+  const page = await staff('GET', '/api/v1/admin/payments?limit=100');
+  const list = page.items.filter(p => p.tripId === tripId);
+  if (!list.length) return log(admin, 'info', 'Không thấy thanh toán nào của chuyến này trong 100 khoản mới nhất.');
+  for (const p of list) {
+    log(admin, 'info', `Thanh toán ${p.purpose}: ${money(p.amount)} ${p.currency} — ${p.status}, đã hoàn ${money(p.refundedAmount)} (id ${p.id})`);
+  }
+  $('staff-payment').value = (list.find(p => p.purpose === 'TRIP_FARE') || list[0]).id;
+}
+const refundCall = (r, amount) => staff('POST', `/api/v1/admin/payments/${r.paymentId}/refunds`,
+    { ...r.body, amount }, { 'Idempotency-Key': r.key });
+async function refund() {
+  const r = { paymentId: need($('staff-payment').value.trim(), 'Nhập payment id (hoặc bấm "Thanh toán của chuyến")'),
+    key: 'refund-' + Date.now(), body: { reason: 'OVERCHARGE', note: 'Hoàn tiền từ test console' },
+    amount: Number($('staff-amount').value) };
+  const d = await refundCall(r, r.amount);
+  r.id = d.id;
+  admin.lastRefund = r;
+  log(admin, 'info', `Hoàn tiền ${short(d.id)}: ${money(d.amount)} ${d.currency} — ${d.status}`);
+}
+async function refundResend() {
+  const r = need(admin.lastRefund, 'Chưa hoàn tiền lần nào');
+  const d = await refundCall(r, r.amount);
+  (d.id === r.id ? pass : fail)(admin, `Gửi lại cùng khoá: refund ${short(d.id)} (lần đầu ${short(r.id)})`);
+}
+async function refundOtherAmount() {
+  const r = need(admin.lastRefund, 'Chưa hoàn tiền lần nào');
+  await expectBlocked(admin, 'Cùng khoá, số tiền khác', () => refundCall(r, r.amount + 10000));
+}
+async function refundTooMuch() {
+  const paymentId = need($('staff-payment').value.trim(), 'Nhập payment id');
+  await expectBlocked(admin, 'Hoàn vượt số đã thu', () => refundCall(
+      { paymentId, key: 'refund-over-' + Date.now(), body: { reason: 'OVERCHARGE' } }, 999999999));
+}
+
+const adjustCall = j => staff('POST', `/api/v1/admin/wallets/${j.driverId}/adjustments`, j.body,
+    { 'Idempotency-Key': j.key });
+async function adjust() {
+  const reason = $('staff-adjust-reason').value;
+  const body = { amount: Number($('staff-adjust').value), reason, note: 'Điều chỉnh từ test console' };
+  if (reason === 'REFUND_CLAWBACK' && admin.lastRefund) body.refundId = admin.lastRefund.id;
+  const j = { driverId: staffDriver().userId, key: 'adjust-' + Date.now(), body };
+  const d = await adjustCall(j);
+  j.id = d.id;
+  admin.lastAdjust = j;
+  log(admin, 'info', `Điều chỉnh ${short(d.id)}: ${money(d.amount)} → số dư ${money(d.balanceAfter)} ${d.currency}`);
+}
+async function adjustResend() {
+  const j = need(admin.lastAdjust, 'Chưa điều chỉnh lần nào');
+  const d = await adjustCall(j);
+  (d.id === j.id ? pass : fail)(admin, `Gửi lại cùng khoá: điều chỉnh ${short(d.id)} (lần đầu ${short(j.id)}), số dư ${money(d.balanceAfter)}`);
+}
+async function staffWallet() {
+  logWallet(admin, await staff('GET', `/api/v1/admin/wallets/${staffDriver().userId}?limit=20`));
+}
+
+// ---------- small DOM helpers ----------
+function kv(rows) {
+  const dl = document.createElement('dl');
+  dl.className = 'kv';
+  for (const [k, v] of rows) {
+    const dt = document.createElement('dt'), dd = document.createElement('dd');
+    dt.textContent = k;
+    if (v instanceof Node) dd.appendChild(v); else dd.textContent = v == null ? '' : String(v);
+    dl.append(dt, dd);
+  }
+  return dl;
+}
+function mutedText(text) {
+  const s = document.createElement('span');
+  s.className = 'muted';
+  s.textContent = text;
+  return s;
+}
+function big(text) {
+  const s = document.createElement('span');
+  s.className = 'big';
+  s.textContent = text;
+  return s;
+}
+function countdown(isoTime) {
+  const s = document.createElement('span');
+  s.dataset.until = isoTime;
+  tick(s);
+  return s;
+}
+function tick(el) {
+  const left = Math.ceil((new Date(el.dataset.until).getTime() - Date.now()) / 1000);
+  el.textContent = left > 0 ? `còn ${left} s` : 'đã hết hạn';
+}
+setInterval(() => document.querySelectorAll('[data-until]').forEach(tick), 500);
+function renderAll() {
+  for (const c of customers) { renderQuote(c); renderTrip(c); }
+  for (const d of drivers) { renderProfile(d); renderOffer(d); renderTrip(d); }
+}
+
+// ---------- buttons ----------
+const actions = {
+  newAccounts, loginAll, clearLog: () => $('log').replaceChildren(),
+  login, wsToggle, refreshTrip, latestTrip, cancel, feePreview, history, tryBlocked,
+  quote, book, quoteAndBook, rereadQuote, resendBooking, reuseKey, payments,
+  onboard, verifySubmit, approveNow, resendCode, submitProfile, missing,
+  expiredLicense: a => license(a, '2015-01-01', '2020-01-01'),
+  validLicense: a => license(a, '2024-01-01', '2030-01-01'),
+  online, offline, sendLocation, sendAnomaly, currentLocation, loadOffers, accept, decline, advance, wallet,
+  reviewQueue, reviewShow, approve, reject, approveStale, takeTrip, tripDetail, staffCancel, staffCancelShort,
+  findPayments, refund, refundResend, refundOtherAmount, refundTooMuch, adjust, adjustResend, staffWallet
+};
+document.addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-act]');
+  if (!btn) return;
+  const a = btn.dataset.actor ? everyone[btn.dataset.actor] : null;
+  btn.disabled = true;
+  try {
+    await actions[btn.dataset.act](a, btn);
+  } catch (err) {
+    if (err.status === undefined) log(a, 'err', err.message); // HTTP errors were logged by api()
+  } finally {
+    btn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
