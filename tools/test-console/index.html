@@ -192,7 +192,7 @@ function driverPanel(a) {
 
     <h3>Trực tuyến &amp; vị trí</h3>
     <div class="row">
-      <button data-act="online" data-actor="${k}">Bật online</button>
+      <button data-act="online" data-actor="${k}" title="Bật online rồi tự gửi vị trí mỗi 3 s">Bật online</button>
       <button class="ghost" data-act="offline" data-actor="${k}">Tắt online</button>
     </div>
     <div class="row">
@@ -308,7 +308,14 @@ async function login(a) {
   saveActor(a);
   renderIdentity(a);
   connectWs(a);
-  if (a.role === 'DRIVER') await loadProfile(a);
+  if (a.role === 'DRIVER') {
+    const p = await loadProfile(a);
+    // Still online from before a page reload: pick the reporting back up.
+    if (p && p.availability !== 'OFFLINE') {
+      $(a.key + '-auto').checked = true;
+      toggleAuto(a);
+    }
+  }
 }
 function renderIdentity(a) {
   $(a.key + '-id').textContent = a.userId ? a.userId.slice(0, 8) + '…' : 'chưa đăng nhập';
@@ -547,6 +554,9 @@ async function online(a) {
   // location-service learns about it through Kafka; a location sent earlier is not used for matching.
   await sleep(2000);
   await sendLocation(a);
+  // Matching only uses a location younger than 30 s, so keep reporting while online.
+  $(a.key + '-auto').checked = true;
+  toggleAuto(a);
 }
 async function offline(a) {
   $(a.key + '-auto').checked = false;
