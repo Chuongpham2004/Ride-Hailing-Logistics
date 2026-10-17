@@ -522,7 +522,7 @@ flowchart LR
    | Ruleset | Áp dụng | Nội dung |
    |---|---|---|
    | `develop: PR + CI, squash only` | `develop` | Bắt buộc PR; required checks `CI passed`, `Conventional PR title`, `Dependency review`; phải resolve hết comment; chỉ squash merge; cấm force push và xóa nhánh |
-   | `main: PR + CI, merge commit only` | `main` | Như trên, thêm: nhánh phải cập nhật trước khi merge; chỉ merge commit (không bật *linear history* vì PR `develop → main` dùng merge commit) |
+   | `main: PR + CI, merge commit only` | `main` | Như trên, nhưng chỉ merge commit (không bật *linear history* vì PR `develop → main` dùng merge commit). **Không** bắt nhánh phải cập nhật trước khi merge: mỗi release để lại trên `main` một merge commit mà `develop` không có, và `develop` không nhận push thẳng để cập nhật. CI của PR vẫn chạy trên kết quả gộp với `main` |
    | `Code owner approval (admin may bypass)` | `develop`, `main` | 1 approval của code owner (`.github/CODEOWNERS`), approval cũ bị bỏ khi có commit mới. Admin được bypass để tự merge PR của mình — vẫn phải qua PR và CI vì hai ruleset trên không có bypass |
    | `Release tags: admin only` | tag `v*` | Chỉ admin được tạo, sửa, xóa tag (tag kích hoạt publish image và GitHub Release) |
 
