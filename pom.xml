@@ -39,7 +39,7 @@
         <springdoc.version>3.1.1</springdoc.version>
         <json-schema-validator.version>3.0.8</json-schema-validator.version>
         <h3.version>4.5.0</h3.version>
-        <awssdk.version>2.55.12</awssdk.version>
+        <awssdk.version>2.56.0</awssdk.version>
         <jacoco.version>0.8.15</jacoco.version>
         <!--
           Security patch newer than what Spring Boot / Spring Cloud manage; drop once they ship an
