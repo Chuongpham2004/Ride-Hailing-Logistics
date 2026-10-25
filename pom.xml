@@ -60,7 +60,7 @@
           scan), and still does in the 4.2.1 that Spring Boot 4.1.1 manages. Drop once Spring Boot
           ships a kafka-clients with an equal or newer version.
         -->
-        <lz4-java.version>1.12.0</lz4-java.version>
+        <lz4-java.version>1.12.1</lz4-java.version>
         <!--
           The Eureka client and server pull in Apache HttpClient 5 and FreeMarker. The v0.13.0 image
           scan (Spring Boot 4.0.8) flagged httpcore5 5.3.6 (CVE-2026-54399, CVE-2026-54428 HIGH) and
