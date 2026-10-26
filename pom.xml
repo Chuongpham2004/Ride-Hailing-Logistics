@@ -47,14 +47,12 @@
         -->
         <bouncycastle.version>1.86</bouncycastle.version>
         <!--
-          Overrides newer than what Spring Boot 4.1.1 ships; the BOM brings Jackson 2.21.5 and
-          Tomcat 11.0.24, which the v0.1.0 image scan flagged (CVE-2026-89407/89425/68497/91776/91777
-          on both com.fasterxml.jackson.core and tools.jackson.core, plus Tomcat 11.0.24 had
-          CVE-2026-65182 CRITICAL, 65905, 68525). Drop once Spring Boot ships equal or newer.
+          Override newer than what Spring Boot 4.1.2 ships; the BOM brings Jackson 3.1.7, which the
+          v0.1.0 image scan flagged (CVE-2026-89407/89425/68497/91776/91777 on tools.jackson.core).
+          Drop once Spring Boot ships equal or newer. Spring Boot 4.1.2 already ships Jackson 2.21.7
+          and Tomcat 11.0.27, so those overrides were removed.
         -->
-        <jackson-2-bom.version>2.21.7</jackson-2-bom.version>
         <jackson-bom.version>3.2.3</jackson-bom.version>
-        <tomcat.version>11.0.26</tomcat.version>
         <!--
           kafka-clients brings lz4-java 1.10.1 (CVE-2026-106451 HIGH, found by the v0.12.0 image
           scan), and still does in the 4.2.1 that Spring Boot 4.1.1 manages. Drop once Spring Boot
