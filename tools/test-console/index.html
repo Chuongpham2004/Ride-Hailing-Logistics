@@ -725,6 +725,7 @@ function onWsMessage(a, m) {
     if (!$('log-loc').checked) return;
   }
   log(a, m.type === 'ERROR' ? 'err' : 'ws', `⇦ ${m.type} ${JSON.stringify(d)}`);
+  if (a.role === 'DRIVER' && /^(DRIVER_OFFER_|TRIP_)/.test(m.type)) refreshAvailabilitySoon(a);
 
   if (m.type === 'SESSION_READY' && a.trip && a.trip.id) {
     // UC-07: whatever happened while disconnected comes from a snapshot, not from missed messages.
@@ -748,9 +749,6 @@ function onWsMessage(a, m) {
       return;
     }
     refreshTrip(a).catch(() => {});
-    if (a.role === 'DRIVER' && /COMPLETED|CANCELLED/.test(m.type)) {
-      setTimeout(() => loadProfile(a).catch(() => {}), 1500);
-    }
   }
 }
 
@@ -841,6 +839,14 @@ async function loadProfile(a) {
   }
   renderProfile(a);
   return a.profile;
+}
+/**
+ * Availability is changed by user-service from trip-service's Kafka events, a moment after the
+ * REST call or WebSocket message that caused it, so read it again a little later.
+ */
+function refreshAvailabilitySoon(a) {
+  clearTimeout(a.availTimer);
+  a.availTimer = setTimeout(() => loadProfile(a).catch(() => {}), 1500);
 }
 function renderProfile(a) {
   const p = a.profile;
@@ -994,13 +1000,14 @@ async function accept(a) {
   a.offer = null;
   renderOffer(a);
   renderTrip(a);
-  loadProfile(a).catch(() => {});
+  refreshAvailabilitySoon(a);
 }
 async function decline(a) {
   const o = need(a.offer, 'Không có offer');
   await api(a, 'POST', `/api/v1/offers/${o.id}/decline`);
   a.offer = null;
   renderOffer(a, 'Đã từ chối.');
+  refreshAvailabilitySoon(a);
 }
 async function advance(a, btn) {
   const t = need(a.trip, 'Chưa có chuyến'), step = btn.dataset.step;
@@ -1009,6 +1016,7 @@ async function advance(a, btn) {
   a.trip = await api(a, 'POST', `/api/v1/trips/${t.id}/${step}`, takesCode && code ? { code } : undefined);
   if (takesCode) field(a, 'code').value = '';
   renderTrip(a);
+  if (step === 'complete') refreshAvailabilitySoon(a);
 }
 async function wallet(a) {
   logWallet(a, await api(a, 'GET', '/api/v1/wallets/me?limit=10'));
