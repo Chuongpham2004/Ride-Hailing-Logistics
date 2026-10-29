@@ -5,7 +5,7 @@ import { messageFor } from '@/shared/api/messages';
 import type { ServiceType, Stop } from '@/shared/api/types';
 import { useHeight } from '@/shared/lib/useHeight';
 import { MapView, type MapPoint } from '@/shared/map/MapView';
-import { pinLabel, reverseGeocode, type Place } from '@/shared/map/geocoder';
+import { CITY_CENTER, pinLabel, reverseGeocode, type Place } from '@/shared/map/geocoder';
 import { Button } from '@/shared/ui/Button';
 import { ParcelIcon, RideIcon } from '@/shared/ui/icons';
 import { Sheet } from '@/shared/ui/Sheet';
@@ -108,7 +108,7 @@ export default function BookingPage() {
           {editing ? (
             <AddressPicker
               kind={editing}
-              near={pickup ?? dropoff}
+              near={pickup ?? dropoff ?? CITY_CENTER}
               onPlace={(place: Place) => placeStop(editing, place, place.label)}
               onUseLocation={editing === 'pickup' ? locateMe : undefined}
               locating={locating}

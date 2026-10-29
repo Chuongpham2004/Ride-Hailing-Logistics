@@ -10,6 +10,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
@@ -17,6 +18,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.zip.GZIPOutputStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -32,6 +34,7 @@ class FallbackRouteProviderTest {
     private HttpServer server;
     private final AtomicInteger hits = new AtomicInteger();
     private final AtomicReference<String> lastPath = new AtomicReference<>();
+    private final AtomicReference<String> lastAcceptEncoding = new AtomicReference<>();
     private volatile int status = 200;
     private volatile String body = OK;
     private volatile long delayMillis;
@@ -51,6 +54,14 @@ class FallbackRouteProviderTest {
             }
             byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
+            // Like router.project-osrm.org: compresses whenever asked, and labels a gzip body
+            // "deflate" when the client accepts deflate.
+            String accepts = exchange.getRequestHeaders().getFirst("Accept-Encoding");
+            lastAcceptEncoding.set(accepts);
+            if (accepts != null && (accepts.contains("gzip") || accepts.contains("deflate"))) {
+                bytes = gzip(bytes);
+                exchange.getResponseHeaders().add("Content-Encoding", accepts.contains("deflate") ? "deflate" : "gzip");
+            }
             exchange.sendResponseHeaders(status, bytes.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(bytes);
@@ -64,6 +75,14 @@ class FallbackRouteProviderTest {
         server.stop(0);
     }
 
+    private static byte[] gzip(byte[] plain) throws IOException {
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        try (GZIPOutputStream zip = new GZIPOutputStream(out)) {
+            zip.write(plain);
+        }
+        return out.toByteArray();
+    }
+
     @Test
     void usesTheRoadRouteFromOsrm() {
         RouteEstimate route = provider(true).route(ServiceType.RIDE, PICKUP, DROPOFF);
@@ -74,6 +93,14 @@ class FallbackRouteProviderTest {
         assertThat(route.polyline()).isEqualTo("abc_polyline");
         // Longitude first, separators sent literally.
         assertThat(lastPath.get()).isEqualTo("/route/v1/driving/106.698000,10.772500;106.682200,10.762600");
+    }
+
+    @Test
+    void asksForAnUncompressedBodySoAMislabelledOneCannotBreakIt() {
+        RouteEstimate route = provider(true).route(ServiceType.RIDE, PICKUP, DROPOFF);
+
+        assertThat(lastAcceptEncoding.get()).isEqualTo("identity");
+        assertThat(route.source()).isEqualTo("OSRM");
     }
 
     @Test

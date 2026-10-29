@@ -1,7 +1,18 @@
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { useEffect, useMemo, useRef } from 'react';
-import Map, { Layer, Marker, Source, type MapLayerMouseEvent, type MapRef } from 'react-map-gl/maplibre';
+// MapLibre 6 parses tiles in a module worker it loads by URL next to its own file. Vite moves the
+// library into a bundle (or .vite/deps in dev) without that file, so emit it and hand over its URL.
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Map, {
+  AttributionControl,
+  Layer,
+  Marker,
+  Source,
+  type MapLayerMouseEvent,
+  type MapRef,
+} from 'react-map-gl/maplibre';
 import { config } from '@/shared/config';
+import { CITY_CENTER } from './geocoder';
 import type { LngLat } from './polyline';
 
 export interface MapPoint {
@@ -21,9 +32,6 @@ export interface MapViewProps {
   className?: string;
 }
 
-/** District 1, Ho Chi Minh City. */
-const DEFAULT_CENTER = { latitude: 10.7769, longitude: 106.7009 };
-
 const GUIDE = '#1C4E9E';
 
 /**
@@ -41,6 +49,9 @@ export function MapView({
   className,
 }: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
+  // MapLibre loads asynchronously: stops known on the first render (a cached quote) are fitted
+  // once the map is there, not dropped.
+  const [loaded, setLoaded] = useState(false);
 
   const line = useMemo<LngLat[] | null>(() => {
     if (route && route.length > 1) return route;
@@ -63,11 +74,17 @@ export function MapView({
 
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || points.length === 0) return;
-    const padding = { top: 72, left: 40, right: 40, bottom: bottomInset + 32 };
+    if (!loaded || !map || points.length === 0) return;
+    // A tall sheet (the address search) could leave no room at all; MapLibre then refuses to fit.
+    const top = 72;
+    const room = map.getContainer().clientHeight - top - 120;
+    const padding = { top, left: 40, right: 40, bottom: Math.max(0, Math.min(bottomInset + 32, room)) };
     if (points.length === 1) {
       const [lng, lat] = points[0]!;
-      map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15), padding, duration: 500 });
+      // An offset, not padding: easeTo keeps its padding on the map, and fitBounds would then add
+      // its own on top and run out of room.
+      const offset: [number, number] = [0, (padding.top - padding.bottom) / 2];
+      map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15), offset, duration: 500 });
       return;
     }
     const lngs = points.map((p) => p[0]);
@@ -79,7 +96,7 @@ export function MapView({
       ],
       { padding, maxZoom: 16, duration: 600 },
     );
-  }, [points, bottomInset]);
+  }, [points, bottomInset, loaded]);
 
   const handleClick = (event: MapLayerMouseEvent) => {
     onPick?.({ latitude: event.lngLat.lat, longitude: event.lngLat.lng });
@@ -89,13 +106,17 @@ export function MapView({
     <div className={className}>
       <Map
         ref={mapRef}
+        workerUrl={maplibreWorkerUrl}
         mapStyle={config.mapStyleUrl}
-        initialViewState={{ ...DEFAULT_CENTER, zoom: 13 }}
-        attributionControl={{ compact: true }}
+        initialViewState={{ ...CITY_CENTER, zoom: 13 }}
+        onLoad={() => setLoaded(true)}
+        attributionControl={false}
         onClick={onPick ? handleClick : undefined}
         cursor={onPick ? 'crosshair' : undefined}
         style={{ width: '100%', height: '100%' }}
       >
+        {/* Required credit for OpenStreetMap data; top right, where the bottom sheet cannot cover it. */}
+        <AttributionControl position="top-right" compact />
         {line && (
           <Source
             id="route"

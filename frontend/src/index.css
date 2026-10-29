@@ -60,6 +60,11 @@
   }
 }
 
+/* The map credit sits top right; keep it clear of the back button on the left. */
+.maplibregl-ctrl-top-right .maplibregl-ctrl-attrib {
+  max-width: 240px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -12,6 +12,9 @@ export interface Place {
   longitude: number;
 }
 
+/** District 1, Ho Chi Minh City: where the map opens and searches lean before any stop is set. */
+export const CITY_CENTER = { latitude: 10.7769, longitude: 106.7009 };
+
 /** Vietnam, as west, south, east, north. */
 const VIETNAM_BBOX = '102.14,8.18,109.47,23.39';
 
@@ -49,13 +52,20 @@ export async function searchPlaces(
   const response = await fetch(`${config.geocoderUrl}/api?${params}`, { signal });
   if (!response.ok) throw new Error(`Photon answered ${response.status}`);
   const body = (await response.json()) as { features?: PhotonFeature[] };
+  const seen = new Set<string>();
+  // Photon can return the same OSM object twice (as a node and as a way, say).
   return (body.features ?? [])
     .map((f) => ({
       label: photonLabel(f.properties),
       longitude: f.geometry.coordinates[0],
       latitude: f.geometry.coordinates[1],
     }))
-    .filter((place) => place.label.length > 0);
+    .filter((place) => {
+      const key = `${place.label}|${place.latitude.toFixed(4)}|${place.longitude.toFixed(4)}`;
+      if (place.label.length === 0 || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 interface NominatimReverse {
