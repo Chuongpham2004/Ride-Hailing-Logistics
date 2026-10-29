@@ -559,6 +559,9 @@ BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-12
 ./mvnw -pl services/payment-service spring-boot:run  # :8086
 ./mvnw -pl services/realtime-gateway spring-boot:run # :8085, WebSocket ws://localhost:8085/ws
 ./mvnw -pl services/api-gateway spring-boot:run      # :8080, gọi API qua gateway
+
+# 5. Web app (Node 24.15+): http://localhost:5173, xem docs/frontend-design.md
+cd frontend && npm ci && npm run dev
 ```
 
 - **Service discovery:** chạy `eureka-server` trước. Service nào khởi động khi registry chưa lên vẫn chạy được và tự đăng ký lại sau. Sau khi một service lên, gateway cần tới khoảng 1 phút mới thấy nó (chu kỳ làm mới registry 30 giây ở mỗi phía); trong lúc đó gateway trả `503 DEPENDENCY_UNAVAILABLE`. Mỗi service đăng ký với hostname `localhost` (`EUREKA_INSTANCE_HOSTNAME`); khi chạy trên nhiều máy hoặc container, đặt biến này hoặc `EUREKA_PREFER_IP_ADDRESS=true`. Test tắt Eureka client (`eureka.client.enabled=false` trong parent POM).
