@@ -77,6 +77,13 @@
         <httpcore5.version>5.4.4</httpcore5.version>
         <httpclient5.version>5.6.5</httpclient5.version>
         <freemarker.version>2.3.35</freemarker.version>
+        <!--
+          eureka-core (Eureka server only) brings guava 33.0.0-jre (CVE-2026-102554 HIGH, fixed in
+          33.7.2; found by the eureka-server image scan on 2026-10-29). Same major version, so the
+          API eureka-core uses is unchanged. Drop once Spring Cloud ships an eureka-core with an
+          equal or newer guava.
+        -->
+        <guava.version>33.7.2-jre</guava.version>
         <!-- Raised per module once real coverage exists; 0 keeps the gate wired but non-blocking. -->
         <jacoco.minimum.line.coverage>0.00</jacoco.minimum.line.coverage>
     </properties>
@@ -103,6 +110,12 @@
                 <groupId>at.yawk.lz4</groupId>
                 <artifactId>lz4-java</artifactId>
                 <version>${lz4-java.version}</version>
+            </dependency>
+            <!-- Pulled in by eureka-core; see guava.version above. -->
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
             </dependency>
             <!-- Pulled in by kafka-clients; see snappy-java.version above. -->
             <dependency>
