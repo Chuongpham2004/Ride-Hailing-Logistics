@@ -18,6 +18,7 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.net.http.HttpClient;
 
@@ -75,9 +76,20 @@ public class FallbackRouteProvider implements RouteProvider {
         } catch (CallNotPermittedException e) {
             return estimate.route(serviceType, pickup, dropoff);
         } catch (RestClientException | OsrmRouteProvider.NoRouteException e) {
-            log.warn("OSRM failed, using the estimate: {}", e.getMessage());
+            log.warn("OSRM failed, using the estimate: {}", describe(e));
             return estimate.route(serviceType, pickup, dropoff);
         }
+    }
+
+    /** Never the message of an I/O error: it holds the request URL, i.e. exact coordinates (NFR-SEC-009). */
+    private static String describe(RuntimeException error) {
+        if (error instanceof RestClientResponseException response) {
+            return "HTTP " + response.getStatusCode().value();
+        }
+        if (error instanceof OsrmRouteProvider.NoRouteException) {
+            return error.getMessage();
+        }
+        return error.getClass().getSimpleName();
     }
 
     CircuitBreaker.State state() {
