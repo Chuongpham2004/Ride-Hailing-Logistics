@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useMatch } from 'react-router';
 import { ListIcon, PinIcon, UserIcon } from '@/shared/ui/icons';
+import { RevealBackdrop } from '@/shared/ui/RevealBackdrop';
 
 const TABS = [
   { to: '/app', end: true, label: 'Đặt xe', Icon: PinIcon },
@@ -14,30 +15,33 @@ const TABS = [
 export function CustomerLayout() {
   const onQuote = useMatch('/app/quote/:quoteId');
   return (
-    <div className="mx-auto flex h-dvh max-w-[480px] flex-col bg-white shadow-[0_0_0_1px_var(--color-line)]">
-      <main className="relative min-h-0 flex-1">
-        <Outlet />
-      </main>
-      {!onQuote && (
-        <nav
-          aria-label="Điều hướng chính"
-          className="grid grid-cols-3 border-t border-concrete bg-white px-2 pt-1.5 pb-[max(14px,env(safe-area-inset-bottom))]"
-        >
-          {TABS.map(({ to, end, label, Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-1.5 text-xs no-underline ${isActive ? 'font-semibold text-asphalt' : 'text-curb'}`
-              }
-            >
-              <Icon />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-      )}
-    </div>
+    <>
+      <RevealBackdrop />
+      <div className="relative mx-auto flex h-dvh max-w-[480px] flex-col bg-white shadow-[0_0_0_1px_var(--color-line)]">
+        <main className="relative min-h-0 flex-1">
+          <Outlet />
+        </main>
+        {!onQuote && (
+          <nav
+            aria-label="Điều hướng chính"
+            className="grid grid-cols-3 border-t border-concrete bg-white px-2 pt-1.5 pb-[max(14px,env(safe-area-inset-bottom))]"
+          >
+            {TABS.map(({ to, end, label, Icon }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) =>
+                  `flex flex-col items-center gap-0.5 py-1.5 text-xs no-underline ${isActive ? 'font-semibold text-asphalt' : 'text-curb'}`
+                }
+              >
+                <Icon />
+                {label}
+              </NavLink>
+            ))}
+          </nav>
+        )}
+      </div>
+    </>
   );
 }

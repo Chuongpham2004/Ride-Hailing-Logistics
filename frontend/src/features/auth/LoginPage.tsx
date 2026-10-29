@@ -7,6 +7,7 @@ import { messageFor } from '@/shared/api/messages';
 import { homeFor } from '@/shared/auth/areas';
 import { login, useSession } from '@/shared/auth/session';
 import { Button } from '@/shared/ui/Button';
+import { RevealBackdrop } from '@/shared/ui/RevealBackdrop';
 import { Splash } from '@/shared/ui/Splash';
 
 const schema = z.object({
@@ -47,7 +48,8 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-dvh items-center justify-center bg-concrete px-4 py-10">
-      <div className="flex w-full max-w-[400px] flex-col gap-7 rounded-sheet bg-white px-6 py-8 shadow-[0_2px_12px_rgba(43,46,51,0.1)]">
+      <RevealBackdrop />
+      <div className="relative flex w-full max-w-[400px] flex-col gap-7 rounded-sheet bg-white px-6 py-8 shadow-[0_2px_12px_rgba(43,46,51,0.1)]">
         <header className="flex flex-col gap-3">
           <span
             aria-hidden="true"
