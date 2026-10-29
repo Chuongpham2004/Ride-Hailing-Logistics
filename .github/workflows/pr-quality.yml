@@ -46,6 +46,7 @@ jobs:
             simulator
             frontend
             deps
+            deps-dev
             ci
             docs
           requireScope: false
