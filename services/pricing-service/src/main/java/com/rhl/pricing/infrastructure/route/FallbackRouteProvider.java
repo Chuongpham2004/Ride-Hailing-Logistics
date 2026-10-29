@@ -108,9 +108,12 @@ public class FallbackRouteProvider implements RouteProvider {
         HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
         factory.setReadTimeout(config.readTimeout());
-        // The public demo server asks clients to identify themselves.
+        // The public demo server asks clients to identify themselves. It also answers a request
+        // that accepts deflate with a gzip body labelled "Content-Encoding: deflate", which the
+        // JDK client factory then fails to inflate; a route is a few kB, so ask for no compression.
         RestClient rest = RestClient.builder().baseUrl(config.baseUrl()).requestFactory(factory)
                 .defaultHeader("User-Agent", "rhl-pricing-service (learning project)")
+                .defaultHeader("Accept-Encoding", "identity")
                 .build();
         log.info("Routes from OSRM at {}", config.baseUrl());
         return new OsrmRouteProvider(rest, config.profile());

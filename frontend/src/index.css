@@ -60,6 +60,28 @@
   }
 }
 
+/*
+ * RevealBackdrop: the RHL rows show only inside a soft circle around the pointer. Hidden (size 0)
+ * until the first move and again when the pointer leaves the window.
+ */
+.reveal-backdrop {
+  --reveal-x: -1000px;
+  --reveal-y: -1000px;
+  --reveal-size: 0px;
+  opacity: 0.75;
+  mask-image: radial-gradient(
+    circle var(--reveal-size) at var(--reveal-x) var(--reveal-y),
+    #000 0%,
+    rgb(0 0 0 / 0.6) 45%,
+    transparent 100%
+  );
+}
+
+/* The map credit sits top right; keep it clear of the back button on the left. */
+.maplibregl-ctrl-top-right .maplibregl-ctrl-attrib {
+  max-width: 240px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
