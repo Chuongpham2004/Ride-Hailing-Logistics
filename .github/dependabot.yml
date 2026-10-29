@@ -23,6 +23,32 @@ updates:
       maven-plugins:
         patterns: ['org.apache.maven.plugins*', 'org.jacoco*']
 
+  - package-ecosystem: npm
+    directory: /frontend
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+      time: '03:00'
+      timezone: Asia/Ho_Chi_Minh
+    open-pull-requests-limit: 10
+    # New releases wait two weeks before an update PR, so fixes for a broken release land first.
+    cooldown:
+      default-days: 14
+    commit-message:
+      prefix: build
+      include: scope
+    labels: [dependencies, javascript]
+    groups:
+      react:
+        patterns: ['react', 'react-dom', '@types/react', '@types/react-dom', 'react-router']
+      build-tools:
+        patterns: ['vite', '@vitejs/*', 'typescript', 'typescript-eslint', 'eslint', '@eslint/*', 'eslint-plugin-*', 'prettier', 'tailwindcss', '@tailwindcss/*', 'globals']
+      testing:
+        patterns: ['vitest', '@testing-library/*', 'jsdom', 'msw']
+      map:
+        patterns: ['maplibre-gl', 'react-map-gl']
+
   - package-ecosystem: github-actions
     directory: /
     target-branch: develop

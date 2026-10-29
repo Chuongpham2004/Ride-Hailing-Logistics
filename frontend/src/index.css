@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+@import '@fontsource/be-vietnam-pro/400.css';
+@import '@fontsource/be-vietnam-pro/500.css';
+@import '@fontsource/be-vietnam-pro/600.css';
+@import '@fontsource/be-vietnam-pro/700.css';
+@import '@fontsource/barlow-condensed/700.css';
+
+/*
+ * Colours from the street (prototype "RHL Khách hàng"). Each has one job across the three areas:
+ * sign yellow = primary action, searching, pickup; guide blue = route, trip in progress, links;
+ * asphalt = text and drop-off; concrete = map ground; stop red = cancel and errors; go green = done.
+ */
+@theme {
+  --color-sign: #f5c518;
+  --color-guide: #1c4e9e;
+  --color-guide-dark: #153b78;
+  --color-asphalt: #2b2e33;
+  --color-ink-2: #4a4e55;
+  --color-curb: #6b7078;
+  --color-concrete: #e7e9e4;
+  --color-concrete-2: #eef0ec;
+  --color-line: #d3d6d0;
+  --color-field: #c9ccc6;
+  --color-stop: #c3352b;
+  --color-stop-tint: #f6f1f0;
+  --color-go: #1e7a4c;
+
+  --font-sans: 'Be Vietnam Pro', system-ui, sans-serif;
+  /* Only for numbers read at a distance: fares, pickup and delivery codes. */
+  --font-plate: 'Barlow Condensed', 'Be Vietnam Pro', sans-serif;
+
+  --radius-sheet: 22px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-concrete);
+    color: var(--color-asphalt);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 3px solid var(--color-guide);
+    outline-offset: 2px;
+  }
+
+  a {
+    color: var(--color-guide);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

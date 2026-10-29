@@ -11,6 +11,7 @@
 #   build-needed   "true" when at least one Maven module must be built
 #   maven-pl       comma-separated modules for `mvn -pl` ("" => whole reactor)
 #   services       JSON array of affected services (services/<name>/pom.xml)
+#   frontend       "true" when frontend/ (or the pipeline itself) changed
 set -euo pipefail
 
 BASE_SHA="${BASE_SHA:-}"
@@ -32,13 +33,19 @@ fi
 # Shared code, build config and contracts affect every service.
 full=false
 changed=""
+frontend=false
 if [[ "$FORCE_ALL" == "true" || -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]] \
   || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
   full=true
+  [[ -d frontend ]] && frontend=true
 else
   changed="$(git diff --name-only "$BASE_SHA" HEAD)"
   if grep -qE '^(pom\.xml|\.mvn/|mvnw|libs/|contracts/|tools/|docker/|\.github/)' <<<"$changed"; then
     full=true
+  fi
+  # The web app is not part of the Maven build: only its own files and the pipeline matter.
+  if grep -qE '^(frontend/|\.github/)' <<<"$changed"; then
+    frontend=true
   fi
 fi
 
@@ -74,6 +81,7 @@ fi
   echo "build-needed=${build_needed}"
   echo "maven-pl=${maven_pl}"
   echo "services=${services_json}"
+  echo "frontend=${frontend}"
 } >>"$OUT"
 
-echo "full=${full} has-maven=${has_maven} build-needed=${build_needed} services=${services_json}"
+echo "full=${full} has-maven=${has_maven} build-needed=${build_needed} services=${services_json} frontend=${frontend}"

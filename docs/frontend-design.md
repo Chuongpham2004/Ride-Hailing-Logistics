@@ -1,8 +1,8 @@
 # Thiết kế frontend — Ride-Hailing & Logistics
 
 Tài liệu thiết kế cho ứng dụng web React phục vụ ba nhóm người dùng: **khách hàng**, **tài xế** và
-**nhân viên / quản trị**. Chưa có code; tài liệu này chốt màn hình, luồng, cấu trúc thư mục và thư viện
-để bắt đầu viết.
+**nhân viên / quản trị**. Mã nguồn nằm ở `frontend/`; tài liệu này chốt màn hình, luồng, cấu trúc thư mục
+và thư viện. Giao diện theo prototype "RHL Khách hàng" (nhận diện đường phố Sài Gòn, xem [mục 9](#9-hệ-thống-giao-diện)).
 
 Mọi endpoint nêu ở đây đều đã có trong backend hiện tại (gọi qua api-gateway `:8080`, WebSocket gọi thẳng
 realtime-gateway `:8085/ws`). Những chỗ backend chưa có được gom ở [mục 10](#10-khoảng-trống-phía-backend).
@@ -32,7 +32,7 @@ trước khi chốt.
 | Dữ liệu server | TanStack Query | Cache, tải lại, trạng thái loading/lỗi; event WebSocket chỉ cần `invalidate` hoặc ghi vào cache |
 | Trạng thái client | Zustand | Nhỏ gọn cho phiên đăng nhập, trạng thái kết nối, offer đang chờ |
 | Form | React Hook Form + Zod | Kiểm tra dữ liệu phía client khớp ràng buộc server (ví dụ lat −90…90, mã 6 số) |
-| Giao diện | Tailwind CSS + shadcn/ui (Radix) | Component có sẵn khả năng truy cập, sở hữu mã nguồn, dễ đổi theme |
+| Giao diện | Tailwind CSS 4 (token trong `src/index.css`), component tự viết trong `shared/ui`; thêm shadcn/ui (Radix) khi cần hộp thoại, menu, bảng ở khu quản trị | Sở hữu mã nguồn, dễ đổi theme; chưa kéo Radix khi chưa cần |
 | Bản đồ | MapLibre GL JS + react-map-gl, style OpenFreeMap (dữ liệu OpenStreetMap) | Vector tile miễn phí, không cần khoá API, xoay / zoom mượt; xem [mục 6.1](#61-bản-đồ-tìm-địa-chỉ-và-tuyến-đường) |
 | Realtime | WebSocket gốc của trình duyệt, bọc trong một lớp riêng | Giao thức đã tự định nghĩa (envelope, PING, AUTH); không cần STOMP hay socket.io |
 | Kiểm thử | Vitest + Testing Library + MSW; Playwright cho luồng chính | MSW giả API theo hợp đồng; Playwright chạy với backend thật ở local |
@@ -78,7 +78,7 @@ Thanh điều hướng dưới: **Đặt xe · Hoạt động · Tài khoản**.
 | Route | Màn hình | Nội dung chính | API / realtime |
 |---|---|---|---|
 | `/app` | Trang chủ đặt xe | Bản đồ toàn màn hình; tấm trượt dưới để chọn dịch vụ (Chở khách / Giao hàng), điểm đón, điểm đến | — |
-| `/app/quote` | Báo giá | Tuyến trên bản đồ, quãng đường, thời gian, bảng tách giá, hệ số surge, đồng hồ hết hạn 5 phút; với Giao hàng có form người nhận và gói hàng | `POST /quotes` |
+| `/app/quote/:quoteId` | Báo giá | Tuyến trên bản đồ, quãng đường, thời gian, bảng tách giá, hệ số surge, đồng hồ hết hạn 5 phút; với Giao hàng có form người nhận và gói hàng | `POST /quotes` |
 | `/app/trips/:id` | Chuyến đang chạy | Một màn hình đổi nội dung theo trạng thái (xem bảng dưới) | `GET /trips/{id}`, WebSocket |
 | `/app/trips/:id/receipt` | Hoá đơn | Giá, trạng thái thanh toán, nút thử lại khi thanh toán lỗi, danh sách hoàn tiền | `GET /payments?tripId=`, `POST /payments/{id}/retry`, `GET /payments/{id}/refunds` |
 | `/app/activity` | Lịch sử chuyến | Danh sách phân trang theo con trỏ `before` | `GET /trips` |
@@ -233,7 +233,7 @@ frontend/
 │   │   ├── auth/             # store phiên, hook useSession, đăng nhập / đăng xuất
 │   │   ├── realtime/         # lớp WebSocket, heartbeat, kết nối lại, hook useTripChannel
 │   │   ├── map/              # MapView, marker, nội suy vị trí, geocoder (Photon / Nominatim), decodePolyline6
-│   │   ├── ui/               # component shadcn/ui + StatusBadge, Money, Countdown, CodeDisplay
+│   │   ├── ui/               # Button, Sheet, Money, Plate (mã đón / mã giao), icon; sau này StatusBadge
 │   │   └── lib/              # định dạng tiền, ngày giờ, toạ độ
 │   └── features/
 │       ├── auth/             # đăng nhập, đăng ký, quên mật khẩu, xác minh
@@ -251,13 +251,27 @@ Biến môi trường: `VITE_API_URL` (mặc định `http://localhost:8080`), `
 (mặc định `https://photon.komoot.io`), `VITE_REVERSE_GEOCODER_URL` (mặc định
 `https://nominatim.openstreetmap.org`). Cổng dev mặc định của Vite (`5173`) đã nằm trong CORS `http://localhost:*` của gateway.
 
+Chạy local (Node 24.15+, xem `frontend/.nvmrc`):
+
+```bash
+cd frontend
+npm ci
+npm run dev        # http://localhost:5173, gọi api-gateway :8080
+npm test           # Vitest + Testing Library + MSW
+npm run lint && npm run typecheck && npm run build
+```
+
+Phiên bản thư viện ghim chính xác trong `package.json`, chọn bản ổn định đã phát hành ít nhất hai tuần;
+Dependabot đề xuất bản mới theo nhóm với cùng độ trễ. TypeScript dùng nhánh 6.0 vì typescript-eslint chưa
+hỗ trợ 7.0.
+
 ## 9. Hệ thống giao diện
 
 | Thành phần | Quy ước |
 |---|---|
-| Màu chủ đạo | Một màu thương hiệu cho hành động chính; nền trung tính; hỗ trợ sáng / tối theo hệ điều hành |
+| Màu chủ đạo | Lấy từ đường phố, mỗi màu một vai trò: vàng biển báo `#F5C518` (nút chính, đang tìm, điểm đón), xanh chỉ dẫn `#1C4E9E` (tuyến, đang chạy, liên kết), nhựa đường `#2B2E33` (chữ, điểm đến), bê tông `#E7E9E4` (nền bản đồ), đỏ biển cấm `#C3352B` (huỷ, lỗi), đèn xanh `#1E7A4C` (hoàn tất). Chế độ tối theo hệ điều hành: chưa làm |
 | Màu trạng thái | Đang tìm / đang xử lý: vàng hổ phách · đang chạy: xanh dương · hoàn tất: xanh lá · huỷ / lỗi: đỏ · không có tài xế: xám |
-| Chữ | Một phông sans hỗ trợ đủ dấu tiếng Việt; mã đón / mã giao dùng chữ số cỡ lớn, giãn cách rộng |
+| Chữ | Be Vietnam Pro cho mọi chữ (thiết kế cho tiếng Việt); Barlow Condensed chỉ cho số đọc từ xa: giá, mã đón, mã giao. Mã hiển thị trong khung biển số (`Plate`). Font tự host qua `@fontsource`, không gọi Google Fonts |
 | Vùng chạm | Tối thiểu 44 × 44 px; nút chính rộng hết chiều ngang ở cạnh dưới |
 | Tiền | `38.000 ₫`, luôn qua component `Money` |
 | Thời gian | Giờ địa phương; đếm ngược dùng component `Countdown` (báo giá, offer, hạn ghép) |
@@ -284,7 +298,7 @@ Những thứ giao diện cần mà API hiện chưa có. Mỗi mục cần quy�
 
 | Giai đoạn | Nội dung | Kết quả kiểm chứng được |
 |---|---|---|
-| 1. Nền tảng | Khởi tạo dự án, lớp API, phiên đăng nhập, lớp realtime, bố cục ba khu vực, CI | Đăng nhập được, WebSocket nhận `SESSION_READY` |
+| 1. Nền tảng | Khởi tạo dự án, lớp API, phiên đăng nhập, lớp realtime, bố cục ba khu vực, CI | Đăng nhập được, WebSocket nhận `SESSION_READY`. **Đã có:** dự án, theme, lớp API + làm mới token single-flight, đăng nhập, route guard ba khu vực, CI; màn Đặt xe và Báo giá của giai đoạn 2. **Còn lại:** lớp realtime |
 | 2. Khách hàng | Đặt xe → báo giá → chuyến đang chạy → hoá đơn → lịch sử | Đi hết UC-02, UC-03, UC-04 với tài xế bấm từ trang test hiện có |
 | 3. Tài xế | Onboarding → online → offer → chạy chuyến → ví | Đi hết UC-01, UC-04, UC-05, UC-06 bằng hai tab |
 | 4. Quản trị | Duyệt hồ sơ → chuyến → thanh toán → bảng giá | Thay được các request admin trong collection Postman |
