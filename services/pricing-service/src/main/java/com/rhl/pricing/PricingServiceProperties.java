@@ -12,7 +12,7 @@ import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
 
-/** Business parameters (NFR-MNT-005); placeholders until TBD-02, TBD-03 and TBD-05 are settled. */
+/** Business parameters (NFR-MNT-005); placeholders until TBD-03 and TBD-05 are settled. */
 @Validated
 @ConfigurationProperties(prefix = "rhl")
 public record PricingServiceProperties(@Valid @NotNull Quote quote, @Valid @NotNull Route route,
@@ -30,13 +30,29 @@ public record PricingServiceProperties(@Valid @NotNull Quote quote, @Valid @NotN
     }
 
     /**
-     * Straight-line estimate used until a Map Provider is chosen (TBD-02).
+     * Routes come from OSRM when it is enabled (TBD-02), with a straight-line estimate as the
+     * fallback.
      *
-     * @param roadFactor       road distance ÷ straight-line distance in town
-     * @param averageSpeedKmh  door-to-door average including stops
+     * @param roadFactor       estimate: road distance ÷ straight-line distance in town
+     * @param averageSpeedKmh  estimate: door-to-door average including stops
      */
     public record Route(@DecimalMin("1.0") double roadFactor, @Positive double averageSpeedKmh,
-                        @Positive int minDurationSeconds) {
+                        @Positive int minDurationSeconds, @Valid @NotNull Osrm osrm) {
+    }
+
+    /**
+     * OSRM server, by default the public demo one. Any failure falls back to the estimate, so a
+     * quote is never refused because OSRM is down.
+     *
+     * @param profile              OSRM profile in the URL; the demo server serves {@code driving}
+     * @param maxDetourFactor      a road route longer than this × the straight line is distrusted
+     * @param failureRateThreshold percentage of failed calls that opens the circuit
+     * @param openFor              how long OSRM is skipped once the circuit opens
+     */
+    public record Osrm(boolean enabled, @NotBlank String baseUrl, @NotBlank String profile,
+                       @NotNull Duration connectTimeout, @NotNull Duration readTimeout,
+                       @DecimalMin("1.0") double maxDetourFactor, @Min(1) @Max(100) int failureRateThreshold,
+                       @Min(1) int slidingWindowSize, @Min(1) int minimumCalls, @NotNull Duration openFor) {
     }
 
     /**

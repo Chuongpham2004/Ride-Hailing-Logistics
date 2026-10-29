@@ -53,7 +53,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         // Tokens are injected with spring-security-test, so the JWKS endpoint is never called.
         "spring.security.oauth2.resourceserver.jwt.jwk-set-uri=http://localhost:1/jwks.json",
-        "rhl.quote.ttl=3s"})
+        "rhl.quote.ttl=3s",
+        // Deterministic routes: never call the public OSRM server from tests.
+        "rhl.route.osrm.enabled=false"})
 class PricingServiceIT {
 
     private static final Map<String, Object> BEN_THANH =
@@ -106,6 +108,7 @@ class PricingServiceIT {
         assertThat(quote.path("surgeSource").asString()).isEqualTo("COMPUTED");
         assertThat(quote.path("surgeConfirmationRequired").asBoolean()).isFalse();
         assertThat(quote.path("routeSource").asString()).isEqualTo("ESTIMATE");
+        assertThat(quote.has("routePolyline")).as("no geometry for an estimate").isFalse();
         assertThat(quote.path("distanceMeters").asInt()).isBetween(2_600, 2_900);
         assertThat(Duration.between(Instant.parse(quote.path("createdAt").asString()),
                 Instant.parse(quote.path("expiresAt").asString()))).isEqualTo(Duration.ofSeconds(3));
