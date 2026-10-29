@@ -439,7 +439,6 @@ com.rhl.<service>/
 | PostgreSQL | 15432 | Một instance, mỗi service một database (`user_db`, `trip_db`, ...); user `<service>_svc`, mật khẩu trùng tên (chỉ dev) |
 | MinIO (S3) | 19000 (API), 19001 (console) | File giấy tờ tài xế (bucket riêng tư `rhl-driver-documents`, user-service tự tạo khi khởi động); image `cgr.dev/chainguard/minio` vì MinIO không còn phát hành image công khai; tài khoản dev `rhl-dev` / `rhl-dev-secret` |
 | Kafka UI (tùy chọn) | 8090 | Quan sát topic, DLT |
-| OSRM (tùy chọn, profile `map`) | 15000 | Tuyến đường thật cho báo giá; lần đầu tự tải bản đồ Việt Nam (Geofabrik, ~330 MB) và dựng đồ thị (vài phút, Docker cần 4–8 GB RAM). Bật ở pricing-service bằng `RHL_OSRM_ENABLED=true` (`RHL_OSRM_URL` mặc định `http://localhost:15000`); tắt hoặc lỗi thì dùng ước tính đường chim bay |
 
 > Port phía host cố ý tránh mặc định (5432/6379/9092) để không đụng PostgreSQL cài sẵn hay stack khác; đổi bằng `RHL_POSTGRES_PORT`, `RHL_REDIS_PORT`, `RHL_KAFKA_PORT` (khi đổi, đặt thêm `USER_DB_URL`, `REDIS_PORT`, `KAFKA_BOOTSTRAP_SERVERS` cho service).
 
@@ -556,7 +555,7 @@ docker compose up -d
 BOOTSTRAP_ADMIN_EMAIL=admin@rhl.local BOOTSTRAP_ADMIN_PASSWORD=admin-password-123   ./mvnw -pl services/user-service spring-boot:run   # :8081
 ./mvnw -pl services/location-service spring-boot:run # :8082
 ./mvnw -pl services/trip-service spring-boot:run     # :8083 (cần location-service để ghép tài xế)
-./mvnw -pl services/pricing-service spring-boot:run  # :8084 (RHL_OSRM_ENABLED=true + docker compose --profile map up -d để có tuyến thật)
+./mvnw -pl services/pricing-service spring-boot:run  # :8084 (tuyến từ server demo OSRM công khai; RHL_OSRM_ENABLED=false để chỉ dùng ước tính)
 ./mvnw -pl services/payment-service spring-boot:run  # :8086
 ./mvnw -pl services/realtime-gateway spring-boot:run # :8085, WebSocket ws://localhost:8085/ws
 ./mvnw -pl services/api-gateway spring-boot:run      # :8080, gọi API qua gateway
@@ -1142,7 +1141,7 @@ Tối ưu thao tác trên di động khi đang di chuyển · thể hiện rõ M
 | Mã | Vấn đề | Cần chốt | Chủ trì |
 |---|---|---|---|
 | TBD-01 | Phạm vi dịch vụ | Ride, delivery hay cả hai trong bản nghiệm thu | Product |
-| TBD-02 | Bản đồ | **Đã chốt:** OpenStreetMap — tuyến từ OSRM tự host (pricing-service, lùi về ước tính khi lỗi); frontend dùng MapLibre + OpenFreeMap, tìm địa chỉ bằng Photon / Nominatim | Product / Kiến trúc |
+| TBD-02 | Bản đồ | **Đã chốt:** OpenStreetMap — tuyến từ server demo OSRM công khai `router.project-osrm.org` (pricing-service gọi, lùi về ước tính khi lỗi; đổi bằng `RHL_OSRM_URL`); frontend dùng MapLibre + OpenFreeMap, tìm địa chỉ bằng Photon / Nominatim | Product / Kiến trúc |
 | TBD-03 | Công thức giá | Giá mở cửa, /km, /phút, tối thiểu, làm tròn | Product / Tài chính |
 | TBD-04 | Surge | Kích thước vùng, cửa sổ thời gian, công thức, trần hệ số | Product / Data |
 | TBD-05 | Quote | Thời hạn hiệu lực, xử lý chênh lệch cước cuối | Product |

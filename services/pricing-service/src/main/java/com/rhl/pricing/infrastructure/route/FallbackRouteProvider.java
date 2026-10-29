@@ -108,7 +108,10 @@ public class FallbackRouteProvider implements RouteProvider {
         HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
         factory.setReadTimeout(config.readTimeout());
-        RestClient rest = RestClient.builder().baseUrl(config.baseUrl()).requestFactory(factory).build();
+        // The public demo server asks clients to identify themselves.
+        RestClient rest = RestClient.builder().baseUrl(config.baseUrl()).requestFactory(factory)
+                .defaultHeader("User-Agent", "rhl-pricing-service (learning project)")
+                .build();
         log.info("Routes from OSRM at {}", config.baseUrl());
         return new OsrmRouteProvider(rest, config.profile());
     }

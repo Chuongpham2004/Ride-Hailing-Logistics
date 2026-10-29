@@ -41,10 +41,10 @@ public record PricingServiceProperties(@Valid @NotNull Quote quote, @Valid @NotN
     }
 
     /**
-     * Self-hosted OSRM (docker compose profile {@code map}). Any failure falls back to the
-     * estimate, so a quote is never refused because OSRM is down.
+     * OSRM server, by default the public demo one. Any failure falls back to the estimate, so a
+     * quote is never refused because OSRM is down.
      *
-     * @param profile              OSRM profile in the URL; the dev image is built with the car profile
+     * @param profile              OSRM profile in the URL; the demo server serves {@code driving}
      * @param maxDetourFactor      a road route longer than this × the straight line is distrusted
      * @param failureRateThreshold percentage of failed calls that opens the circuit
      * @param openFor              how long OSRM is skipped once the circuit opens

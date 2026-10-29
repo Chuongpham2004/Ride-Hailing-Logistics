@@ -90,17 +90,18 @@ rhl:
     rounding-step: 1000
     min-distance-meters: 200
     max-distance-meters: 100000
-  # Road routes from OSRM (TBD-02); the straight-line estimate is the fallback and the default
-  # when OSRM is off. Start OSRM with: docker compose --profile map up -d
+  # Road routes from OSRM (TBD-02), by default the public demo server: fine for a learning
+  # project, no SLA, fair use only (about 1 request/second). Any failure falls back to the
+  # straight-line estimate. RHL_OSRM_ENABLED=false prices offline with the estimate only.
   route:
     road-factor: 1.35
     average-speed-kmh: 22
     min-duration-seconds: 60
     osrm:
-      enabled: ${RHL_OSRM_ENABLED:false}
-      base-url: ${RHL_OSRM_URL:http://localhost:15000}
+      enabled: ${RHL_OSRM_ENABLED:true}
+      base-url: ${RHL_OSRM_URL:https://router.project-osrm.org}
       profile: driving
-      connect-timeout: 500ms
+      connect-timeout: 1s
       read-timeout: 2s
       max-detour-factor: 4.0
       failure-rate-threshold: 50
