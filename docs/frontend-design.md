@@ -33,7 +33,7 @@ trước khi chốt.
 | Trạng thái client | Zustand | Nhỏ gọn cho phiên đăng nhập, trạng thái kết nối, offer đang chờ |
 | Form | React Hook Form + Zod | Kiểm tra dữ liệu phía client khớp ràng buộc server (ví dụ lat −90…90, mã 6 số) |
 | Giao diện | Tailwind CSS + shadcn/ui (Radix) | Component có sẵn khả năng truy cập, sở hữu mã nguồn, dễ đổi theme |
-| Bản đồ | Leaflet + react-leaflet, nền OpenStreetMap | Miễn phí, không cần khoá API |
+| Bản đồ | MapLibre GL JS + react-map-gl, style OpenFreeMap (dữ liệu OpenStreetMap) | Vector tile miễn phí, không cần khoá API, xoay / zoom mượt; xem [mục 6.1](#61-bản-đồ-tìm-địa-chỉ-và-tuyến-đường) |
 | Realtime | WebSocket gốc của trình duyệt, bọc trong một lớp riêng | Giao thức đã tự định nghĩa (envelope, PING, AUTH); không cần STOMP hay socket.io |
 | Kiểm thử | Vitest + Testing Library + MSW; Playwright cho luồng chính | MSW giả API theo hợp đồng; Playwright chạy với backend thật ở local |
 | Chất lượng | ESLint + Prettier | Thêm job vào workflow CI hiện có |
@@ -178,6 +178,21 @@ hoặc GPS yếu phải báo rõ trên màn hình. Trình duyệt chỉ cấp Ge
 **Vị trí hiển thị cho khách.** Sau `SUBSCRIBE_TRIP`, khách nhận `TRIP_DRIVER_LOCATION`; marker trên bản đồ
 được nội suy giữa hai bản tin để xe chạy mượt thay vì nhảy.
 
+### 6.1. Bản đồ, tìm địa chỉ và tuyến đường
+
+Toàn bộ dùng dịch vụ miễn phí, không cần khoá API (TBD-02). Mỗi dịch vụ đi qua một hàm trong `shared/map`
+và URL lấy từ biến môi trường, nên đổi nhà cung cấp chỉ sửa một chỗ.
+
+| Việc | Dịch vụ | Cách gọi |
+|---|---|---|
+| Nền bản đồ | Style OpenFreeMap `https://tiles.openfreemap.org/styles/liberty` cho MapLibre | Một instance bản đồ cho mỗi màn hình; luôn hiện dòng ghi nguồn "© OpenStreetMap contributors" |
+| Gợi ý địa chỉ khi gõ | Photon `https://photon.komoot.io/api` | Debounce 300 ms, tối thiểu 3 ký tự, `lang=default`, giới hạn `bbox` Việt Nam, ưu tiên quanh vị trí hiện tại (`lat`/`lon`); cache theo chuỗi đã gõ; huỷ request cũ bằng `AbortController` |
+| Toạ độ → địa chỉ | Nominatim `https://nominatim.openstreetmap.org/reverse` | Chỉ gọi khi thả / kéo xong ghim, tối đa 1 request/giây (chính sách Nominatim), không dùng cho gợi ý khi gõ |
+| Tuyến đường | Không gọi từ trình duyệt: báo giá đã có `routePolyline` do pricing-service lấy từ OSRM | Giải mã polyline độ chính xác 6 (`decodePolyline6`) rồi vẽ thành lớp line; `routeSource = ESTIMATE` (OSRM tắt hoặc lỗi) thì không có `routePolyline`, vẽ đường thẳng nét đứt |
+
+Không gọi lại định tuyến khi tài xế di chuyển: chỉ nội suy marker giữa các bản tin vị trí. Địa chỉ chữ chỉ để
+hiển thị; server tính giá theo toạ độ.
+
 ## 7. Xử lý lỗi và trạng thái
 
 Mọi phản hồi dùng envelope `{ code, message, data, correlationId, details }`. Lớp API ném một `ApiError`
@@ -217,7 +232,7 @@ frontend/
 │   │   ├── api/              # client fetch, ApiError, làm mới token single-flight, kiểu dữ liệu theo contracts/
 │   │   ├── auth/             # store phiên, hook useSession, đăng nhập / đăng xuất
 │   │   ├── realtime/         # lớp WebSocket, heartbeat, kết nối lại, hook useTripChannel
-│   │   ├── map/              # MapView, marker, nội suy vị trí
+│   │   ├── map/              # MapView, marker, nội suy vị trí, geocoder (Photon / Nominatim), decodePolyline6
 │   │   ├── ui/               # component shadcn/ui + StatusBadge, Money, Countdown, CodeDisplay
 │   │   └── lib/              # định dạng tiền, ngày giờ, toạ độ
 │   └── features/
@@ -232,7 +247,9 @@ Mỗi thư mục trong `features/` tự chứa trang, component, hook truy vấn
 import từ `shared`, không import chéo lẫn nhau.
 
 Biến môi trường: `VITE_API_URL` (mặc định `http://localhost:8080`), `VITE_WS_URL` (mặc định
-`ws://localhost:8085/ws`). Cổng dev mặc định của Vite (`5173`) đã nằm trong CORS `http://localhost:*` của gateway.
+`ws://localhost:8085/ws`), `VITE_MAP_STYLE_URL` (mặc định style OpenFreeMap Liberty), `VITE_GEOCODER_URL`
+(mặc định `https://photon.komoot.io`), `VITE_REVERSE_GEOCODER_URL` (mặc định
+`https://nominatim.openstreetmap.org`). Cổng dev mặc định của Vite (`5173`) đã nằm trong CORS `http://localhost:*` của gateway.
 
 ## 9. Hệ thống giao diện
 
@@ -255,8 +272,7 @@ Những thứ giao diện cần mà API hiện chưa có. Mỗi mục cần quy�
 
 | Thiếu | Ảnh hưởng | Cách đi vòng tạm thời |
 |---|---|---|
-| Tìm địa chỉ / geocoding | Khách không gõ được địa chỉ để ra toạ độ | Thả ghim trên bản đồ + ô nhập địa chỉ tự do; hoặc gọi Nominatim của OSM từ client (có giới hạn tần suất) |
-| Đường đi (polyline) trong báo giá | Chỉ có quãng đường và thời gian, không vẽ được tuyến | Vẽ đường thẳng nối hai điểm |
+| Tìm địa chỉ / geocoding | Backend không có API tìm địa chỉ | Gọi Photon / Nominatim thẳng từ client ([mục 6.1](#61-bản-đồ-tìm-địa-chỉ-và-tuyến-đường)); thả ghim khi không tìm thấy |
 | Thông tin tài xế cho khách | Chuyến chỉ trả `driverId`; không có tên, biển số, loại xe | Hiện "Tài xế đã nhận chuyến" không kèm chi tiết |
 | Cập nhật hồ sơ người dùng | Chỉ có `GET /users/me` | Trang tài khoản chỉ đọc |
 | Danh sách người dùng cho quản trị | Chỉ đổi vai trò / trạng thái theo `userId` biết trước | Ô nhập `userId`; chưa có trang danh sách |

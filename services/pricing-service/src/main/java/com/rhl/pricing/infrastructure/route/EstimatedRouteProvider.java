@@ -10,9 +10,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 /**
- * Fallback route used until a Map Provider is chosen (TBD-02): straight-line distance times a
- * road factor, at an average speed. Deterministic, so the same points always price the same.
- * Quotes record {@code ESTIMATE} as their route source, so they can be told apart later.
+ * Straight-line distance times a road factor, at an average speed: the route used when OSRM is
+ * off or failing (see {@link FallbackRouteProvider}). Deterministic, so the same points always
+ * price the same. Quotes record {@code ESTIMATE} as their route source, so they can be told apart.
  */
 @Component
 @RequiredArgsConstructor
