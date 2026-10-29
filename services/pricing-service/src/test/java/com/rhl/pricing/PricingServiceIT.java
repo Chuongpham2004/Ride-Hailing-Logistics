@@ -106,6 +106,7 @@ class PricingServiceIT {
         assertThat(quote.path("surgeSource").asString()).isEqualTo("COMPUTED");
         assertThat(quote.path("surgeConfirmationRequired").asBoolean()).isFalse();
         assertThat(quote.path("routeSource").asString()).isEqualTo("ESTIMATE");
+        assertThat(quote.has("routePolyline")).as("no geometry for an estimate").isFalse();
         assertThat(quote.path("distanceMeters").asInt()).isBetween(2_600, 2_900);
         assertThat(Duration.between(Instant.parse(quote.path("createdAt").asString()),
                 Instant.parse(quote.path("expiresAt").asString()))).isEqualTo(Duration.ofSeconds(3));

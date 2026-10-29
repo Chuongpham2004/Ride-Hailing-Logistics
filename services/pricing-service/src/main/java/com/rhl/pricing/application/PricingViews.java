@@ -20,18 +20,22 @@ public final class PricingViews {
      * Everything FR-PRI asks a quote to show: route, components, surge, total, currency, rule
      * versions and expiry. {@code customerId} lets trip-service check ownership (BR-005).
      *
+     * @param routePolyline             road route as an encoded polyline (precision 6) when
+     *                                  {@code routeSource} is {@code OSRM}, otherwise {@code null}
      * @param surgeConfirmationRequired the app must show the surge and get the customer's explicit
      *                                  consent before booking (BR-006)
      */
     public record QuoteView(UUID id, UUID customerId, ServiceType serviceType, Stop pickup, Stop dropoff,
-                            int distanceMeters, int durationSeconds, String routeSource, UUID ruleId,
+                            int distanceMeters, int durationSeconds, String routeSource, String routePolyline,
+                            UUID ruleId,
                             int ruleVersion, BigDecimal surgeMultiplier, boolean surgeConfirmationRequired,
                             String surgeSource, Integer surgeRuleVersion, FareBreakdown breakdown, long total,
                             String currency, Instant createdAt, Instant expiresAt) {
 
         static QuoteView of(FareQuote q) {
             return new QuoteView(q.getId(), q.getCustomerId(), q.getServiceType(), q.getPickup(), q.getDropoff(),
-                    q.getDistanceMeters(), q.getDurationSeconds(), q.getRouteSource(), q.getRuleId(),
+                    q.getDistanceMeters(), q.getDurationSeconds(), q.getRouteSource(), q.getRoutePolyline(),
+                    q.getRuleId(),
                     q.getRuleVersion(), q.getSurgeMultiplier(), q.getSurgeMultiplier().compareTo(BigDecimal.ONE) > 0,
                     q.getSurgeSource(), q.getSurgeRuleVersion(), q.breakdown(), q.getTotal(), q.getCurrency(),
                     q.getCreatedAt(), q.getExpiresAt());

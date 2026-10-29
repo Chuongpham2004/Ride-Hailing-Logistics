@@ -82,6 +82,11 @@
             <groupId>com.uber</groupId>
             <artifactId>h3</artifactId>
         </dependency>
+        <!-- Circuit breaker around OSRM (README §2, §8.5); version from Spring Cloud. -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-circuitbreaker</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springdoc</groupId>
             <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>

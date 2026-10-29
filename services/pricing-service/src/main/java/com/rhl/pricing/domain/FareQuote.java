@@ -66,6 +66,10 @@ public class FareQuote {
     @Column(name = "route_source", nullable = false)
     private String routeSource;
 
+    /** Encoded polyline, precision 6; {@code null} when the route is an estimate. */
+    @Column(name = "route_polyline")
+    private String routePolyline;
+
     @Column(name = "rule_id", nullable = false)
     private UUID ruleId;
 
@@ -143,6 +147,7 @@ public class FareQuote {
         quote.distanceMeters = route.distanceMeters();
         quote.durationSeconds = route.durationSeconds();
         quote.routeSource = route.source();
+        quote.routePolyline = route.polyline();
         quote.ruleId = rule.getId();
         quote.ruleVersion = rule.getVersion();
         quote.surgeMultiplier = fare.surgeMultiplier();

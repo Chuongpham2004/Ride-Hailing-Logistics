@@ -1,6 +1,9 @@
 # Dev infrastructure (README §4.11). Services run from the IDE or ./mvnw spring-boot:run.
 #   docker compose up -d                 # Postgres, Redis, Kafka, MinIO
 #   docker compose --profile tools up -d # + Kafka UI on :8090
+#   docker compose --profile map up -d   # + OSRM road routes on :15000 for pricing-service
+# The first "map" start downloads the Vietnam extract (~330 MB) and builds the routing graph,
+# which takes several minutes and 4-8 GB of memory for Docker; later starts reuse the volume.
 # Host ports avoid the defaults (5432/6379/9092) so a local PostgreSQL or another stack can
 # keep running; override with RHL_POSTGRES_PORT / RHL_REDIS_PORT / RHL_KAFKA_PORT / RHL_MINIO_PORT.
 name: rhl
@@ -92,8 +95,48 @@ services:
       kafka:
         condition: service_healthy
 
+  # Road routes for quotes (TBD-02). Enable in pricing-service with RHL_OSRM_ENABLED=true;
+  # without it, or while OSRM is down, quotes use the straight-line estimate.
+  osrm-download:
+    profiles: [map]
+    image: curlimages/curl:8.16.0
+    user: "0"
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        [ -f /data/vietnam-latest.osm.pbf ] && echo "Extract already downloaded" ||
+        { curl -fL --retry 3 -o /data/vietnam-latest.osm.pbf.part
+        https://download.geofabrik.de/asia/vietnam-latest.osm.pbf &&
+        mv /data/vietnam-latest.osm.pbf.part /data/vietnam-latest.osm.pbf; }
+    volumes:
+      - osrm-data:/data
+
+  osrm-prepare:
+    profiles: [map]
+    image: ghcr.io/project-osrm/osrm-backend:v26.10.0-debian
+    entrypoint: ["sh", "/prepare.sh"]
+    volumes:
+      - osrm-data:/data
+      - ./docker/osrm/prepare.sh:/prepare.sh:ro
+    depends_on:
+      osrm-download:
+        condition: service_completed_successfully
+
+  osrm:
+    profiles: [map]
+    image: ghcr.io/project-osrm/osrm-backend:v26.10.0-debian
+    command: ["osrm-routed", "--algorithm", "mld", "--max-table-size", "100", "/data/vietnam-latest.osrm"]
+    ports:
+      - "${RHL_OSRM_PORT:-15000}:5000"
+    volumes:
+      - osrm-data:/data:ro
+    depends_on:
+      osrm-prepare:
+        condition: service_completed_successfully
+
 volumes:
   postgres-data:
   redis-data:
   kafka-data:
   minio-data:
+  osrm-data:
