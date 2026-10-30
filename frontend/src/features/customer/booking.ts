@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { api } from '@/shared/api/client';
 import type { Quote, ServiceType, Stop } from '@/shared/api/types';
+import { decodePolyline, type LngLat } from '@/shared/map/polyline';
 
 export type StopKind = 'pickup' | 'dropoff';
 
@@ -49,11 +50,22 @@ export function useCreateQuote() {
   });
 }
 
-export function useQuote(id: string) {
+export function useQuote(id: string, enabled = true) {
   return useQuery({
     queryKey: quoteKey(id),
+    enabled: enabled && id !== '',
     queryFn: ({ signal }) => api<Quote>(`/api/v1/quotes/${encodeURIComponent(id)}`, { signal }),
     // A quote never changes; only its validity runs out, which the screen counts down itself.
     staleTime: Infinity,
   });
+}
+
+/** The quote's road route, or null for a straight-line estimate or an unreadable polyline. */
+export function decodeRoute(quote: Quote | undefined): LngLat[] | null {
+  if (!quote?.routePolyline) return null;
+  try {
+    return decodePolyline(quote.routePolyline);
+  } catch {
+    return null;
+  }
 }

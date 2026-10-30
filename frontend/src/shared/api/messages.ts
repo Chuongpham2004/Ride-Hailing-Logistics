@@ -8,6 +8,7 @@ const MESSAGES: Record<string, string> = {
   ACCESS_DENIED: 'Không tìm thấy nội dung này.',
   RESOURCE_NOT_FOUND: 'Không tìm thấy nội dung này.',
   QUOTE_EXPIRED: 'Báo giá đã hết hạn. Lấy giá mới để đặt chuyến.',
+  INVALID_TRIP_STATE: 'Chuyến vừa chuyển sang bước khác, xem lại thông tin mới nhất.',
   BUSINESS_RULE_VIOLATION: 'Không thực hiện được yêu cầu này với thông tin hiện tại.',
   RATE_LIMIT_EXCEEDED: 'Thao tác quá nhanh, thử lại sau ít giây.',
   DEPENDENCY_UNAVAILABLE: 'Hệ thống đang bận, thử lại sau ít phút.',
