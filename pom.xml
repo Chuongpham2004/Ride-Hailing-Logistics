@@ -36,11 +36,11 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <spring-cloud.version>2025.1.4</spring-cloud.version>
-        <springdoc.version>3.1.1</springdoc.version>
+        <springdoc.version>3.2.0</springdoc.version>
         <json-schema-validator.version>3.0.8</json-schema-validator.version>
         <h3.version>4.5.1</h3.version>
         <awssdk.version>2.57.3</awssdk.version>
-        <jacoco.version>0.8.15</jacoco.version>
+        <jacoco.version>0.8.16</jacoco.version>
         <!--
           Security patch newer than what Spring Boot / Spring Cloud manage; drop once they ship an
           equal or newer version. Found by Trivy in the v0.1.0 image scan.

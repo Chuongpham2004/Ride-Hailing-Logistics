@@ -86,3 +86,136 @@ export interface Quote {
   createdAt: string;
   expiresAt: string;
 }
+
+export type TripStatus =
+  | 'CREATED'
+  | 'MATCHING'
+  | 'ACCEPTED'
+  | 'PICKING_UP'
+  | 'ARRIVED'
+  | 'IN_TRIP'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'NO_DRIVER';
+
+export type CancelReason =
+  | 'CHANGED_MIND'
+  | 'WAIT_TOO_LONG'
+  | 'DRIVER_NOT_MOVING'
+  | 'CUSTOMER_NO_SHOW'
+  | 'WRONG_PICKUP'
+  | 'VEHICLE_ISSUE'
+  | 'SAFETY_CONCERN'
+  | 'OTHER';
+
+export type ActorType = 'CUSTOMER' | 'DRIVER' | 'STAFF' | 'SYSTEM';
+
+export type PackageSize = 'SMALL' | 'MEDIUM' | 'LARGE';
+
+/** trip-service FareSnapshot: the price the trip was booked at. */
+export interface TripFare {
+  quoteId: string;
+  quotedFare: number;
+  currency: string;
+  surgeMultiplier: number;
+  pricingRuleVersion: number;
+  distanceMeters: number;
+  durationSeconds: number;
+}
+
+export interface DeliveryInput {
+  recipientName: string;
+  recipientPhone: string;
+  packageDescription: string;
+  packageSize: PackageSize;
+  packageWeightGrams: number;
+  instructions?: string;
+}
+
+/** trip-service TripViews.TripView; the codes are only sent to the trip's customer. */
+export interface Trip {
+  id: string;
+  customerId: string;
+  driverId?: string;
+  serviceType: ServiceType;
+  status: TripStatus;
+  pickup: Stop;
+  dropoff: Stop;
+  fare?: TripFare;
+  matchingDeadline?: string;
+  cancelReason?: CancelReason;
+  cancelledBy?: ActorType;
+  createdAt: string;
+  acceptedAt?: string;
+  completedAt?: string;
+  cancelledAt?: string;
+  /** Also the aggregateVersion of the trip's events: newer events have a higher one. */
+  version: number;
+  delivery?: DeliveryInput;
+  pickupCode?: string;
+  deliveryCode?: string;
+}
+
+/** trip-service PricingClient.CancellationFee. */
+export interface CancellationFee {
+  decision: string;
+  fee: number;
+  currency: string;
+  ruleVersion: number;
+  freeUntil?: string;
+}
+
+/** trip-service TripViews.StatusChangeView. */
+export interface StatusChange {
+  fromStatus?: TripStatus;
+  toStatus: TripStatus;
+  actorType: ActorType;
+  reason?: string;
+  occurredAt: string;
+}
+
+/** trip-service TripViews.TripPage; pass nextBefore as `before` for the next page. */
+export interface TripPage {
+  items: Trip[];
+  nextBefore?: string;
+}
+
+export type PaymentStatus =
+  'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUND_PENDING' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
+
+export type PaymentPurpose = 'TRIP_FARE' | 'CANCELLATION_FEE';
+
+/** payment-service PaymentQueries.PaymentView; amounts in whole VND. */
+export interface Payment {
+  id: string;
+  tripId: string;
+  purpose: PaymentPurpose;
+  customerId: string;
+  driverId?: string;
+  amount: number;
+  refundedAmount: number;
+  currency: string;
+  status: PaymentStatus;
+  attemptCount: number;
+  provider?: string;
+  providerRef?: string;
+  failureCode?: string;
+  createdAt: string;
+  succeededAt?: string;
+}
+
+export type RefundReason =
+  'SERVICE_NOT_PROVIDED' | 'OVERCHARGE' | 'DUPLICATE_CHARGE' | 'SERVICE_COMPLAINT' | 'GOODWILL' | 'OTHER';
+
+/** payment-service PaymentQueries.RefundView as a customer sees it (no internal note). */
+export interface Refund {
+  id: string;
+  paymentId: string;
+  tripId: string;
+  amount: number;
+  currency: string;
+  reason: RefundReason;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  createdAt: string;
+  completedAt?: string;
+}

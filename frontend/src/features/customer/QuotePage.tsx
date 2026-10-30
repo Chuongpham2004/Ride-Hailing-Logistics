@@ -2,40 +2,16 @@ import { useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
-import type { Quote } from '@/shared/api/types';
 import { formatCountdown, formatDistance, formatDuration } from '@/shared/lib/format';
 import { useCountdown } from '@/shared/lib/useCountdown';
 import { useHeight } from '@/shared/lib/useHeight';
 import { MapView } from '@/shared/map/MapView';
-import { decodePolyline, type LngLat } from '@/shared/map/polyline';
 import { Button } from '@/shared/ui/Button';
 import { BackIcon, ClockIcon } from '@/shared/ui/icons';
 import { Money } from '@/shared/ui/Money';
 import { Sheet } from '@/shared/ui/Sheet';
-import { SERVICE_NAMES, useCreateQuote, useQuote } from './booking';
-
-function decodeRoute(quote: Quote | undefined): LngLat[] | null {
-  if (!quote?.routePolyline) return null;
-  try {
-    return decodePolyline(quote.routePolyline);
-  } catch {
-    return null;
-  }
-}
-
-/** Only the components that apply to this fare, in the order they add up. */
-function fareLines(quote: Quote): { label: string; amount: number }[] {
-  const b = quote.breakdown;
-  const lines = [
-    { label: 'Giá mở cửa', amount: b.baseFare },
-    { label: `Quãng đường ${formatDistance(quote.distanceMeters)}`, amount: b.distanceFare },
-    { label: `Thời gian ${formatDuration(quote.durationSeconds)}`, amount: b.timeFare },
-    { label: 'Bù giá tối thiểu', amount: b.minimumFareAdjustment },
-    { label: 'Phụ phí giờ cao điểm', amount: b.surgeAmount },
-    { label: 'Làm tròn', amount: b.roundingAdjustment },
-  ];
-  return lines.filter((line, index) => index < 3 || line.amount > 0);
-}
+import { BookPanel } from './BookPanel';
+import { decodeRoute, fareLines, SERVICE_NAMES, useCreateQuote, useQuote } from './booking';
 
 const multiplier = new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 2 });
 
@@ -158,14 +134,7 @@ export default function QuotePage() {
                   </Button>
                 </div>
               ) : (
-                <div className="flex flex-col gap-2">
-                  <Button disabled aria-describedby="booking-soon">
-                    Đặt chuyến
-                  </Button>
-                  <p id="booking-soon" className="m-0 text-center text-sm text-curb">
-                    Đặt chuyến trên web sẽ có ở bản cập nhật tới.
-                  </p>
-                </div>
+                <BookPanel quote={quote} />
               )}
             </>
           )}

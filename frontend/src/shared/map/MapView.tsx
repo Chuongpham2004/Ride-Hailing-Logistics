@@ -14,10 +14,15 @@ import Map, {
 import { config } from '@/shared/config';
 import { CITY_CENTER } from './geocoder';
 import type { LngLat } from './polyline';
+import { useGlide } from './useGlide';
 
 export interface MapPoint {
   latitude: number;
   longitude: number;
+}
+
+export interface DriverMarker extends MapPoint {
+  headingDegrees?: number;
 }
 
 export interface MapViewProps {
@@ -28,6 +33,8 @@ export interface MapViewProps {
   straightLine?: boolean;
   /** Space kept clear of the bottom sheet when fitting the stops, in px. */
   bottomInset?: number;
+  /** The assigned driver's last known position; glides between updates. */
+  driver?: DriverMarker | null;
   onPick?: (point: MapPoint) => void;
   className?: string;
 }
@@ -45,6 +52,7 @@ export function MapView({
   route,
   straightLine = false,
   bottomInset = 0,
+  driver,
   onPick,
   className,
 }: MapViewProps) {
@@ -64,13 +72,19 @@ export function MapView({
     return null;
   }, [route, straightLine, pickup, dropoff]);
   const dashed = !(route && route.length > 1);
+  const car = useGlide(driver);
 
+  // The driver is fitted in once, when it first shows up: refitting on every report would keep
+  // moving the map under the customer's fingers.
+  const [firstDriver, setFirstDriver] = useState(driver ?? null);
+  if (Boolean(driver) !== Boolean(firstDriver)) setFirstDriver(driver ?? null);
   const points = useMemo(() => {
     const all: LngLat[] = [...(line ?? [])];
     if (pickup) all.push([pickup.longitude, pickup.latitude]);
     if (dropoff) all.push([dropoff.longitude, dropoff.latitude]);
+    if (firstDriver) all.push([firstDriver.longitude, firstDriver.latitude]);
     return all;
-  }, [line, pickup, dropoff]);
+  }, [line, pickup, dropoff, firstDriver]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -142,6 +156,25 @@ export function MapView({
               }
             />
           </Source>
+        )}
+        {car && (
+          <Marker latitude={car.latitude} longitude={car.longitude} anchor="center">
+            <span
+              aria-label="Vị trí tài xế"
+              role="img"
+              className="flex size-8 items-center justify-center rounded-full border-[3px] border-white bg-asphalt shadow-[0_2px_6px_rgba(43,46,51,0.35)]"
+            >
+              <svg
+                width={14}
+                height={14}
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+                style={{ transform: `rotate(${driver?.headingDegrees ?? 0}deg)` }}
+              >
+                <path d="M12 2l7 19-7-4-7 4z" fill="var(--color-sign)" />
+              </svg>
+            </span>
+          </Marker>
         )}
         {pickup && (
           <Marker latitude={pickup.latitude} longitude={pickup.longitude} anchor="center">

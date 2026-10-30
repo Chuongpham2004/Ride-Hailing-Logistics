@@ -298,8 +298,8 @@ Những thứ giao diện cần mà API hiện chưa có. Mỗi mục cần quy�
 
 | Giai đoạn | Nội dung | Kết quả kiểm chứng được |
 |---|---|---|
-| 1. Nền tảng | Khởi tạo dự án, lớp API, phiên đăng nhập, lớp realtime, bố cục ba khu vực, CI | Đăng nhập được, WebSocket nhận `SESSION_READY`. **Đã có:** dự án, theme, lớp API + làm mới token single-flight, đăng nhập, route guard ba khu vực, CI; màn Đặt xe và Báo giá của giai đoạn 2. **Còn lại:** lớp realtime |
-| 2. Khách hàng | Đặt xe → báo giá → chuyến đang chạy → hoá đơn → lịch sử | Đi hết UC-02, UC-03, UC-04 với tài xế bấm từ trang test hiện có |
+| 1. Nền tảng | Khởi tạo dự án, lớp API, phiên đăng nhập, lớp realtime, bố cục ba khu vực, CI | Đăng nhập được, WebSocket nhận `SESSION_READY`. **Đã xong** (lớp realtime `shared/realtime`: PING, AUTH gia hạn token, kết nối lại có backoff, đăng ký lại chuyến, bỏ bản tin trùng, báo mất kết nối) |
+| 2. Khách hàng | Đặt xe → báo giá → chuyến đang chạy → hoá đơn → lịch sử | Đi hết UC-02, UC-03, UC-04 với tài xế bấm từ trang test hiện có. **Đã có:** đặt xe, báo giá, đặt chuyến (đồng ý surge, form giao hàng, Idempotency-Key), màn chuyến đang chạy theo trạng thái (mã đón / mã giao, vị trí tài xế nội suy, huỷ có xem trước phí), hoá đơn (bảng tách giá, trạng thái thanh toán, thanh toán lại, hoàn tiền, tự cập nhật qua realtime), lịch sử chuyến phân trang và chi tiết chuyến có dòng thời gian. **Còn lại:** trang tài khoản chỉ đọc đã có từ trước; giai đoạn 2 coi như xong |
 | 3. Tài xế | Onboarding → online → offer → chạy chuyến → ví | Đi hết UC-01, UC-04, UC-05, UC-06 bằng hai tab |
 | 4. Quản trị | Duyệt hồ sơ → chuyến → thanh toán → bảng giá | Thay được các request admin trong collection Postman |
 | 5. Hoàn thiện | Trạng thái mất kết nối / GPS yếu, Playwright cho luồng chính, tối ưu bundle | UC-07, UC-08 |

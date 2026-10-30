@@ -1,4 +1,6 @@
 import { NavLink, Outlet, useMatch } from 'react-router';
+import { ConnectionBanner } from '@/shared/realtime/ConnectionBanner';
+import { useRealtimeSession } from '@/shared/realtime/realtime';
 import { ListIcon, PinIcon, UserIcon } from '@/shared/ui/icons';
 import { RevealBackdrop } from '@/shared/ui/RevealBackdrop';
 
@@ -10,18 +12,22 @@ const TABS = [
 
 /**
  * Mobile-first frame for the customer area: at most 480 px wide, centred on larger screens, with
- * the bottom tab bar. The quote screen hides the tabs so its one action stays under the thumb.
+ * the bottom tab bar. The quote and trip screens hide the tabs so their action stays under the
+ * thumb. Holds the realtime connection open for the whole area.
  */
 export function CustomerLayout() {
+  useRealtimeSession();
   const onQuote = useMatch('/app/quote/:quoteId');
+  const onTrip = useMatch('/app/trips/:tripId');
   return (
     <>
       <RevealBackdrop />
       <div className="relative mx-auto flex h-dvh max-w-[480px] flex-col bg-white shadow-[0_0_0_1px_var(--color-line)]">
         <main className="relative min-h-0 flex-1">
+          <ConnectionBanner />
           <Outlet />
         </main>
-        {!onQuote && (
+        {!onQuote && !onTrip && (
           <nav
             aria-label="Điều hướng chính"
             className="grid grid-cols-3 border-t border-concrete bg-white px-2 pt-1.5 pb-[max(14px,env(safe-area-inset-bottom))]"

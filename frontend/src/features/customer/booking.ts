@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { api } from '@/shared/api/client';
 import type { Quote, ServiceType, Stop } from '@/shared/api/types';
+import { formatDistance, formatDuration } from '@/shared/lib/format';
+import { decodePolyline, type LngLat } from '@/shared/map/polyline';
 
 export type StopKind = 'pickup' | 'dropoff';
 
@@ -49,11 +51,36 @@ export function useCreateQuote() {
   });
 }
 
-export function useQuote(id: string) {
+export function useQuote(id: string, enabled = true) {
   return useQuery({
     queryKey: quoteKey(id),
+    enabled: enabled && id !== '',
     queryFn: ({ signal }) => api<Quote>(`/api/v1/quotes/${encodeURIComponent(id)}`, { signal }),
     // A quote never changes; only its validity runs out, which the screen counts down itself.
     staleTime: Infinity,
   });
+}
+
+/** The quote's road route, or null for a straight-line estimate or an unreadable polyline. */
+export function decodeRoute(quote: Quote | undefined): LngLat[] | null {
+  if (!quote?.routePolyline) return null;
+  try {
+    return decodePolyline(quote.routePolyline);
+  } catch {
+    return null;
+  }
+}
+
+/** Only the components that apply to this fare, in the order they add up. */
+export function fareLines(quote: Quote): { label: string; amount: number }[] {
+  const b = quote.breakdown;
+  const lines = [
+    { label: 'Giá mở cửa', amount: b.baseFare },
+    { label: `Quãng đường ${formatDistance(quote.distanceMeters)}`, amount: b.distanceFare },
+    { label: `Thời gian ${formatDuration(quote.durationSeconds)}`, amount: b.timeFare },
+    { label: 'Bù giá tối thiểu', amount: b.minimumFareAdjustment },
+    { label: 'Phụ phí giờ cao điểm', amount: b.surgeAmount },
+    { label: 'Làm tròn', amount: b.roundingAdjustment },
+  ];
+  return lines.filter((line, index) => index < 3 || line.amount > 0);
 }
