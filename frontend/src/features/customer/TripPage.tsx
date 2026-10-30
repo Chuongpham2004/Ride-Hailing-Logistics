@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
-import type { ActorType, CancelReason, Trip } from '@/shared/api/types';
+import type { CancelReason, Trip } from '@/shared/api/types';
 import { formatCountdown, formatDistance, formatDuration } from '@/shared/lib/format';
 import { useCountdown } from '@/shared/lib/useCountdown';
 import { useHeight } from '@/shared/lib/useHeight';
@@ -13,6 +13,7 @@ import { Money } from '@/shared/ui/Money';
 import { Plate } from '@/shared/ui/Plate';
 import { Sheet } from '@/shared/ui/Sheet';
 import { decodeRoute, SERVICE_NAMES, useQuote } from './booking';
+import { CANCELLED_BY, REASON_NAMES } from './tripText';
 import {
   CUSTOMER_CANCELLABLE,
   ENDED,
@@ -32,24 +33,6 @@ const CUSTOMER_REASONS: { value: CancelReason; label: string }[] = [
   { value: 'SAFETY_CONCERN', label: 'Lo ngại an toàn' },
   { value: 'OTHER', label: 'Lý do khác' },
 ];
-
-const REASON_NAMES: Record<CancelReason, string> = {
-  CHANGED_MIND: 'đổi ý',
-  WAIT_TOO_LONG: 'chờ quá lâu',
-  DRIVER_NOT_MOVING: 'tài xế không di chuyển',
-  CUSTOMER_NO_SHOW: 'khách không ra điểm đón',
-  WRONG_PICKUP: 'sai điểm đón',
-  VEHICLE_ISSUE: 'xe gặp sự cố',
-  SAFETY_CONCERN: 'lo ngại an toàn',
-  OTHER: 'lý do khác',
-};
-
-const CANCELLED_BY: Record<ActorType, string> = {
-  CUSTOMER: 'Bạn đã huỷ chuyến',
-  DRIVER: 'Tài xế đã huỷ chuyến',
-  STAFF: 'Tổng đài đã huỷ chuyến',
-  SYSTEM: 'Chuyến đã bị huỷ',
-};
 
 /** /app/trips/:id: one screen whose content follows the trip status (frontend-design.md §4.2). */
 export default function TripPage() {
@@ -227,10 +210,14 @@ function StatusBlock({ trip, driver }: { trip: Trip; driver: DriverPosition | nu
               <Money amount={trip.fare.quotedFare} />
             </p>
           )}
-          <p className="m-0 text-sm text-curb">
-            Thanh toán được xử lý tự động; hoá đơn sẽ có ở bản cập nhật tới.
-          </p>
-          <Link to="/app" className="font-semibold">
+          <p className="m-0 text-sm text-curb">Tiền chuyến được thu tự động.</p>
+          <Link
+            to={`/app/trips/${trip.id}/receipt`}
+            className="flex min-h-13 items-center justify-center rounded-xl bg-asphalt text-[17px] font-bold text-white no-underline"
+          >
+            Xem hoá đơn
+          </Link>
+          <Link to="/app" className="self-center font-semibold">
             Đặt chuyến mới
           </Link>
         </div>
@@ -242,6 +229,11 @@ function StatusBlock({ trip, driver }: { trip: Trip; driver: DriverPosition | nu
           <h1 className="m-0 text-xl font-bold">{CANCELLED_BY[trip.cancelledBy ?? 'SYSTEM']}</h1>
           {trip.cancelReason && (
             <p className="m-0 text-[15px] text-ink-2">Lý do: {REASON_NAMES[trip.cancelReason]}.</p>
+          )}
+          {trip.acceptedAt && (
+            <Link to={`/app/trips/${trip.id}/receipt`} className="font-semibold">
+              Xem phí huỷ (nếu có)
+            </Link>
           )}
           <Link to="/app" className="font-semibold">
             Đặt chuyến mới

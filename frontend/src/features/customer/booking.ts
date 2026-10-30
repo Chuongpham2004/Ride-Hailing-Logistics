@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { create } from 'zustand';
 import { api } from '@/shared/api/client';
 import type { Quote, ServiceType, Stop } from '@/shared/api/types';
+import { formatDistance, formatDuration } from '@/shared/lib/format';
 import { decodePolyline, type LngLat } from '@/shared/map/polyline';
 
 export type StopKind = 'pickup' | 'dropoff';
@@ -68,4 +69,18 @@ export function decodeRoute(quote: Quote | undefined): LngLat[] | null {
   } catch {
     return null;
   }
+}
+
+/** Only the components that apply to this fare, in the order they add up. */
+export function fareLines(quote: Quote): { label: string; amount: number }[] {
+  const b = quote.breakdown;
+  const lines = [
+    { label: 'Giá mở cửa', amount: b.baseFare },
+    { label: `Quãng đường ${formatDistance(quote.distanceMeters)}`, amount: b.distanceFare },
+    { label: `Thời gian ${formatDuration(quote.durationSeconds)}`, amount: b.timeFare },
+    { label: 'Bù giá tối thiểu', amount: b.minimumFareAdjustment },
+    { label: 'Phụ phí giờ cao điểm', amount: b.surgeAmount },
+    { label: 'Làm tròn', amount: b.roundingAdjustment },
+  ];
+  return lines.filter((line, index) => index < 3 || line.amount > 0);
 }
