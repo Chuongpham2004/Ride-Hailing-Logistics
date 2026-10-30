@@ -164,3 +164,58 @@ export interface CancellationFee {
   ruleVersion: number;
   freeUntil?: string;
 }
+
+/** trip-service TripViews.StatusChangeView. */
+export interface StatusChange {
+  fromStatus?: TripStatus;
+  toStatus: TripStatus;
+  actorType: ActorType;
+  reason?: string;
+  occurredAt: string;
+}
+
+/** trip-service TripViews.TripPage; pass nextBefore as `before` for the next page. */
+export interface TripPage {
+  items: Trip[];
+  nextBefore?: string;
+}
+
+export type PaymentStatus =
+  'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUND_PENDING' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
+
+export type PaymentPurpose = 'TRIP_FARE' | 'CANCELLATION_FEE';
+
+/** payment-service PaymentQueries.PaymentView; amounts in whole VND. */
+export interface Payment {
+  id: string;
+  tripId: string;
+  purpose: PaymentPurpose;
+  customerId: string;
+  driverId?: string;
+  amount: number;
+  refundedAmount: number;
+  currency: string;
+  status: PaymentStatus;
+  attemptCount: number;
+  provider?: string;
+  providerRef?: string;
+  failureCode?: string;
+  createdAt: string;
+  succeededAt?: string;
+}
+
+export type RefundReason =
+  'SERVICE_NOT_PROVIDED' | 'OVERCHARGE' | 'DUPLICATE_CHARGE' | 'SERVICE_COMPLAINT' | 'GOODWILL' | 'OTHER';
+
+/** payment-service PaymentQueries.RefundView as a customer sees it (no internal note). */
+export interface Refund {
+  id: string;
+  paymentId: string;
+  tripId: string;
+  amount: number;
+  currency: string;
+  reason: RefundReason;
+  status: 'PENDING' | 'SUCCEEDED' | 'FAILED';
+  createdAt: string;
+  completedAt?: string;
+}

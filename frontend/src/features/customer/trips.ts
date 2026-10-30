@@ -1,7 +1,15 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { api } from '@/shared/api/client';
-import type { CancelReason, CancellationFee, DeliveryInput, Trip, TripStatus } from '@/shared/api/types';
+import type {
+  CancelReason,
+  CancellationFee,
+  DeliveryInput,
+  StatusChange,
+  Trip,
+  TripPage,
+  TripStatus,
+} from '@/shared/api/types';
 import { TRIP_EVENT_TYPES, type TripDriverLocation } from '@/shared/realtime/protocol';
 import { realtime, useRealtimeMessages, useRealtimeResync } from '@/shared/realtime/realtime';
 
@@ -62,6 +70,31 @@ export function useTrip(id: string) {
       if (trip && ENDED.has(trip.status)) return false;
       return realtime.getStatus() === 'open' ? 60_000 : 10_000;
     },
+  });
+}
+
+const PAGE_SIZE = 20;
+
+/** The customer's trips, newest first, a page at a time (cursor `before`). */
+export function useMyTrips() {
+  return useInfiniteQuery({
+    queryKey: ['trips', 'mine'],
+    queryFn: ({ pageParam, signal }) =>
+      api<TripPage>(
+        `/api/v1/trips?limit=${PAGE_SIZE}${pageParam ? `&before=${encodeURIComponent(pageParam)}` : ''}`,
+        { signal },
+      ),
+    initialPageParam: null as string | null,
+    getNextPageParam: (page) => page.nextBefore ?? null,
+  });
+}
+
+/** Every status change of a trip, oldest first. */
+export function useTripHistory(id: string) {
+  return useQuery({
+    queryKey: ['trip', id, 'history'],
+    queryFn: ({ signal }) =>
+      api<StatusChange[]>(`/api/v1/trips/${encodeURIComponent(id)}/history`, { signal }),
   });
 }
 
