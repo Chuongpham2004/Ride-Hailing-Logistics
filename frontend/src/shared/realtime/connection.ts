@@ -122,10 +122,13 @@ export class RealtimeConnection {
     if (this.status === 'open') this.send('UNSUBSCRIBE_TRIP', { tripId });
   }
 
-  /** Sends a client message when the session is open; false when it could not be sent. */
-  send(type: string, data: object): boolean {
+  /**
+   * Sends a client message when the session is open; false when it could not be sent. `extra`
+   * goes into the envelope next to `data` (DRIVER_LOCATION_UPDATED carries `sequence` there).
+   */
+  send(type: string, data: object, extra?: Record<string, unknown>): boolean {
     if (this.status !== 'open' || !this.socket) return false;
-    this.socket.send(JSON.stringify(newMessage(type, data)));
+    this.socket.send(JSON.stringify({ ...newMessage(type, data), ...extra }));
     return true;
   }
 
