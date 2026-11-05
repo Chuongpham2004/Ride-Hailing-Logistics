@@ -63,6 +63,27 @@ export async function register(signUp: SignUp): Promise<CurrentUser> {
   return login(signUp.email ?? signUp.phone ?? '', signUp.password);
 }
 
+/**
+ * Asks for a reset code. The server answers the same whether or not an account uses this email
+ * or phone number, so the screen must not suggest otherwise.
+ */
+export async function requestPasswordReset(identifier: string): Promise<void> {
+  await api('/api/v1/auth/password-reset', { method: 'POST', body: { identifier }, auth: false });
+}
+
+/** Sets the new password with the code; the server signs every session of the account out. */
+export async function confirmPasswordReset(
+  identifier: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  await api<void>('/api/v1/auth/password-reset/confirm', {
+    method: 'POST',
+    body: { identifier, code, newPassword },
+    auth: false,
+  });
+}
+
 /** Reloads the signed-in user, e.g. after a contact was verified. */
 export async function refreshUser(): Promise<void> {
   await loadUser();

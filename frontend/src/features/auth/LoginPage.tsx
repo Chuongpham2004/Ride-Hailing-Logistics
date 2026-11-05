@@ -31,7 +31,12 @@ export default function LoginPage() {
     register,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<Form>({ resolver: zodResolver(schema) });
+  } = useForm<Form>({
+    resolver: zodResolver(schema),
+    // Back from the password reset: the address is already known.
+    defaultValues: { identifier: params.get('identifier') ?? '', password: '' },
+  });
+  const afterReset = params.get('reset') === '1';
 
   if (status === 'loading') return <Splash />;
   if (user) return <Navigate to={safeNext(params.get('next')) ?? homeFor(user.roles)} replace />;
@@ -61,6 +66,11 @@ export default function LoginPage() {
           <p className="m-0 text-ink-2">Đặt xe, gửi hàng và theo dõi chuyến đi trong thành phố.</p>
         </header>
 
+        {afterReset && (
+          <p role="status" className="m-0 rounded-[10px] bg-concrete-2 px-3.5 py-3 text-[15px]">
+            Đã đặt mật khẩu mới. Đăng nhập bằng mật khẩu đó.
+          </p>
+        )}
         <form onSubmit={onSubmit} noValidate className="flex flex-col gap-4">
           <label className="flex flex-col gap-1 text-sm text-curb">
             Email hoặc số điện thoại
@@ -106,6 +116,9 @@ export default function LoginPage() {
           <Button type="submit" busy={isSubmitting}>
             Đăng nhập
           </Button>
+          <Link to="/forgot-password" className="self-center text-[15px] font-semibold">
+            Quên mật khẩu?
+          </Link>
         </form>
         <p className="m-0 text-center text-[15px] text-ink-2">
           Chưa có tài khoản? <Link to="/register">Đăng ký</Link>

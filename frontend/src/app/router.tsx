@@ -16,6 +16,7 @@ export const router = createBrowserRouter([
   { path: '/', element: <HomeRedirect /> },
   { path: '/login', lazy: page(() => import('@/features/auth/LoginPage')) },
   { path: '/register', lazy: page(() => import('@/features/auth/RegisterPage')) },
+  { path: '/forgot-password', lazy: page(() => import('@/features/auth/ForgotPasswordPage')) },
   {
     path: '/app',
     element: <RequireArea area="customer" />,
