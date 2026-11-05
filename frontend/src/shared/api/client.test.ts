@@ -121,4 +121,22 @@ describe('api client', () => {
       },
     );
   });
+  it('sends FormData as is, letting the browser set the multipart boundary', async () => {
+    tokens.store(pair('access-1', 'refresh-1'));
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(
+        Response.json({ code: 'SUCCESS', message: 'ok', data: { fileId: 'f1' } }, { status: 201 }),
+      );
+    const form = new FormData();
+    form.append('file', new File(['png'], 'id.png', { type: 'image/png' }));
+
+    await expect(api('/api/v1/drivers/me/documents/files', { method: 'POST', body: form })).resolves.toEqual({
+      fileId: 'f1',
+    });
+    const init = fetchSpy.mock.calls[0]![1]!;
+    expect(init.body).toBe(form);
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+    fetchSpy.mockRestore();
+  });
 });

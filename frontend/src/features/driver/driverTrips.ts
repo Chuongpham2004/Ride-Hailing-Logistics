@@ -37,6 +37,19 @@ export const CANCEL_REASON_NAMES: Record<CancelReason, string> = {
   OTHER: 'lý do khác',
 };
 
+/** Short status for the driver's trip list. */
+export const STATUS_NAMES: Record<TripStatus, string> = {
+  CREATED: 'Đã đặt',
+  MATCHING: 'Đang ghép',
+  ACCEPTED: 'Đã nhận',
+  PICKING_UP: 'Đang đi đón',
+  ARRIVED: 'Đã đến điểm đón',
+  IN_TRIP: 'Đang chạy',
+  COMPLETED: 'Hoàn tất',
+  CANCELLED: 'Đã huỷ',
+  NO_DRIVER: 'Không có tài xế',
+};
+
 export function useTripStep(tripId: string) {
   const queryClient = useQueryClient();
   return useMutation({

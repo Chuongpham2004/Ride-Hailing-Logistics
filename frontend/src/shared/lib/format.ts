@@ -26,3 +26,30 @@ export function formatCountdown(seconds: number): string {
   const s = Math.max(0, Math.floor(seconds));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 }
+
+const dateTime = new Intl.DateTimeFormat('vi-VN', {
+  hour: '2-digit',
+  minute: '2-digit',
+  day: '2-digit',
+  month: '2-digit',
+  year: 'numeric',
+});
+const time = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+/** "14:05 30/10/2026". */
+export function formatDateTime(iso: string): string {
+  return dateTime.format(new Date(iso));
+}
+
+/** "14:05:12". */
+export function formatTime(iso: string): string {
+  return time.format(new Date(iso));
+}
+
+const date = new Intl.DateTimeFormat('vi-VN', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+/** "2026-11-05" (a LocalDate from the server) → "05/11/2026"; parsed as a calendar date, not UTC midnight. */
+export function formatDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return date.format(new Date(y!, (m ?? 1) - 1, d ?? 1));
+}
