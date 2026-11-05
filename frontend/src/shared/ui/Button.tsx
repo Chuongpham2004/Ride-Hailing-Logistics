@@ -13,12 +13,20 @@ const VARIANTS: Record<Variant, string> = {
 export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: Variant;
   busy?: boolean;
+  /** compact: content-wide and 40 px tall, for the desktop staff area. */
+  size?: 'large' | 'compact';
 }
+
+const SIZES = {
+  large: 'min-h-13 w-full rounded-xl px-5 text-[17px]',
+  compact: 'min-h-10 rounded-lg px-4 text-[15px]',
+};
 
 /** Full-width by default, at least 52 px tall: thumb-sized at the bottom of a phone screen. */
 export function Button({
   variant = 'primary',
   busy = false,
+  size = 'large',
   disabled,
   className = '',
   children,
@@ -29,7 +37,7 @@ export function Button({
       type="button"
       disabled={disabled || busy}
       aria-busy={busy || undefined}
-      className={`flex min-h-13 w-full items-center justify-center gap-2 rounded-xl px-5 text-[17px] font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${VARIANTS[variant]} ${className}`}
+      className={`flex items-center justify-center gap-2 font-bold transition disabled:cursor-not-allowed disabled:opacity-50 ${SIZES[size]} ${VARIANTS[variant]} ${className}`}
       {...rest}
     >
       {busy && (

@@ -4,7 +4,6 @@ import type {
   PaymentPurpose,
   PaymentStatus,
   RefundReason,
-  TripStatus,
 } from '@/shared/api/types';
 
 /* How trips and payments are named on screen, shared by the trip, receipt and activity screens. */
@@ -25,19 +24,6 @@ export const CANCELLED_BY: Record<ActorType, string> = {
   DRIVER: 'Tài xế đã huỷ chuyến',
   STAFF: 'Tổng đài đã huỷ chuyến',
   SYSTEM: 'Chuyến đã bị huỷ',
-};
-
-/** Short status for lists and the timeline. */
-export const STATUS_NAMES: Record<TripStatus, string> = {
-  CREATED: 'Đã đặt',
-  MATCHING: 'Đang tìm tài xế',
-  ACCEPTED: 'Tài xế đã nhận',
-  PICKING_UP: 'Tài xế đang đến',
-  ARRIVED: 'Tài xế đã đến',
-  IN_TRIP: 'Đang chở',
-  COMPLETED: 'Hoàn tất',
-  CANCELLED: 'Đã huỷ',
-  NO_DRIVER: 'Không có tài xế',
 };
 
 export const ACTOR_NAMES: Record<ActorType, string> = {
@@ -71,3 +57,4 @@ export const REFUND_REASON_NAMES: Record<RefundReason, string> = {
 };
 
 export { formatDateTime, formatTime } from '@/shared/lib/format';
+export { STATUS_NAMES } from '@/shared/trips/text';

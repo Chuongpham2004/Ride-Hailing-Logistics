@@ -9,6 +9,7 @@ import type {
   VehicleType,
 } from '@/shared/api/types';
 import { refreshUser } from '@/shared/auth/session';
+import type { DocumentType } from '@/shared/drivers/text';
 import { profileKey } from './profile';
 
 /*
@@ -17,14 +18,8 @@ import { profileKey } from './profile';
  * what is still blocking the submission.
  */
 
-export type DocumentType = DriverDocument['type'];
-
-export const DOCUMENT_NAMES: Record<DocumentType, string> = {
-  NATIONAL_ID: 'CCCD / CMND',
-  DRIVER_LICENSE: 'Giấy phép lái xe',
-  VEHICLE_REGISTRATION: 'Đăng ký xe (cà vẹt)',
-  VEHICLE_INSURANCE: 'Bảo hiểm xe',
-};
+export type { DocumentType } from '@/shared/drivers/text';
+export { DOCUMENT_NAMES, requirementText } from '@/shared/drivers/text';
 
 /** As configured in user-service (rhl.documents.required-*). */
 export const DRIVER_DOCUMENTS: DocumentType[] = ['NATIONAL_ID', 'DRIVER_LICENSE'];
@@ -44,25 +39,6 @@ export const FIELD_CLASS =
 /** Vietnamese plate after removing spaces, dots and dashes (user-service Vehicle.PLATE). */
 export const PLATE = /^[0-9]{2}[A-Z]{1,2}[0-9]?[0-9]{4,5}$/;
 export const normalisePlate = (raw: string) => raw.toUpperCase().replace(/[\s.-]/g, '');
-
-/**
- * The server's missingRequirements are English sentences; turn the known shapes into Vietnamese
- * and keep anything else as sent.
- */
-export function requirementText(text: string): string {
-  if (text === 'Verify your email or phone number first') return 'Xác minh email hoặc số điện thoại';
-  if (text === 'At least one active vehicle is required') return 'Thêm ít nhất một xe';
-  const vehicle = /^(VEHICLE_\w+) of (\S+) (is missing|has expired)$/.exec(text);
-  if (vehicle) {
-    const name = DOCUMENT_NAMES[vehicle[1] as DocumentType] ?? vehicle[1];
-    return `${name} của xe ${vehicle[2]} ${vehicle[3] === 'is missing' ? 'còn thiếu' : 'đã hết hạn'}`;
-  }
-  const own = /^(\w+) (is missing|has expired)$/.exec(text);
-  if (own && own[1]! in DOCUMENT_NAMES) {
-    return `${DOCUMENT_NAMES[own[1] as DocumentType]} ${own[2] === 'is missing' ? 'còn thiếu' : 'đã hết hạn'}`;
-  }
-  return text;
-}
 
 function useReload() {
   const queryClient = useQueryClient();
