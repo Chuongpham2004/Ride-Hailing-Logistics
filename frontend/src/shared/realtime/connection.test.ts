@@ -168,6 +168,41 @@ describe('RealtimeConnection', () => {
     expect(last().sent).toMatchObject([{ type: 'SUBSCRIBE_TRIP', data: { tripId: 'trip-1' } }]);
   });
 
+  it('skips the backoff wait when asked to retry now, and starts the backoff over', async () => {
+    const { connection, sockets, last } = setup();
+    connection.start();
+    await vi.advanceTimersByTimeAsync(0);
+    last().push('SESSION_READY', READY);
+
+    // Three drops in a row: the next wait would be 10 s.
+    for (let i = 0; i < 3; i++) {
+      last().drop(1006);
+      await vi.advanceTimersByTimeAsync(10_000);
+    }
+    last().drop(1006);
+    const before = sockets.length;
+    connection.retryNow();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(before + 1);
+
+    // The old timer must not open a second socket later.
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sockets).toHaveLength(before + 1);
+    last().drop(1006);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(sockets).toHaveLength(before + 2);
+  });
+
+  it('ignores retry now while the connection is open', async () => {
+    const { connection, sockets, last } = setup();
+    connection.start();
+    await vi.advanceTimersByTimeAsync(0);
+    last().push('SESSION_READY', READY);
+    connection.retryNow();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(sockets).toHaveLength(1);
+  });
+
   it('refreshes the token after a 4401 close and connects with the new one', async () => {
     const { connection, sockets, last, refreshToken } = setup();
     connection.start();

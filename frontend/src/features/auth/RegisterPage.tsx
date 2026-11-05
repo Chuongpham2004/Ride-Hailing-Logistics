@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { Link, Navigate, useNavigate } from 'react-router';
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
 import { homeFor } from '@/shared/auth/areas';
@@ -19,31 +19,40 @@ const utf8Bytes = (text: string) => new TextEncoder().encode(text).length;
 const schema = z
   .object({
     role: z.enum(['CUSTOMER', 'DRIVER']),
-    fullName: z.string().trim().min(1, 'Nhập họ tên.').max(120, 'Họ tên tối đa 120 ký tự.'),
-    email: z
+    fullName: z
       .string()
-      .trim()
-      .max(254)
-      .refine((v) => v === '' || EMAIL.test(v), 'Email chưa đúng định dạng.'),
+      .check(z.trim(), z.minLength(1, 'Nhập họ tên.'), z.maxLength(120, 'Họ tên tối đa 120 ký tự.')),
+    email: z.string().check(
+      z.trim(),
+      z.maxLength(254),
+      z.refine((v) => v === '' || EMAIL.test(v), 'Email chưa đúng định dạng.'),
+    ),
     phone: z
-      .string()
-      .transform((v) => v.replace(/[\s.()-]/g, ''))
-      .refine((v) => v === '' || VN_PHONE.test(v), 'Số điện thoại chưa đúng (ví dụ 0912345678).'),
-    password: z
-      .string()
-      .min(8, 'Mật khẩu cần ít nhất 8 ký tự.')
-      .refine((v) => utf8Bytes(v) <= 72, 'Mật khẩu quá dài.'),
+      .pipe(
+        z.string(),
+        z.transform((v) => v.replace(/[\s.()-]/g, '')),
+      )
+      .check(z.refine((v) => v === '' || VN_PHONE.test(v), 'Số điện thoại chưa đúng (ví dụ 0912345678).')),
+    password: z.string().check(
+      z.minLength(8, 'Mật khẩu cần ít nhất 8 ký tự.'),
+      z.refine((v) => utf8Bytes(v) <= 72, 'Mật khẩu quá dài.'),
+    ),
     confirm: z.string(),
   })
-  .refine((v) => v.email !== '' || v.phone !== '', {
-    path: ['email'],
-    message: 'Nhập email hoặc số điện thoại (ít nhất một).',
-  })
-  .refine((v) => v.password === v.confirm, { path: ['confirm'], message: 'Hai lần nhập mật khẩu chưa khớp.' })
-  .refine((v) => v.password.toLowerCase() !== v.email.toLowerCase() && v.password !== v.phone, {
-    path: ['password'],
-    message: 'Mật khẩu không được trùng email hoặc số điện thoại.',
-  });
+  .check(
+    z.refine((v) => v.email !== '' || v.phone !== '', {
+      path: ['email'],
+      error: 'Nhập email hoặc số điện thoại (ít nhất một).',
+    }),
+    z.refine((v) => v.password === v.confirm, {
+      path: ['confirm'],
+      error: 'Hai lần nhập mật khẩu chưa khớp.',
+    }),
+    z.refine((v) => v.password.toLowerCase() !== v.email.toLowerCase() && v.password !== v.phone, {
+      path: ['password'],
+      error: 'Mật khẩu không được trùng email hoặc số điện thoại.',
+    }),
+  );
 
 type FormIn = z.input<typeof schema>;
 type FormOut = z.output<typeof schema>;

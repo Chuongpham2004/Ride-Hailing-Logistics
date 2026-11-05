@@ -18,6 +18,24 @@ export const realtime = new RealtimeConnection({
 
 tokens.onClear(() => realtime.stop());
 
+// Back online: reconnect at once instead of waiting out the backoff (up to 10 s).
+if (typeof window !== 'undefined') window.addEventListener('online', () => realtime.retryNow());
+
+/** navigator.onLine as React state: false means the device has no network at all. */
+export function useOnline(): boolean {
+  return useSyncExternalStore(
+    (onChange) => {
+      window.addEventListener('online', onChange);
+      window.addEventListener('offline', onChange);
+      return () => {
+        window.removeEventListener('online', onChange);
+        window.removeEventListener('offline', onChange);
+      };
+    },
+    () => navigator.onLine,
+  );
+}
+
 /** Keeps the connection open while the calling layout is mounted (customer and driver areas). */
 export function useRealtimeSession(): void {
   useEffect(() => {
