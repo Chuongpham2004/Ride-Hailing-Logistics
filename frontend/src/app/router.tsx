@@ -16,6 +16,7 @@ export const router = createBrowserRouter([
   { path: '/', element: <HomeRedirect /> },
   { path: '/login', lazy: page(() => import('@/features/auth/LoginPage')) },
   { path: '/register', lazy: page(() => import('@/features/auth/RegisterPage')) },
+  { path: '/forgot-password', lazy: page(() => import('@/features/auth/ForgotPasswordPage')) },
   {
     path: '/app',
     element: <RequireArea area="customer" />,
@@ -102,7 +103,7 @@ export const router = createBrowserRouter([
             handle: { section: 'users' },
             children: [
               { path: 'users', lazy: page(() => import('@/features/admin/UsersPage')) },
-              { path: 'users/:userId', lazy: page(() => import('@/features/admin/UsersPage')) },
+              { path: 'users/:userId', lazy: page(() => import('@/features/admin/UserDetailPage')) },
             ],
           },
         ],
