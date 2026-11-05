@@ -17,6 +17,7 @@ export const router = createBrowserRouter([
   { path: '/login', lazy: page(() => import('@/features/auth/LoginPage')) },
   { path: '/register', lazy: page(() => import('@/features/auth/RegisterPage')) },
   { path: '/forgot-password', lazy: page(() => import('@/features/auth/ForgotPasswordPage')) },
+  { path: '/verify/:channel', lazy: page(() => import('@/features/auth/VerifyPage')) },
   {
     path: '/app',
     element: <RequireArea area="customer" />,

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 import { messageFor } from '@/shared/api/messages';
 import type { DriverDocument, DriverProfile } from '@/shared/api/types';
@@ -53,13 +54,17 @@ function Details({ profile }: { profile: DriverProfile }) {
         <Row label="Loại chuyến" value={profile.serviceTypes.map((s) => SERVICE_NAMES[s]).join(', ')} />
         {profile.dateOfBirth && <Row label="Ngày sinh" value={formatDate(profile.dateOfBirth)} />}
         {user?.email && (
-          <Row label="Email" value={user.email} note={user.emailVerified ? 'Đã xác minh' : 'Chưa xác minh'} />
+          <Row
+            label="Email"
+            value={user.email}
+            note={<VerifiedNote channel="email" verified={user.emailVerified} />}
+          />
         )}
         {user?.phone && (
           <Row
             label="Số điện thoại"
             value={user.phone}
-            note={user.phoneVerified ? 'Đã xác minh' : 'Chưa xác minh'}
+            note={<VerifiedNote channel="phone" verified={user.phoneVerified} />}
           />
         )}
       </dl>
@@ -97,7 +102,17 @@ function Details({ profile }: { profile: DriverProfile }) {
   );
 }
 
-function Row({ label, value, note }: { label: string; value: string; note?: string }) {
+function VerifiedNote({ channel, verified }: { channel: 'email' | 'phone'; verified: boolean }) {
+  return verified ? (
+    <>Đã xác minh</>
+  ) : (
+    <Link to={`/verify/${channel}?next=/driver/profile`} className="font-semibold">
+      Xác minh
+    </Link>
+  );
+}
+
+function Row({ label, value, note }: { label: string; value: string; note?: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 border-t border-dashed border-line py-3">
       <dt className="text-sm text-curb">{label}</dt>
