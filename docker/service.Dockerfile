@@ -29,6 +29,11 @@ RUN groupadd --system --gid 10001 app \
 # it. The services never run it and its bundled Go stdlib fails the image scan
 # (CVE-2026-78667, CVE-2026-78669, CVE-2026-97031).
 RUN rm -f /usr/bin/pebble
+# Take Ubuntu security fixes the base image does not have yet (e.g. CVE-2026-109518 in apt 3.2.0,
+# fixed in 3.2.1ubuntu0.1), so a lagging base image does not fail the release image scan.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=extract /workspace/extracted/dependencies/ ./
 COPY --from=extract /workspace/extracted/spring-boot-loader/ ./
