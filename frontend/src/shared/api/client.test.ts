@@ -2,7 +2,7 @@ import { http, HttpResponse } from 'msw';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiUrl, fail, ok, server } from '@/test/server';
 import { ApiError } from './ApiError';
-import { api } from './client';
+import { api, apiBlob } from './client';
 import { tokens } from './tokens';
 
 const pair = (access: string, refresh: string, expiresIn = 900) => ({
@@ -138,5 +138,24 @@ describe('api client', () => {
     expect(init.body).toBe(form);
     expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
     fetchSpy.mockRestore();
+  });
+
+  it('downloads a file with the token, and still reads an error envelope', async () => {
+    tokens.store(pair('access-1', 'refresh-1'));
+    server.use(
+      http.get(apiUrl('/files/ok'), ({ request }) =>
+        request.headers.get('Authorization') === 'Bearer access-1' && request.headers.get('Accept') === '*/*'
+          ? new HttpResponse(new Uint8Array([0xff, 0xd8, 0xff]), {
+              headers: { 'Content-Type': 'image/jpeg' },
+            })
+          : fail(401, 'AUTHENTICATION_REQUIRED'),
+      ),
+      http.get(apiUrl('/files/missing'), () => fail(404, 'RESOURCE_NOT_FOUND')),
+    );
+
+    const blob = await apiBlob('/files/ok');
+    expect(blob.type).toBe('image/jpeg');
+    expect(blob.size).toBe(3);
+    await expect(apiBlob('/files/missing')).rejects.toMatchObject({ code: 'RESOURCE_NOT_FOUND' });
   });
 });

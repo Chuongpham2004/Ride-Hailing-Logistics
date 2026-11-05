@@ -13,6 +13,8 @@ export interface RequestOptions {
   auth?: boolean;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  /** 'blob' for file downloads: the body comes back as is instead of a JSON envelope. */
+  responseType?: 'json' | 'blob';
 }
 
 let refreshing: Promise<string | null> | null = null;
@@ -78,8 +80,17 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
   }
 }
 
+/** Downloads a protected file (a driver's document scan, say) with the same token handling as {@link api}. */
+export function apiBlob(path: string, signal?: AbortSignal): Promise<Blob> {
+  return api<Blob>(path, { responseType: 'blob', signal });
+}
+
 async function send<T>(path: string, options: RequestOptions, token?: string | null): Promise<T> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
+  const headers: Record<string, string> = {
+    // A file comes in its own type; asking for JSON only would make the server answer 406.
+    Accept: options.responseType === 'blob' ? '*/*' : 'application/json',
+    ...options.headers,
+  };
   // FormData (file uploads) is sent as multipart; the browser sets the boundary itself.
   const multipart = options.body instanceof FormData;
   if (options.body !== undefined && !multipart) headers['Content-Type'] = 'application/json';
@@ -104,6 +115,7 @@ async function send<T>(path: string, options: RequestOptions, token?: string | n
   }
 
   if (response.status === 204) return undefined as T;
+  if (response.ok && options.responseType === 'blob') return (await response.blob()) as T;
 
   let envelope: Envelope<T> | null = null;
   try {

@@ -60,7 +60,29 @@ export const router = createBrowserRouter([
   {
     path: '/admin',
     element: <RequireArea area="admin" />,
-    children: [{ index: true, lazy: page(() => import('@/features/admin/AdminHomePage')) }],
+    children: [
+      {
+        lazy: page(() => import('@/features/admin/AdminLayout')),
+        children: [
+          { index: true, lazy: page(() => import('@/features/admin/AdminHomePage')) },
+          // handle.section: AdminLayout shows the page only to roles that may use the section.
+          {
+            handle: { section: 'drivers' },
+            children: [
+              { path: 'drivers', lazy: page(() => import('@/features/admin/DriverQueuePage')) },
+              { path: 'drivers/:driverId', lazy: page(() => import('@/features/admin/DriverReviewPage')) },
+            ],
+          },
+          {
+            handle: { section: 'trips' },
+            children: [
+              { path: 'trips', lazy: page(() => import('@/features/admin/TripSearchPage')) },
+              { path: 'trips/:tripId', lazy: page(() => import('@/features/admin/TripDetailPage')) },
+            ],
+          },
+        ],
+      },
+    ],
   },
   { path: '*', element: <NotFound /> },
 ]);

@@ -281,3 +281,58 @@ export interface Refund {
   createdAt: string;
   completedAt?: string;
 }
+
+/** user-service DriverViews.ReviewQueueItem. */
+export interface ReviewQueueItem {
+  driverId: string;
+  fullName: string;
+  profileVersion: number;
+  submittedAt?: string;
+  reviewStatus: ReviewStatus;
+}
+
+/** user-service DriverViews.Page; pass nextCursor as `after` for the next page. */
+export interface CursorPage<T> {
+  items: T[];
+  nextCursor?: string;
+}
+
+export type ReviewDecisionType = 'APPROVED' | 'REJECTED' | 'CHANGES_REQUESTED' | 'SUSPENDED' | 'REINSTATED';
+
+/** user-service DriverViews.DecisionView. */
+export interface ReviewDecision {
+  id: string;
+  profileVersion: number;
+  decision: ReviewDecisionType;
+  reason?: string;
+  reviewerId: string;
+  decidedAt: string;
+}
+
+/** user-service DriverViews.ReviewView: documents carry the full number for reviewers. */
+export interface DriverReview {
+  profile: DriverProfile;
+  decisions: ReviewDecision[];
+}
+
+/** trip-service StaffTripService.OfferView. */
+export interface StaffOffer {
+  id: string;
+  driverId: string;
+  status: Offer['status'];
+  pickupDistanceMeters: number;
+  createdAt: string;
+  expiresAt: string;
+  respondedAt?: string;
+}
+
+/** trip-service StaffTripService.TripDetail; handover codes are never sent to staff. */
+export interface StaffTripDetail {
+  trip: Trip;
+  history: StatusChange[];
+  offers: StaffOffer[];
+  deliveryProof?: { method: string; driverId: string; verifiedAt: string };
+  cancelNote?: string;
+  pickupCodeFailures: number;
+  deliveryCodeFailures: number;
+}
