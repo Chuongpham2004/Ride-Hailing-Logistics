@@ -10,6 +10,7 @@ import { Button } from '@/shared/ui/Button';
 import { Sheet } from '@/shared/ui/Sheet';
 import { LocationPanel } from './LocationPanel';
 import { useMapPosition } from './location';
+import { requirementText } from './onboarding';
 import {
   SERVICE_NAMES,
   useActiveTrip,
@@ -20,12 +21,14 @@ import {
   VEHICLE_SERVES,
 } from './profile';
 
-/** /driver: the map, the vehicle and services to work with, and the big Online / Offline switch. */
+/**
+ * /driver: the map, the vehicle and services to work with, and the big Online / Offline switch.
+ * Behind RequireApproved, so the profile is an approved one.
+ */
 export default function DriverHomePage() {
-  const { data: profile, isPending, error, refetch } = useDriverProfile();
-  const approved = profile?.reviewStatus === 'APPROVED';
+  const { data: profile } = useDriverProfile();
   const navigate = useNavigate();
-  const { data: activeTrip } = useActiveTrip(approved);
+  const { data: activeTrip } = useActiveTrip(profile !== undefined);
   const [sheetRef, sheetHeight] = useHeight<HTMLDivElement>();
   const online = profile !== undefined && profile.availability !== 'OFFLINE';
   const { driver, onPick } = useMapPosition(online);
@@ -37,88 +40,12 @@ export default function DriverHomePage() {
 
   return (
     <div className="absolute inset-0">
-      <MapView
-        className="absolute inset-0"
-        driver={driver}
-        onPick={approved ? onPick : undefined}
-        bottomInset={sheetHeight}
-      />
-      {approved && <LocationPanel online={online} className="absolute top-14 right-4 left-4" />}
+      <MapView className="absolute inset-0" driver={driver} onPick={onPick} bottomInset={sheetHeight} />
+      <LocationPanel online={online} className="absolute top-14 right-4 left-4" />
 
       <div ref={sheetRef} className="absolute inset-x-0 bottom-0 max-h-[80%] overflow-y-auto">
-        <Sheet>
-          {isPending && <div aria-hidden="true" className="h-40 animate-pulse rounded bg-concrete-2" />}
-          {error && <ProfileProblem error={error} onRetry={() => void refetch()} />}
-          {profile && !approved && <NotApproved profile={profile} />}
-          {profile && approved && <WorkPanel profile={profile} />}
-        </Sheet>
+        <Sheet>{profile && <WorkPanel profile={profile} />}</Sheet>
       </div>
-    </div>
-  );
-}
-
-function ProfileProblem({ error, onRetry }: { error: Error; onRetry: () => void }) {
-  if (error instanceof ApiError && error.status === 404) {
-    return (
-      <div className="flex flex-col gap-2">
-        <h1 className="m-0 text-xl font-bold">Bạn chưa có hồ sơ tài xế</h1>
-        <p className="m-0 text-[15px] text-ink-2">
-          Hoàn thiện hồ sơ trên web sẽ có ở bản cập nhật tới. Trong lúc chờ, tạo hồ sơ bằng trang test console
-          (tools/test-console) hoặc bộ Postman.
-        </p>
-      </div>
-    );
-  }
-  return (
-    <div className="flex flex-col gap-3">
-      <p role="alert" className="m-0 text-[15px]">
-        {messageFor(error)}
-      </p>
-      <Button variant="secondary" onClick={onRetry}>
-        Thử lại
-      </Button>
-    </div>
-  );
-}
-
-const REVIEW_TEXT: Record<
-  Exclude<DriverProfile['reviewStatus'], 'APPROVED'>,
-  { title: string; body: string }
-> = {
-  DRAFT: { title: 'Hồ sơ chưa gửi duyệt', body: 'Bổ sung các mục còn thiếu rồi gửi duyệt.' },
-  PENDING_REVIEW: {
-    title: 'Hồ sơ đang chờ duyệt',
-    body: 'Bạn sẽ bật online được ngay khi hồ sơ được duyệt.',
-  },
-  REJECTED: { title: 'Hồ sơ bị từ chối', body: 'Sửa theo lý do bên dưới rồi gửi duyệt lại.' },
-  SUSPENDED: { title: 'Tài khoản tài xế đang bị tạm khoá', body: 'Liên hệ tổng đài để biết thêm.' },
-};
-
-/** Until onboarding is on the web (next update), the driver only sees where the profile stands. */
-function NotApproved({ profile }: { profile: DriverProfile }) {
-  const text = REVIEW_TEXT[profile.reviewStatus as keyof typeof REVIEW_TEXT];
-  return (
-    <div className="flex flex-col gap-2">
-      <h1 className="m-0 text-xl font-bold">{text.title}</h1>
-      <p className="m-0 text-[15px] text-ink-2">{text.body}</p>
-      {profile.statusReason && (
-        <p className="m-0 rounded-[10px] bg-stop-tint px-3.5 py-3 text-[15px]">
-          Lý do: {profile.statusReason}
-        </p>
-      )}
-      {profile.missingRequirements.length > 0 && (
-        <>
-          <p className="m-0 text-sm text-curb">Máy chủ báo còn thiếu:</p>
-          <ul className="m-0 pl-5 text-[15px]">
-            {profile.missingRequirements.map((item) => (
-              <li key={item}>{item}</li>
-            ))}
-          </ul>
-        </>
-      )}
-      <p className="m-0 text-sm text-curb">
-        Hoàn thiện hồ sơ trên web sẽ có ở bản cập nhật tới; trong lúc chờ, dùng trang test console.
-      </p>
     </div>
   );
 }
@@ -217,7 +144,7 @@ function WorkPanel({ profile }: { profile: DriverProfile }) {
             profile.missingRequirements.length > 0 && (
               <ul className="m-0 pl-5">
                 {profile.missingRequirements.map((item) => (
-                  <li key={item}>{item}</li>
+                  <li key={item}>{requirementText(item)}</li>
                 ))}
               </ul>
             )}

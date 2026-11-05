@@ -80,7 +80,9 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
 
 async function send<T>(path: string, options: RequestOptions, token?: string | null): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
-  if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+  // FormData (file uploads) is sent as multipart; the browser sets the boundary itself.
+  const multipart = options.body instanceof FormData;
+  if (options.body !== undefined && !multipart) headers['Content-Type'] = 'application/json';
   if (token) headers.Authorization = `Bearer ${token}`;
 
   let response: Response;
@@ -88,7 +90,12 @@ async function send<T>(path: string, options: RequestOptions, token?: string | n
     response = await fetch(config.apiUrl + path, {
       method: options.method ?? 'GET',
       headers,
-      body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      body:
+        options.body === undefined
+          ? undefined
+          : multipart
+            ? (options.body as FormData)
+            : JSON.stringify(options.body),
       signal: options.signal,
     });
   } catch (cause) {

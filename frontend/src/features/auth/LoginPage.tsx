@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
-import { Navigate, useNavigate, useSearchParams } from 'react-router';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { z } from 'zod';
 import { messageFor } from '@/shared/api/messages';
 import { homeFor } from '@/shared/auth/areas';
@@ -107,6 +107,9 @@ export default function LoginPage() {
             Đăng nhập
           </Button>
         </form>
+        <p className="m-0 text-center text-[15px] text-ink-2">
+          Chưa có tài khoản? <Link to="/register">Đăng ký</Link>
+        </p>
       </div>
     </div>
   );
