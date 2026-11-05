@@ -180,6 +180,68 @@ export interface TripPage {
   nextBefore?: string;
 }
 
+export type ReviewStatus = 'DRAFT' | 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
+
+/** OFFERED: an offer is waiting for the driver; BUSY: on a trip. */
+export type Availability = 'OFFLINE' | 'AVAILABLE' | 'OFFERED' | 'BUSY';
+
+export type VehicleType = 'MOTORBIKE' | 'CAR_4_SEAT' | 'CAR_7_SEAT' | 'VAN';
+
+/** user-service DriverViews.VehicleView. */
+export interface Vehicle {
+  id: string;
+  type: VehicleType;
+  plateNumber: string;
+  brand: string;
+  model: string;
+  color: string;
+  manufactureYear: number;
+  status: 'ACTIVE' | 'INACTIVE';
+}
+
+/** user-service DriverViews.DocumentView; the number is masked except its last 4 characters. */
+export interface DriverDocument {
+  id: string;
+  type: 'NATIONAL_ID' | 'DRIVER_LICENSE' | 'VEHICLE_REGISTRATION' | 'VEHICLE_INSURANCE';
+  vehicleId?: string;
+  documentNumber: string;
+  issuedOn?: string;
+  expiresOn?: string;
+  hasFile: boolean;
+  status: 'ACTIVE' | 'REPLACED';
+}
+
+/** user-service DriverViews.ProfileView. */
+export interface DriverProfile {
+  driverId: string;
+  fullName: string;
+  dateOfBirth?: string;
+  serviceTypes: ServiceType[];
+  reviewStatus: ReviewStatus;
+  /** Why the profile was rejected, suspended or sent back for changes. */
+  statusReason?: string;
+  profileVersion: number;
+  submittedAt?: string;
+  availability: Availability;
+  activeVehicleId?: string;
+  vehicles: Vehicle[];
+  documents: DriverDocument[];
+  /** What still blocks submitting or going online, as sentences from the server (English). */
+  missingRequirements: string[];
+}
+
+/** trip-service OfferView; an offer never shows the drop-off or the customer. */
+export interface Offer {
+  id: string;
+  tripId: string;
+  status: 'PENDING' | 'ACCEPTED' | 'DECLINED' | 'EXPIRED' | 'CANCELLED';
+  serviceType: ServiceType;
+  pickup: { latitude: number; longitude: number; address?: string };
+  estimatedPickupDistanceMeters: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
 export type PaymentStatus =
   'PENDING' | 'SUCCEEDED' | 'FAILED' | 'REFUND_PENDING' | 'PARTIALLY_REFUNDED' | 'REFUNDED';
 

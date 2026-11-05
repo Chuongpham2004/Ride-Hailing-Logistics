@@ -211,4 +211,17 @@ describe('RealtimeConnection', () => {
     expect(socket.closedWith).toBe(1000);
     expect(connection.getStatus()).toBe('idle');
   });
+  it('puts extra fields next to data in the envelope (DRIVER_LOCATION_UPDATED sequence)', async () => {
+    const { connection, last } = setup();
+    expect(connection.send('DRIVER_LOCATION_UPDATED', { latitude: 1 }, { sequence: 7 })).toBe(false);
+    connection.start();
+    await vi.advanceTimersByTimeAsync(0);
+    last().push('SESSION_READY', READY);
+
+    expect(connection.send('DRIVER_LOCATION_UPDATED', { latitude: 1 }, { sequence: 7 })).toBe(true);
+    const sent = last().sent.find((m) => m.type === 'DRIVER_LOCATION_UPDATED')!;
+    expect(sent.sequence).toBe(7);
+    expect(sent.data).toEqual({ latitude: 1 });
+    expect(sent.messageId).toBeTruthy();
+  });
 });

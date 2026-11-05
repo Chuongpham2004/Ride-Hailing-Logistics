@@ -293,6 +293,9 @@ Những thứ giao diện cần mà API hiện chưa có. Mỗi mục cần quy�
 | Chọn phương thức thanh toán | Thanh toán chạy tự động qua sandbox sau khi hoàn tất | Hoá đơn chỉ hiển thị kết quả |
 | Thông báo đẩy | Offer chỉ tới khi tab đang mở | Âm báo + rung trong tab; ghi rõ giới hạn này |
 | Đánh giá chuyến | Chưa có | Bỏ qua ở phiên bản đầu |
+| Trạng thái rảnh / bận của tài xế qua WebSocket | `DriverAvailabilityChanged` không được đẩy tới tài xế | Đọc lại `GET /drivers/me/profile` 1,5 giây sau mỗi event offer / chuyến (user-service nhận thay đổi qua Kafka) |
+| Chuyến đang chạy của tài xế | Không có API riêng | Lấy chuyến mới nhất chưa kết thúc trong `GET /trips?limit=5` |
+| Lý do sai mã | Sai mã, thiếu mã và bị khoá mã đều là `BUSINESS_RULE_VIOLATION` | Phân biệt theo `message` (tiếng Anh, cố định) để hiện đúng câu |
 
 ## 11. Thứ tự triển khai
 
@@ -300,7 +303,7 @@ Những thứ giao diện cần mà API hiện chưa có. Mỗi mục cần quy�
 |---|---|---|
 | 1. Nền tảng | Khởi tạo dự án, lớp API, phiên đăng nhập, lớp realtime, bố cục ba khu vực, CI | Đăng nhập được, WebSocket nhận `SESSION_READY`. **Đã xong** (lớp realtime `shared/realtime`: PING, AUTH gia hạn token, kết nối lại có backoff, đăng ký lại chuyến, bỏ bản tin trùng, báo mất kết nối) |
 | 2. Khách hàng | Đặt xe → báo giá → chuyến đang chạy → hoá đơn → lịch sử | Đi hết UC-02, UC-03, UC-04 với tài xế bấm từ trang test hiện có. **Đã có:** đặt xe, báo giá, đặt chuyến (đồng ý surge, form giao hàng, Idempotency-Key), màn chuyến đang chạy theo trạng thái (mã đón / mã giao, vị trí tài xế nội suy, huỷ có xem trước phí), hoá đơn (bảng tách giá, trạng thái thanh toán, thanh toán lại, hoàn tiền, tự cập nhật qua realtime), lịch sử chuyến phân trang và chi tiết chuyến có dòng thời gian. **Còn lại:** trang tài khoản chỉ đọc đã có từ trước; giai đoạn 2 coi như xong |
-| 3. Tài xế | Onboarding → online → offer → chạy chuyến → ví | Đi hết UC-01, UC-04, UC-05, UC-06 bằng hai tab |
+| 3. Tài xế | Onboarding → online → offer → chạy chuyến → ví | Đi hết UC-01, UC-04, UC-05, UC-06 bằng hai tab. **Đã có:** trang chủ tài xế (chọn xe và dịch vụ, bật / tắt online, chỉ báo GPS), gửi vị trí 3 giây một lần qua WebSocket (REST khi socket chưa mở), vị trí giả lập để thử trên máy bàn (bấm bản đồ, xe chạy dưới 70 m/s, giữ qua lần tải lại trang), lớp phủ offer (đếm ngược, Nhận / Từ chối, âm báo), màn chuyến đang chạy (một nút theo trạng thái, mã đón / mã giao, thông tin người nhận, hỏi lại khi báo đến mà còn xa, huỷ với lý do). Hồ sơ chưa duyệt chỉ thấy trạng thái. **Còn lại:** onboarding, trang xét duyệt, ví, lịch sử, hồ sơ |
 | 4. Quản trị | Duyệt hồ sơ → chuyến → thanh toán → bảng giá | Thay được các request admin trong collection Postman |
 | 5. Hoàn thiện | Trạng thái mất kết nối / GPS yếu, Playwright cho luồng chính, tối ưu bundle | UC-07, UC-08 |
 

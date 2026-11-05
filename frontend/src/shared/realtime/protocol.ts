@@ -64,6 +64,36 @@ export const TRIP_EVENT_TYPES = new Set([
   'TRIP_CANCELLED',
 ]);
 
+/** Offer events the gateway forwards to the driver they were made for. */
+export const OFFER_EVENT_TYPES = new Set([
+  'DRIVER_OFFER_CREATED',
+  'DRIVER_OFFER_EXPIRED',
+  'DRIVER_OFFER_DECLINED',
+  'DRIVER_OFFER_CANCELLED',
+]);
+
+/** DRIVER_OFFER_CREATED payload (contracts/events); the other offer events carry offerId too. */
+export interface OfferCreated {
+  offerId: string;
+  tripId: string;
+  driverId: string;
+  serviceType: 'RIDE' | 'DELIVERY';
+  pickup: { latitude: number; longitude: number; address?: string };
+  estimatedPickupDistanceMeters: number;
+  createdAt: string;
+  expiresAt: string;
+}
+
+/** Client → server: one GPS fix; `sequence` goes in the envelope, strictly increasing. */
+export interface DriverLocationUpdate {
+  latitude: number;
+  longitude: number;
+  accuracyMeters: number;
+  deviceTimestamp: string;
+  headingDegrees?: number;
+  speedMetersPerSecond?: number;
+}
+
 /** Close codes the gateway uses (realtime-gateway CloseCodes). */
 export const CLOSE_TOKEN = 4401;
 export const CLOSE_HEARTBEAT = 4408;
