@@ -80,6 +80,31 @@ export const router = createBrowserRouter([
               { path: 'trips/:tripId', lazy: page(() => import('@/features/admin/TripDetailPage')) },
             ],
           },
+          {
+            handle: { section: 'payments' },
+            children: [
+              { path: 'payments', lazy: page(() => import('@/features/admin/PaymentsPage')) },
+              { path: 'payments/:paymentId', lazy: page(() => import('@/features/admin/PaymentDetailPage')) },
+            ],
+          },
+          {
+            handle: { section: 'wallets' },
+            children: [
+              { path: 'wallets', lazy: page(() => import('@/features/admin/WalletPage')) },
+              { path: 'wallets/:driverId', lazy: page(() => import('@/features/admin/WalletPage')) },
+            ],
+          },
+          {
+            handle: { section: 'pricing' },
+            children: [{ path: 'pricing', lazy: page(() => import('@/features/admin/PricingPage')) }],
+          },
+          {
+            handle: { section: 'users' },
+            children: [
+              { path: 'users', lazy: page(() => import('@/features/admin/UsersPage')) },
+              { path: 'users/:userId', lazy: page(() => import('@/features/admin/UsersPage')) },
+            ],
+          },
         ],
       },
     ],

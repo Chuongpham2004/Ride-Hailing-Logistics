@@ -1,5 +1,5 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { messageFor } from '@/shared/api/messages';
 import type { ServiceType, TripStatus } from '@/shared/api/types';
 import { SERVICE_NAMES } from '@/shared/drivers/text';
@@ -8,6 +8,7 @@ import { STATUS_NAMES } from '@/shared/trips/text';
 import { Button } from '@/shared/ui/Button';
 import { Money } from '@/shared/ui/Money';
 import { TripStatusBadge } from '@/shared/ui/StatusBadge';
+import { IdLookup } from './IdLookup';
 import { FIELD, shortId } from './text';
 import { UUID, useTripSearch, type TripFilter } from './trips';
 
@@ -44,7 +45,7 @@ export default function TripSearchPage() {
     <div className="flex max-w-6xl flex-col gap-5 px-10 py-8">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="m-0 text-[28px] leading-tight font-bold">Chuyến</h1>
-        <OpenById />
+        <IdLookup label="Mở theo mã chuyến" to={(id) => `/admin/trips/${id}`} />
       </div>
 
       <Filters
@@ -228,44 +229,5 @@ function Field({ label, error, children }: { label: string; error?: string; chil
       {children}
       {error && <span className="font-normal text-stop">{error}</span>}
     </label>
-  );
-}
-
-/** Support often gets a trip id from a customer or a log line: open it straight away. */
-function OpenById() {
-  const navigate = useNavigate();
-  const [id, setId] = useState('');
-  const [invalid, setInvalid] = useState(false);
-  return (
-    <form
-      className="flex items-start gap-2"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const value = id.trim();
-        if (!UUID.test(value)) {
-          setInvalid(true);
-          return;
-        }
-        navigate(`/admin/trips/${value}`);
-      }}
-    >
-      <label className="flex flex-col gap-1 text-sm font-semibold">
-        <span className="sr-only">Mã chuyến</span>
-        <input
-          className={`${FIELD} w-80`}
-          placeholder="Mở theo mã chuyến"
-          value={id}
-          aria-invalid={invalid || undefined}
-          onChange={(e) => {
-            setId(e.target.value);
-            setInvalid(false);
-          }}
-        />
-        {invalid && <span className="font-normal text-stop">Mã chuyến phải có dạng UUID</span>}
-      </label>
-      <Button size="compact" variant="secondary" type="submit">
-        Mở
-      </Button>
-    </form>
   );
 }

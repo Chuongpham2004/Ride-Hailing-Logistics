@@ -1,5 +1,6 @@
-import type { ReviewStatus, TripStatus } from '@/shared/api/types';
+import type { PaymentStatus, ReviewStatus, TripStatus } from '@/shared/api/types';
 import { REVIEW_STATUS_NAMES } from '@/shared/drivers/text';
+import { PAYMENT_STATUS_NAMES } from '@/shared/payments/text';
 import { STATUS_NAMES } from '@/shared/trips/text';
 
 /*
@@ -38,6 +39,15 @@ const REVIEW_TONES: Record<ReviewStatus, Tone> = {
   SUSPENDED: 'red',
 };
 
+const PAYMENT_TONES: Record<PaymentStatus, Tone> = {
+  PENDING: 'amber',
+  SUCCEEDED: 'green',
+  FAILED: 'red',
+  REFUND_PENDING: 'amber',
+  PARTIALLY_REFUNDED: 'blue',
+  REFUNDED: 'grey',
+};
+
 export function Badge({ tone, children }: { tone: Tone; children: string }) {
   return (
     <span
@@ -55,4 +65,8 @@ export function TripStatusBadge({ status }: { status: TripStatus }) {
 
 export function ReviewStatusBadge({ status }: { status: ReviewStatus }) {
   return <Badge tone={REVIEW_TONES[status]}>{REVIEW_STATUS_NAMES[status]}</Badge>;
+}
+
+export function PaymentStatusBadge({ status }: { status: PaymentStatus }) {
+  return <Badge tone={PAYMENT_TONES[status]}>{PAYMENT_STATUS_NAMES[status]}</Badge>;
 }

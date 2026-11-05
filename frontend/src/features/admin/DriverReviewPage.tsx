@@ -144,14 +144,17 @@ function Review({ review }: { review: DriverReview }) {
           <dt className="text-curb">Đang</dt>
           <dd className="m-0">{AVAILABILITY[profile.availability]}</dd>
         </dl>
-        {canUse('trips', user?.roles ?? []) && (
-          <Link
-            to={`/admin/trips?driverId=${profile.driverId}`}
-            className="self-start text-[15px] font-semibold"
-          >
-            Xem chuyến của tài xế
-          </Link>
-        )}
+        <div className="flex flex-wrap gap-5 text-[15px] font-semibold">
+          {canUse('trips', user?.roles ?? []) && (
+            <Link to={`/admin/trips?driverId=${profile.driverId}`}>Xem chuyến của tài xế</Link>
+          )}
+          {canUse('wallets', user?.roles ?? []) && (
+            <Link to={`/admin/wallets/${profile.driverId}`}>Ví tài xế</Link>
+          )}
+          {canUse('users', user?.roles ?? []) && (
+            <Link to={`/admin/users/${profile.driverId}`}>Tài khoản đăng nhập</Link>
+          )}
+        </div>
       </Card>
 
       <Vehicles profile={profile} />

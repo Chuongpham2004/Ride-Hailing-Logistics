@@ -1,35 +1,10 @@
 import { useInfiniteQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '@/shared/api/client';
+import type { Wallet } from '@/shared/api/types';
 import { useRealtimeMessages, useRealtimeResync } from '@/shared/realtime/realtime';
 
-/** payment-service PaymentQueries.EntryView; `amount` is signed (commission is negative). */
-export interface WalletEntry {
-  id: string;
-  type: 'EARNING' | 'COMMISSION' | 'ADJUSTMENT';
-  amount: number;
-  balanceAfter: number;
-  referenceType: 'PAYMENT' | 'ADJUSTMENT';
-  referenceId: string;
-  tripId?: string;
-  commissionRuleVersion?: number;
-  createdAt: string;
-}
-
-/** payment-service PaymentQueries.WalletView; walletId is absent until the first entry. */
-export interface Wallet {
-  walletId?: string;
-  driverId: string;
-  balance: number;
-  currency: string;
-  entries: WalletEntry[];
-  nextBefore?: string;
-}
-
-export const ENTRY_NAMES: Record<WalletEntry['type'], string> = {
-  EARNING: 'Tiền chuyến',
-  COMMISSION: 'Phí nền tảng',
-  ADJUSTMENT: 'Điều chỉnh',
-};
+export type { Wallet, WalletEntry } from '@/shared/api/types';
+export { ENTRY_NAMES } from '@/shared/payments/text';
 
 const walletKey = ['driver', 'wallet'] as const;
 const PAGE_SIZE = 20;

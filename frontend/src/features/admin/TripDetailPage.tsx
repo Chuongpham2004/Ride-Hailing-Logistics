@@ -6,13 +6,15 @@ import type { CancelReason, StaffTripDetail } from '@/shared/api/types';
 import { useSession } from '@/shared/auth/session';
 import { SERVICE_NAMES } from '@/shared/drivers/text';
 import { formatDateTime, formatDistance, formatDuration, formatTime } from '@/shared/lib/format';
+import { PURPOSE_NAMES } from '@/shared/payments/text';
 import { STATUS_NAMES } from '@/shared/trips/text';
 import { ENDED } from '@/shared/trips/trips';
 import { Button } from '@/shared/ui/Button';
 import { BackIcon } from '@/shared/ui/icons';
 import { Money } from '@/shared/ui/Money';
-import { TripStatusBadge } from '@/shared/ui/StatusBadge';
+import { PaymentStatusBadge, TripStatusBadge } from '@/shared/ui/StatusBadge';
 import { Card } from './Card';
+import { useTripPayments } from './finance';
 import { ReasonDialog } from './ReasonDialog';
 import { canUse } from './sections';
 import { ACTOR_NAMES, CANCEL_REASON_NAMES, changeReason, FIELD, OFFER_STATUS_NAMES } from './text';
@@ -156,6 +158,8 @@ function Detail({ detail }: { detail: StaffTripDetail }) {
         </Card>
       )}
 
+      {canUse('payments', roles) && <TripPayments tripId={trip.id} />}
+
       <Card title="Diễn biến">
         <ol className="m-0 flex list-none flex-col p-0">
           {detail.history.map((change, index) => (
@@ -219,6 +223,34 @@ function Detail({ detail }: { detail: StaffTripDetail }) {
         />
       )}
     </>
+  );
+}
+
+function TripPayments({ tripId }: { tripId: string }) {
+  const payments = useTripPayments(tripId);
+  return (
+    <Card title="Thanh toán">
+      {payments.isPending && (
+        <div aria-hidden="true" className="h-12 animate-pulse rounded-lg bg-concrete-2" />
+      )}
+      {payments.isError && <p role="alert">{messageFor(payments.error)}</p>}
+      {payments.data?.length === 0 && <p className="m-0 text-[15px] text-curb">Chưa có khoản thu nào.</p>}
+      {payments.data && payments.data.length > 0 && (
+        <ul className="m-0 flex list-none flex-col p-0">
+          {payments.data.map((payment) => (
+            <li
+              key={payment.id}
+              className="flex flex-wrap items-center justify-between gap-3 border-t border-line py-2 text-[15px] first:border-t-0 first:pt-0"
+            >
+              <Link to={`/admin/payments/${payment.id}`} className="font-semibold">
+                {PURPOSE_NAMES[payment.purpose]} · <Money amount={payment.amount} />
+              </Link>
+              <PaymentStatusBadge status={payment.status} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
