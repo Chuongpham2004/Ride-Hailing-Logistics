@@ -9,6 +9,7 @@ import type { CurrentUser } from '@/shared/api/types';
 import { useSession } from '@/shared/auth/session';
 import { apiUrl, fail, ok, server } from '@/test/server';
 import PricingPage from './PricingPage';
+import UserDetailPage from './UserDetailPage';
 import UsersPage from './UsersPage';
 
 const ADMIN = {
@@ -85,43 +86,80 @@ describe('PricingPage', () => {
   });
 });
 
+const ACCOUNT = {
+  id: USER_ID,
+  email: 'nv@rhl.local',
+  fullName: 'Nhân Viên Mới',
+  roles: ['CUSTOMER'],
+  status: 'ACTIVE',
+  emailVerified: true,
+  phoneVerified: false,
+  createdAt: '2026-11-01T02:00:00Z',
+  updatedAt: '2026-11-01T02:00:00Z',
+};
+
 describe('UsersPage', () => {
-  it('replaces the roles with the chosen set and shows the account afterwards', async () => {
-    let sent: unknown;
+  it('searches by text, role and status and links to each account', async () => {
+    const asked: string[] = [];
     server.use(
-      http.put(apiUrl(`/api/v1/admin/users/${USER_ID}/roles`), async ({ request }) => {
-        sent = await request.json();
-        return ok({
-          id: USER_ID,
-          email: 'nv@rhl.local',
-          fullName: 'Nhân Viên Mới',
-          roles: ['SUPPORT_STAFF', 'FINANCE_STAFF'],
-          status: 'ACTIVE',
-          emailVerified: true,
-          phoneVerified: false,
-        });
+      http.get(apiUrl('/api/v1/admin/users'), ({ request }) => {
+        asked.push(new URL(request.url).search);
+        return ok({ items: [ACCOUNT] });
       }),
     );
-    renderAt(`/admin/users/${USER_ID}`, '/admin/users/:userId', <UsersPage />);
+    renderAt('/admin/users', '/admin/users', <UsersPage />);
     const user = userEvent.setup();
 
+    expect(await screen.findByRole('link', { name: 'Nhân Viên Mới' })).toHaveAttribute(
+      'href',
+      `/admin/users/${USER_ID}`,
+    );
+    await user.type(screen.getByLabelText(/Tên, email/), 'n');
+    await user.click(screen.getByRole('button', { name: 'Tìm' }));
+    expect(screen.getByText('Nhập ít nhất 2 ký tự')).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText(/Tên, email/), 'v');
+    await user.selectOptions(screen.getByLabelText('Vai trò'), 'SUPPORT_STAFF');
+    await user.selectOptions(screen.getByLabelText('Trạng thái'), 'LOCKED');
+    await user.click(screen.getByRole('button', { name: 'Tìm' }));
+    await screen.findByRole('link', { name: 'Nhân Viên Mới' });
+    const last = new URLSearchParams(asked[asked.length - 1]);
+    expect([last.get('q'), last.get('role'), last.get('status')]).toEqual(['nv', 'SUPPORT_STAFF', 'LOCKED']);
+  });
+});
+
+describe('UserDetailPage', () => {
+  it('starts from the current roles and saves the changed set', async () => {
+    let sent: unknown;
+    server.use(
+      http.get(apiUrl(`/api/v1/admin/users/${USER_ID}`), () => ok(ACCOUNT)),
+      http.put(apiUrl(`/api/v1/admin/users/${USER_ID}/roles`), async ({ request }) => {
+        sent = await request.json();
+        return ok({ ...ACCOUNT, roles: ['CUSTOMER', 'SUPPORT_STAFF'] });
+      }),
+    );
+    renderAt(`/admin/users/${USER_ID}`, '/admin/users/:userId', <UserDetailPage />);
+    const user = userEvent.setup();
+
+    expect(await screen.findByLabelText('Khách hàng')).toBeChecked();
+    expect(screen.getByRole('button', { name: 'Lưu vai trò' })).toBeDisabled();
     await user.click(screen.getByLabelText('Hỗ trợ'));
-    await user.click(screen.getByLabelText('Tài chính'));
     await user.click(screen.getByRole('button', { name: 'Lưu vai trò' }));
     await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Thay vai trò' }));
 
-    expect(await screen.findByRole('heading', { name: 'Nhân Viên Mới' })).toBeInTheDocument();
-    expect(sent).toEqual({ roles: ['SUPPORT_STAFF', 'FINANCE_STAFF'] });
+    expect(sent).toEqual({ roles: ['CUSTOMER', 'SUPPORT_STAFF'] });
+    expect(await screen.findByText('Khách hàng, Hỗ trợ')).toBeInTheDocument();
   });
 
   it('locks an account only with a reason, and shows a refusal in the dialog', async () => {
     server.use(
+      http.get(apiUrl(`/api/v1/admin/users/${USER_ID}`), () => ok(ACCOUNT)),
       http.put(apiUrl(`/api/v1/admin/users/${USER_ID}/status`), () => fail(422, 'BUSINESS_RULE_VIOLATION')),
     );
-    renderAt(`/admin/users/${USER_ID}`, '/admin/users/:userId', <UsersPage />);
+    renderAt(`/admin/users/${USER_ID}`, '/admin/users/:userId', <UserDetailPage />);
     const user = userEvent.setup();
 
-    await user.selectOptions(screen.getByLabelText('Chuyển sang'), 'LOCKED');
+    expect(await screen.findByLabelText('Chuyển sang')).toHaveValue('LOCKED');
     await user.click(screen.getByRole('button', { name: 'Đổi trạng thái' }));
     const dialog = screen.getByRole('dialog');
     const confirm = within(dialog).getByRole('button', { name: 'Đổi trạng thái' });
@@ -132,13 +170,14 @@ describe('UsersPage', () => {
   });
 
   it('hides the status form on the administrator’s own account', async () => {
-    renderAt(`/admin/users/${ADMIN.id}`, '/admin/users/:userId', <UsersPage />);
+    server.use(http.get(apiUrl(`/api/v1/admin/users/${ADMIN.id}`), () => ok({ ...ACCOUNT, id: ADMIN.id })));
+    renderAt(`/admin/users/${ADMIN.id}`, '/admin/users/:userId', <UserDetailPage />);
     expect(await screen.findByText(/Đây là tài khoản của bạn/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Đổi trạng thái' })).not.toBeInTheDocument();
   });
 
   it('refuses an id that is not a UUID', async () => {
-    renderAt('/admin/users/abc', '/admin/users/:userId', <UsersPage />);
+    renderAt('/admin/users/abc', '/admin/users/:userId', <UserDetailPage />);
     expect(await screen.findByText('Mã người dùng không hợp lệ.')).toBeInTheDocument();
   });
 });

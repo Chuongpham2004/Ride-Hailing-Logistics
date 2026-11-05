@@ -4,8 +4,10 @@ import com.rhl.common.security.Role;
 import com.rhl.common.web.ApiException;
 import com.rhl.user.application.AuditLog;
 import com.rhl.user.application.driver.DriverService;
+import com.rhl.user.domain.driver.DriverProfile;
 import com.rhl.user.domain.user.User;
 import com.rhl.user.domain.user.UserStatus;
+import com.rhl.user.infrastructure.persistence.DriverProfileRepository;
 import com.rhl.user.infrastructure.persistence.RefreshTokenRepository;
 import com.rhl.user.infrastructure.persistence.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +17,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -28,10 +31,32 @@ import java.util.UUID;
 public class UserAdminService {
 
     private final UserRepository users;
+    private final DriverProfileRepository driverProfiles;
     private final RefreshTokenRepository refreshTokens;
     private final DriverService drivers;
     private final AuditLog audit;
     private final Clock clock;
+
+    public static final int MAX_PAGE_SIZE = 100;
+
+    /** Every user matching the filters, newest first (FR-ADM). Each filter is optional. */
+    @Transactional(readOnly = true)
+    public UserAdminViews.UserPage search(UserSearch search, Role role, UserStatus status, UUID before, int limit) {
+        int size = Math.clamp(limit, 1, MAX_PAGE_SIZE);
+        List<User> page = users.search(search.id(), search.text(), search.phone(),
+                status == null ? null : status.name(), role == null ? null : role.name(), before, size);
+        UUID next = page.size() == size ? page.getLast().getId() : null;
+        return new UserAdminViews.UserPage(page.stream().map(UserAdminViews.UserSummary::of).toList(), next);
+    }
+
+    /** One account in full; opening it shows personal data, so each view is audited (BR-014). */
+    @Transactional
+    public UserAdminViews.UserDetail view(UUID adminId, UUID userId) {
+        User user = users.findById(userId).orElseThrow(() -> ApiException.notFound("User"));
+        audit.success(adminId, "USER_VIEWED", "USER", userId, Map.of());
+        return UserAdminViews.UserDetail.of(user,
+                driverProfiles.findById(userId).map(DriverProfile::getReviewStatus).orElse(null));
+    }
 
     @Transactional
     public User replaceRoles(UUID adminId, UUID userId, Set<Role> roles) {
@@ -68,7 +93,7 @@ public class UserAdminService {
         return user;
     }
 
-    private static java.util.List<String> sorted(Set<Role> roles) {
+    private static List<String> sorted(Set<Role> roles) {
         return roles.stream().map(Enum::name).sorted().toList();
     }
 }

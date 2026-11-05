@@ -1,228 +1,181 @@
 import { useState } from 'react';
-import { useParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { messageFor } from '@/shared/api/messages';
-import type { CurrentUser, Role, UserStatus } from '@/shared/api/types';
-import { useSession } from '@/shared/auth/session';
+import type { Role, UserStatus } from '@/shared/api/types';
+import { formatDateTime } from '@/shared/lib/format';
 import { Button } from '@/shared/ui/Button';
-import { Dialog } from '@/shared/ui/Dialog';
-import { Card } from './Card';
-import { IdLookup } from './IdLookup';
-import { ReasonDialog } from './ReasonDialog';
 import { ROLE_NAMES } from './sections';
 import { FIELD, USER_STATUS_NAMES } from './text';
-import { UUID } from './trips';
-import { ROLES, useChangeStatus, useReplaceRoles } from './users';
+import { UserStatusBadge } from './UserStatusBadge';
+import { MIN_QUERY, ROLES, useUserSearch, type UserFilter } from './users';
 
-/**
- * /admin/users and /admin/users/:userId (Administrator). The API has no user lookup yet
- * (frontend-design.md §10), so the page works from a known id and shows the account as the
- * server returns it after each change.
- */
+const STATUSES = Object.keys(USER_STATUS_NAMES) as UserStatus[];
+
+/** The filter lives in the address, so a search can be reloaded or shared. */
+function readFilter(params: URLSearchParams): UserFilter {
+  const filter: UserFilter = {};
+  const q = params.get('q')?.trim();
+  if (q && q.length >= MIN_QUERY) filter.q = q;
+  const role = params.get('role') as Role | null;
+  if (role && ROLES.includes(role)) filter.role = role;
+  const status = params.get('status') as UserStatus | null;
+  if (status && STATUSES.includes(status)) filter.status = status;
+  return filter;
+}
+
+/** /admin/users: every account, newest first, by name, email, phone or id, role and status (Administrator). */
 export default function UsersPage() {
-  const { userId } = useParams();
+  const [params, setParams] = useSearchParams();
+  const filter = readFilter(params);
+  const users = useUserSearch(filter);
+  const items = users.data?.pages.flatMap((page) => page.items) ?? [];
+
   return (
-    <div className="flex max-w-4xl flex-col gap-5 px-10 py-8">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <h1 className="m-0 text-[28px] leading-tight font-bold">Người dùng</h1>
-        <IdLookup key={userId} label="Mã người dùng" initial={userId} to={(id) => `/admin/users/${id}`} />
-      </div>
-      <p className="m-0 max-w-[70ch] text-[15px] text-ink-2">
-        Chưa có danh sách người dùng: nhập mã người dùng (mã tài xế cũng là mã người dùng của tài xế). Vai trò
-        được thay cả bộ, nên chọn đủ mọi vai trò người này cần giữ.
-      </p>
-      {userId && !UUID.test(userId) && <p role="alert">Mã người dùng không hợp lệ.</p>}
-      {userId && UUID.test(userId) && <Account key={userId} userId={userId} />}
+    <div className="flex max-w-6xl flex-col gap-5 px-10 py-8">
+      <h1 className="m-0 text-[28px] leading-tight font-bold">Người dùng</h1>
+
+      <Filters
+        key={params.toString()}
+        initial={filter}
+        onApply={(next) => {
+          const query: Record<string, string> = {};
+          if (next.q) query.q = next.q;
+          if (next.role) query.role = next.role;
+          if (next.status) query.status = next.status;
+          setParams(query);
+        }}
+      />
+
+      {users.isPending && <div aria-hidden="true" className="h-64 animate-pulse rounded-xl bg-white" />}
+      {users.isError && (
+        <div className="flex items-center gap-3">
+          <p role="alert" className="m-0 text-[15px]">
+            {messageFor(users.error)}
+          </p>
+          <Button size="compact" variant="secondary" onClick={() => void users.refetch()}>
+            Thử lại
+          </Button>
+        </div>
+      )}
+      {users.isSuccess && items.length === 0 && (
+        <p className="m-0 text-ink-2">Không có người dùng nào khớp.</p>
+      )}
+
+      {items.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-line bg-white">
+          <table className="w-full border-collapse text-left text-[15px]">
+            <thead className="bg-concrete-2 text-sm text-curb">
+              <tr>
+                <th className="px-4 py-2.5 font-semibold">Họ tên</th>
+                <th className="px-4 py-2.5 font-semibold">Liên hệ</th>
+                <th className="px-4 py-2.5 font-semibold">Vai trò</th>
+                <th className="px-4 py-2.5 font-semibold">Tạo lúc</th>
+                <th className="px-4 py-2.5 font-semibold">Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((user) => (
+                <tr key={user.id} className="border-t border-line align-top hover:bg-concrete-2">
+                  <td className="px-4 py-3">
+                    <Link to={`/admin/users/${user.id}`} className="font-semibold">
+                      {user.fullName}
+                    </Link>
+                  </td>
+                  <td className="px-4 py-3">
+                    {user.email && <div>{user.email}</div>}
+                    {user.phone && <div className="text-curb tabular-nums">{user.phone}</div>}
+                  </td>
+                  <td className="px-4 py-3">{user.roles.map((role) => ROLE_NAMES[role]).join(', ')}</td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">
+                    {formatDateTime(user.createdAt)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <UserStatusBadge status={user.status} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {users.hasNextPage && (
+        <Button
+          size="compact"
+          variant="secondary"
+          className="self-start"
+          busy={users.isFetchingNextPage}
+          onClick={() => void users.fetchNextPage()}
+        >
+          Xem thêm
+        </Button>
+      )}
     </div>
   );
 }
 
-function Account({ userId }: { userId: string }) {
-  const me = useSession((state) => state.user);
-  const [account, setAccount] = useState<CurrentUser | null>(null);
-  const own = me?.id === userId;
+function Filters({ initial, onApply }: { initial: UserFilter; onApply: (filter: UserFilter) => void }) {
+  const [q, setQ] = useState(initial.q ?? '');
+  const [role, setRole] = useState<Role | ''>(initial.role ?? '');
+  const [status, setStatus] = useState<UserStatus | ''>(initial.status ?? '');
+  const [tooShort, setTooShort] = useState(false);
 
   return (
-    <>
-      {own && (
-        <p className="m-0 rounded-lg bg-stop-tint px-4 py-3 text-[15px]">
-          Đây là tài khoản của bạn: không tự đổi trạng thái hay bỏ vai trò quản trị của chính mình được.
-        </p>
-      )}
-      {account && <AccountSummary account={account} />}
-      <RolesForm userId={userId} current={account?.roles} onSaved={setAccount} />
-      {!own && (
-        <StatusForm
-          userId={userId}
-          current={account?.status as UserStatus | undefined}
-          onSaved={setAccount}
-        />
-      )}
-    </>
-  );
-}
-
-function AccountSummary({ account }: { account: CurrentUser }) {
-  return (
-    <Card title={account.fullName}>
-      <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-[15px]">
-        <dt className="text-curb">Email</dt>
-        <dd className="m-0">{account.email ?? '—'}</dd>
-        <dt className="text-curb">Số điện thoại</dt>
-        <dd className="m-0">{account.phone ?? '—'}</dd>
-        <dt className="text-curb">Vai trò</dt>
-        <dd className="m-0">{account.roles.map((role) => ROLE_NAMES[role]).join(', ')}</dd>
-        <dt className="text-curb">Trạng thái</dt>
-        <dd className="m-0">{USER_STATUS_NAMES[account.status as UserStatus] ?? account.status}</dd>
-      </dl>
-    </Card>
-  );
-}
-
-function RolesForm({
-  userId,
-  current,
-  onSaved,
-}: {
-  userId: string;
-  current?: Role[];
-  onSaved: (account: CurrentUser) => void;
-}) {
-  const replace = useReplaceRoles(userId);
-  const [roles, setRoles] = useState<Role[]>(current ?? []);
-  const [confirming, setConfirming] = useState(false);
-  const toggle = (role: Role) =>
-    setRoles((list) => (list.includes(role) ? list.filter((r) => r !== role) : [...list, role]));
-
-  return (
-    <Card title="Vai trò">
-      <fieldset className="m-0 grid grid-cols-2 gap-2 border-0 p-0 text-[15px] sm:grid-cols-3">
-        <legend className="sr-only">Vai trò</legend>
-        {ROLES.map((role) => (
-          <label key={role} className="flex items-center gap-2">
-            <input type="checkbox" checked={roles.includes(role)} onChange={() => toggle(role)} />
-            {ROLE_NAMES[role]}
-          </label>
-        ))}
-      </fieldset>
-      <div className="flex items-center gap-3">
-        <Button
-          size="compact"
-          variant="dark"
-          disabled={roles.length === 0}
-          onClick={() => {
-            replace.reset();
-            setConfirming(true);
+    <form
+      aria-label="Tìm người dùng"
+      className="grid grid-cols-[minmax(260px,2fr)_repeat(2,minmax(160px,1fr))_auto] items-end gap-3 rounded-xl border border-line bg-white p-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const text = q.trim();
+        if (text.length > 0 && text.length < MIN_QUERY) {
+          setTooShort(true);
+          return;
+        }
+        onApply({ q: text || undefined, role: role || undefined, status: status || undefined });
+      }}
+    >
+      <label className="flex flex-col gap-1 text-sm font-semibold">
+        Tên, email, số điện thoại hoặc mã
+        <input
+          className={FIELD}
+          value={q}
+          aria-invalid={tooShort || undefined}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setTooShort(false);
           }}
-        >
-          Lưu vai trò
-        </Button>
-        {roles.length === 0 && <span className="text-sm text-curb">Chọn ít nhất một vai trò.</span>}
-      </div>
-      {confirming && (
-        <Dialog title="Thay vai trò" onClose={() => setConfirming(false)}>
-          <p className="m-0 text-[15px]">
-            Người dùng sẽ có đúng các vai trò:{' '}
-            <strong>
-              {ROLES.filter((r) => roles.includes(r))
-                .map((r) => ROLE_NAMES[r])
-                .join(', ')}
-            </strong>
-            . Vai trò khác (nếu có) bị bỏ. Phiên đăng nhập hiện tại của họ nhận vai trò mới khi làm mới token.
-          </p>
-          {replace.error && (
-            <p role="alert" className="m-0 text-[15px] text-stop">
-              {messageFor(replace.error)}
-            </p>
-          )}
-          <div className="flex justify-end gap-2">
-            <Button size="compact" variant="secondary" onClick={() => setConfirming(false)}>
-              Đóng
-            </Button>
-            <Button
-              size="compact"
-              variant="dark"
-              autoFocus
-              busy={replace.isPending}
-              onClick={() =>
-                replace.mutate(roles, {
-                  onSuccess: (account) => {
-                    setConfirming(false);
-                    onSaved(account);
-                  },
-                })
-              }
-            >
-              Thay vai trò
-            </Button>
-          </div>
-        </Dialog>
-      )}
-    </Card>
-  );
-}
-
-function StatusForm({
-  userId,
-  current,
-  onSaved,
-}: {
-  userId: string;
-  current?: UserStatus;
-  onSaved: (account: CurrentUser) => void;
-}) {
-  const change = useChangeStatus(userId);
-  const [status, setStatus] = useState<UserStatus>(current === 'ACTIVE' ? 'LOCKED' : 'ACTIVE');
-  const [confirming, setConfirming] = useState(false);
-
-  return (
-    <Card title="Trạng thái tài khoản">
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="flex flex-col gap-1 text-sm font-semibold">
-          Chuyển sang
-          <select className={FIELD} value={status} onChange={(e) => setStatus(e.target.value as UserStatus)}>
-            {(Object.keys(USER_STATUS_NAMES) as UserStatus[]).map((s) => (
-              <option key={s} value={s}>
-                {USER_STATUS_NAMES[s]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Button
-          size="compact"
-          variant={status === 'ACTIVE' ? 'dark' : 'danger'}
-          onClick={() => {
-            change.reset();
-            setConfirming(true);
-          }}
-        >
-          Đổi trạng thái
-        </Button>
-      </div>
-      <p className="m-0 text-sm text-curb">
-        Tạm khoá: chặn đăng nhập, mở lại được. Vô hiệu hoá: dùng khi đóng hẳn tài khoản.
-      </p>
-      {confirming && (
-        <ReasonDialog
-          title={`Chuyển tài khoản sang “${USER_STATUS_NAMES[status]}”`}
-          confirmLabel="Đổi trạng thái"
-          danger={status !== 'ACTIVE'}
-          minLength={status === 'ACTIVE' ? 0 : 1}
-          busy={change.isPending}
-          error={change.error ? messageFor(change.error) : undefined}
-          onClose={() => setConfirming(false)}
-          onConfirm={(reason) =>
-            change.mutate(
-              { status, reason },
-              {
-                onSuccess: (account) => {
-                  setConfirming(false);
-                  onSaved(account);
-                },
-              },
-            )
-          }
         />
-      )}
-    </Card>
+        {tooShort && <span className="font-normal text-stop">Nhập ít nhất {MIN_QUERY} ký tự</span>}
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold">
+        Vai trò
+        <select className={FIELD} value={role} onChange={(e) => setRole(e.target.value as Role | '')}>
+          <option value="">Tất cả</option>
+          {ROLES.map((r) => (
+            <option key={r} value={r}>
+              {ROLE_NAMES[r]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="flex flex-col gap-1 text-sm font-semibold">
+        Trạng thái
+        <select
+          className={FIELD}
+          value={status}
+          onChange={(e) => setStatus(e.target.value as UserStatus | '')}
+        >
+          <option value="">Tất cả</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {USER_STATUS_NAMES[s]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <Button size="compact" variant="dark" type="submit">
+        Tìm
+      </Button>
+    </form>
   );
 }

@@ -102,7 +102,7 @@ export const router = createBrowserRouter([
             handle: { section: 'users' },
             children: [
               { path: 'users', lazy: page(() => import('@/features/admin/UsersPage')) },
-              { path: 'users/:userId', lazy: page(() => import('@/features/admin/UsersPage')) },
+              { path: 'users/:userId', lazy: page(() => import('@/features/admin/UserDetailPage')) },
             ],
           },
         ],
