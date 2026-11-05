@@ -4,6 +4,7 @@ const GPS_TEXT = {
   waiting: 'Đang lấy vị trí GPS…',
   ok: 'GPS tốt',
   weak: `GPS yếu (sai số trên ${MAX_ACCURACY_M} m): chưa dùng được để ghép chuyến`,
+  lost: 'Mất tín hiệu GPS: tạm ngừng gửi vị trí, chưa nhận chuyến mới',
   denied: 'Trình duyệt chặn quyền vị trí',
   unavailable: 'Máy này không có GPS',
 } as const;

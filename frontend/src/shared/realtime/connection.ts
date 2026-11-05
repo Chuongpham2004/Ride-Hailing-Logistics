@@ -57,6 +57,7 @@ export class RealtimeConnection {
   private timers = new Set<ReturnType<typeof setTimeout>>();
   private heartbeat: ReturnType<typeof setInterval> | null = null;
   private renewTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stopTokenListener: (() => void) | null = null;
 
   private readonly deps: ConnectionDeps;
@@ -249,6 +250,8 @@ export class RealtimeConnection {
   private scheduleRenew(expiresAt: string | undefined): void {
     if (this.renewTimer) clearTimeout(this.renewTimer);
     this.renewTimer = null;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     const at = expiresAt ? Date.parse(expiresAt) : NaN;
     if (Number.isNaN(at)) return;
     const delay = Math.max(0, at - Date.now() - RENEW_AHEAD_MS);
@@ -265,6 +268,8 @@ export class RealtimeConnection {
     this.clearHeartbeat();
     if (this.renewTimer) clearTimeout(this.renewTimer);
     this.renewTimer = null;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     if (!this.started) return;
     if (code === CLOSE_TOKEN) {
       this.tokenRefusals += 1;
@@ -287,9 +292,23 @@ export class RealtimeConnection {
     this.setStatus('reconnecting');
     const delay = BACKOFF[Math.min(this.attempt, BACKOFF.length - 1)]!;
     this.attempt += 1;
-    this.later(() => {
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
       if (this.started && !this.socket) void this.connect();
     }, delay);
+  }
+
+  /**
+   * Skips the rest of the backoff wait, e.g. when the browser reports the network is back:
+   * the next attempt starts now and the backoff starts over. Does nothing unless a reconnect is
+   * pending.
+   */
+  retryNow(): void {
+    if (!this.started || this.status !== 'reconnecting' || this.socket || !this.reconnectTimer) return;
+    clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    this.attempt = 0;
+    void this.connect();
   }
 
   /** Signed out, or the token keeps being refused: nothing more to do until start() again. */
@@ -319,6 +338,8 @@ export class RealtimeConnection {
     this.clearHeartbeat();
     if (this.renewTimer) clearTimeout(this.renewTimer);
     this.renewTimer = null;
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.timers.forEach((id) => clearTimeout(id));
     this.timers = new Set();
   }
