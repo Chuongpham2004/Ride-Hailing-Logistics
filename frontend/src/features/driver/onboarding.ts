@@ -8,7 +8,6 @@ import type {
   Vehicle,
   VehicleType,
 } from '@/shared/api/types';
-import { refreshUser } from '@/shared/auth/session';
 import type { DocumentType } from '@/shared/drivers/text';
 import { profileKey } from './profile';
 
@@ -129,33 +128,7 @@ export function useSubmitForReview() {
   });
 }
 
-export type Channel = 'email' | 'phone';
-
-export interface CodeSent {
-  channel: string;
-  destination: string;
-  expiresInSeconds: number;
-  resendAfterSeconds: number;
-}
-
-export function useSendCode() {
-  return useMutation({
-    mutationFn: (channel: Channel) =>
-      api<CodeSent>(`/api/v1/users/me/contacts/${channel}/verification`, { method: 'POST' }),
-  });
-}
-
-export function useConfirmCode() {
-  const reload = useReload();
-  return useMutation({
-    mutationFn: ({ channel, code }: { channel: Channel; code: string }) =>
-      api(`/api/v1/users/me/contacts/${channel}/verification/confirm`, { method: 'POST', body: { code } }),
-    onSuccess: async () => {
-      await refreshUser();
-      await reload();
-    },
-  });
-}
+export type { Channel, CodeSent } from '@/shared/auth/contacts';
 
 /** "yyyy-mm-dd" of today in local time, to compare with the server's LocalDate fields. */
 export function todayIso(now = new Date()): string {
