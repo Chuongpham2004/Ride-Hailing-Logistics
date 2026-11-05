@@ -15,6 +15,7 @@ const page = (load: () => Promise<{ default: ComponentType }>) => async () => ({
 export const router = createBrowserRouter([
   { path: '/', element: <HomeRedirect /> },
   { path: '/login', lazy: page(() => import('@/features/auth/LoginPage')) },
+  { path: '/register', lazy: page(() => import('@/features/auth/RegisterPage')) },
   {
     path: '/app',
     element: <RequireArea area="customer" />,
@@ -40,8 +41,18 @@ export const router = createBrowserRouter([
       {
         lazy: page(() => import('@/features/driver/DriverLayout')),
         children: [
-          { index: true, lazy: page(() => import('@/features/driver/DriverHomePage')) },
-          { path: 'trips/:tripId', lazy: page(() => import('@/features/driver/DriverTripPage')) },
+          { path: 'onboarding', lazy: page(() => import('@/features/driver/OnboardingPage')) },
+          { path: 'review', lazy: page(() => import('@/features/driver/ReviewPage')) },
+          {
+            lazy: page(() => import('@/features/driver/RequireApproved')),
+            children: [
+              { index: true, lazy: page(() => import('@/features/driver/DriverHomePage')) },
+              { path: 'trips/:tripId', lazy: page(() => import('@/features/driver/DriverTripPage')) },
+              { path: 'earnings', lazy: page(() => import('@/features/driver/EarningsPage')) },
+              { path: 'activity', lazy: page(() => import('@/features/driver/DriverActivityPage')) },
+              { path: 'profile', lazy: page(() => import('@/features/driver/DriverProfilePage')) },
+            ],
+          },
         ],
       },
     ],

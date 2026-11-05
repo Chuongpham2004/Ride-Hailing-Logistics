@@ -70,21 +70,4 @@ export const REFUND_REASON_NAMES: Record<RefundReason, string> = {
   OTHER: 'Lý do khác',
 };
 
-const dateTime = new Intl.DateTimeFormat('vi-VN', {
-  hour: '2-digit',
-  minute: '2-digit',
-  day: '2-digit',
-  month: '2-digit',
-  year: 'numeric',
-});
-const time = new Intl.DateTimeFormat('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-
-/** "14:05 30/10/2026". */
-export function formatDateTime(iso: string): string {
-  return dateTime.format(new Date(iso));
-}
-
-/** "14:05:12". */
-export function formatTime(iso: string): string {
-  return time.format(new Date(iso));
-}
+export { formatDateTime, formatTime } from '@/shared/lib/format';

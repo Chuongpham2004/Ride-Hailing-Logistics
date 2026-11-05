@@ -48,6 +48,26 @@ export async function login(identifier: string, password: string): Promise<Curre
   return user;
 }
 
+export interface SignUp {
+  fullName: string;
+  email?: string;
+  phone?: string;
+  password: string;
+  /** Only these two roles can be chosen at sign-up (user-service Role.isSelfService). */
+  role: 'CUSTOMER' | 'DRIVER';
+}
+
+/** POST /auth/register, then signs in with the same identifier so the user lands in their area. */
+export async function register(signUp: SignUp): Promise<CurrentUser> {
+  await api<CurrentUser>('/api/v1/auth/register', { method: 'POST', body: signUp, auth: false });
+  return login(signUp.email ?? signUp.phone ?? '', signUp.password);
+}
+
+/** Reloads the signed-in user, e.g. after a contact was verified. */
+export async function refreshUser(): Promise<void> {
+  await loadUser();
+}
+
 /** Revokes the refresh token on the server, then forgets the session here whatever the outcome. */
 export async function logout(): Promise<void> {
   const refreshToken = tokens.refreshToken();

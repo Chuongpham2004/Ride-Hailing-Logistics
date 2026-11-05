@@ -30,10 +30,11 @@ export const SERVICE_NAMES: Record<ServiceType, string> = {
 };
 
 /** GET /drivers/me/profile; 404 until the driver has created a profile. */
-export function useDriverProfile() {
+export function useDriverProfile(refetchInterval?: number) {
   return useQuery({
     queryKey: profileKey,
     queryFn: ({ signal }) => api<DriverProfile>('/api/v1/drivers/me/profile', { signal }),
+    refetchInterval,
   });
 }
 
