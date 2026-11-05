@@ -36,7 +36,15 @@ export const router = createBrowserRouter([
   {
     path: '/driver',
     element: <RequireArea area="driver" />,
-    children: [{ index: true, lazy: page(() => import('@/features/driver/DriverHomePage')) }],
+    children: [
+      {
+        lazy: page(() => import('@/features/driver/DriverLayout')),
+        children: [
+          { index: true, lazy: page(() => import('@/features/driver/DriverHomePage')) },
+          { path: 'trips/:tripId', lazy: page(() => import('@/features/driver/DriverTripPage')) },
+        ],
+      },
+    ],
   },
   {
     path: '/admin',
