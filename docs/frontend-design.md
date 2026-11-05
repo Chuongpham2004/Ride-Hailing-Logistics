@@ -140,7 +140,8 @@ Thanh bên chỉ hiện các mục mà vai trò của người đăng nhập dù
 | `/admin/payments` | Danh sách thanh toán, các lần thử, tạo hoàn tiền | Finance, Administrator | `GET /admin/payments`, `…/{id}/attempts`, `POST …/{id}/refunds` |
 | `/admin/wallets/:driverId` | Ví tài xế, tạo điều chỉnh | Finance, Administrator | `GET /admin/wallets/{driverId}`, `POST …/adjustments` |
 | `/admin/pricing` | Bảng giá theo phiên bản, thêm phiên bản mới | Administrator | `GET/POST /admin/pricing/rules` |
-| `/admin/users/:id` | Đổi vai trò, khoá / mở tài khoản | Administrator | `PUT /admin/users/{id}/roles`, `…/status` |
+| `/admin/users` | Tìm người dùng theo tên, email, số điện thoại hoặc mã; lọc vai trò, trạng thái | Administrator | `GET /admin/users?q=&role=&status=` |
+| `/admin/users/:id` | Thông tin, xác minh liên hệ, hồ sơ tài xế (nếu có); đổi vai trò, khoá / mở tài khoản | Administrator | `GET /admin/users/{id}`, `PUT …/roles`, `…/status` |
 
 Quyết định duyệt gửi kèm `profileVersion` đang xem; nếu server trả 409 thì báo "hồ sơ vừa thay đổi" và
 tải lại. Hoàn tiền và điều chỉnh ví luôn qua hộp thoại xác nhận có nhập lý do.
@@ -289,7 +290,6 @@ Những thứ giao diện cần mà API hiện chưa có. Mỗi mục cần quy�
 | Tìm địa chỉ / geocoding | Backend không có API tìm địa chỉ | Gọi Photon / Nominatim thẳng từ client ([mục 6.1](#61-bản-đồ-tìm-địa-chỉ-và-tuyến-đường)); thả ghim khi không tìm thấy |
 | Thông tin tài xế cho khách | Chuyến chỉ trả `driverId`; không có tên, biển số, loại xe | Hiện "Tài xế đã nhận chuyến" không kèm chi tiết |
 | Cập nhật hồ sơ người dùng | Chỉ có `GET /users/me` | Trang tài khoản chỉ đọc |
-| Danh sách người dùng cho quản trị | Chỉ đổi vai trò / trạng thái theo `userId` biết trước | Ô nhập `userId`; chưa có trang danh sách |
 | Chọn phương thức thanh toán | Thanh toán chạy tự động qua sandbox sau khi hoàn tất | Hoá đơn chỉ hiển thị kết quả |
 | Thông báo đẩy | Offer chỉ tới khi tab đang mở | Âm báo + rung trong tab; ghi rõ giới hạn này |
 | Đánh giá chuyến | Chưa có | Bỏ qua ở phiên bản đầu |

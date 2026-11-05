@@ -5,11 +5,15 @@ import com.rhl.common.security.Role;
 import com.rhl.common.web.ApiException;
 import com.rhl.common.web.ApiResponse;
 import com.rhl.user.application.admin.UserAdminService;
+import com.rhl.user.application.admin.UserAdminViews;
+import com.rhl.user.application.admin.UserSearch;
 import com.rhl.user.application.auth.ContactVerificationService;
 import com.rhl.user.domain.user.ContactChannel;
 import com.rhl.user.domain.user.UserStatus;
 import com.rhl.user.infrastructure.persistence.UserRepository;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -23,6 +27,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -73,6 +78,28 @@ public class UserController {
                                                                             @Valid @RequestBody CodeRequest request) {
         return ApiResponse.ok(AuthController.UserResponse.of(
                 verification.confirm(CurrentUser.get().id(), ContactChannel.parse(channel), request.code())));
+    }
+
+    /**
+     * Administrator lookup (FR-ADM): {@code q} is a name, email or phone fragment (at least two
+     * characters) or a user id; newest first, pass {@code nextBefore} as {@code before}.
+     */
+    @GetMapping("/api/v1/admin/users")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<UserAdminViews.UserPage> search(
+            @RequestParam(required = false) @Size(min = 2, max = 100) String q,
+            @RequestParam(required = false) Role role,
+            @RequestParam(required = false) UserStatus status,
+            @RequestParam(required = false) UUID before,
+            @RequestParam(defaultValue = "20") @Min(1) @Max(UserAdminService.MAX_PAGE_SIZE) int limit) {
+        return ApiResponse.ok(admin.search(UserSearch.of(q), role, status, before, limit));
+    }
+
+    /** One account with verification state and driver review status; audited (USER_VIEWED). */
+    @GetMapping("/api/v1/admin/users/{userId}")
+    @PreAuthorize("hasRole('ADMINISTRATOR')")
+    public ApiResponse<UserAdminViews.UserDetail> view(@PathVariable UUID userId) {
+        return ApiResponse.ok(admin.view(CurrentUser.get().id(), userId));
     }
 
     @PutMapping("/api/v1/admin/users/{userId}/roles")

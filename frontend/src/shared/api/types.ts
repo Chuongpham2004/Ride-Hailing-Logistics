@@ -422,3 +422,28 @@ export interface PricingRule {
 }
 
 export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED';
+
+/** user-service UserAdminViews.UserSummary. */
+export interface AdminUserSummary {
+  id: string;
+  email?: string;
+  phone?: string;
+  fullName: string;
+  roles: Role[];
+  status: UserStatus;
+  createdAt: string;
+}
+
+/** user-service UserAdminViews.UserPage; pass nextBefore as `before` for the next page. */
+export interface AdminUserPage {
+  items: AdminUserSummary[];
+  nextBefore?: string;
+}
+
+/** user-service UserAdminViews.UserDetail; driverReviewStatus only for accounts with a driver profile. */
+export interface AdminUser extends AdminUserSummary {
+  emailVerified: boolean;
+  phoneVerified: boolean;
+  updatedAt: string;
+  driverReviewStatus?: ReviewStatus;
+}

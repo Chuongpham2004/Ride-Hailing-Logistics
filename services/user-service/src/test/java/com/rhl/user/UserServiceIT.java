@@ -231,6 +231,54 @@ class UserServiceIT {
     }
 
     @Test
+    void administratorsLookUpUsersByNameEmailPhoneOrIdAndEachViewIsAudited() throws Exception {
+        String admin = login("admin@rhl.test", "admin-password-123");
+        String tag = UUID.randomUUID().toString().substring(0, 8);
+        String email = "lookup-" + tag + "@rhl.test";
+        String phone = "09" + String.valueOf(Math.abs(tag.hashCode()) % 100_000_000 + 100_000_000).substring(1);
+        JsonNode user = data(call(post("/api/v1/auth/register"), null, Map.of("email", email, "phone", phone,
+                "password", PASSWORD, "fullName", "Lookup " + tag, "role", "DRIVER")).andExpect(status().isCreated()));
+        String userId = user.path("id").asString();
+
+        call(get("/api/v1/admin/users").param("q", "LOOKUP " + tag.toUpperCase()), admin, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items.length()").value(1))
+                .andExpect(jsonPath("$.data.items[0].id").value(userId))
+                .andExpect(jsonPath("$.data.items[0].roles[0]").value("DRIVER"));
+        call(get("/api/v1/admin/users").param("q", phone.substring(1)), admin, null)
+                .andExpect(jsonPath("$.data.items[0].id").value(userId));
+        call(get("/api/v1/admin/users").param("q", userId), admin, null)
+                .andExpect(jsonPath("$.data.items.length()").value(1));
+        call(get("/api/v1/admin/users").param("q", tag).param("role", "CUSTOMER"), admin, null)
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+        // A LIKE wildcard in the query is a literal character, not "match anything".
+        call(get("/api/v1/admin/users").param("q", "%%").param("limit", "100"), admin, null)
+                .andExpect(jsonPath("$.data.items.length()").value(0));
+        call(get("/api/v1/admin/users").param("q", "a"), admin, null)
+                .andExpect(status().isBadRequest());
+
+        // Newest first, paged with nextBefore.
+        JsonNode first = data(call(get("/api/v1/admin/users").param("limit", "1"), admin, null)
+                .andExpect(status().isOk()));
+        String next = first.path("nextBefore").asString();
+        JsonNode second = data(call(get("/api/v1/admin/users").param("limit", "1").param("before", next), admin, null));
+        assertThat(second.path("items").get(0).path("id").asString()).isLessThan(next);
+
+        call(get("/api/v1/admin/users/" + userId), admin, null)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.email").value(email))
+                .andExpect(jsonPath("$.data.emailVerified").value(false))
+                .andExpect(jsonPath("$.data.status").value("ACTIVE"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM audit_records WHERE action = 'USER_VIEWED' "
+                + "AND target_id = ?", Integer.class, userId)).isEqualTo(1);
+
+        String customer = login(registerAndReturnEmail("CUSTOMER"), PASSWORD);
+        call(get("/api/v1/admin/users"), customer, null).andExpect(status().isForbidden());
+        call(get("/api/v1/admin/users/" + userId), customer, null).andExpect(status().isForbidden());
+        call(get("/api/v1/admin/users/" + UUID.randomUUID()), admin, null).andExpect(status().isNotFound());
+    }
+
+    @Test
     void signUpRejectsDuplicatesAndStaffRoles() throws Exception {
         String email = unique("dup");
         register(email, "CUSTOMER");
@@ -627,6 +675,12 @@ class UserServiceIT {
     private JsonNode register(String email, String role) throws Exception {
         return data(call(post("/api/v1/auth/register"), null, registration(email, role))
                 .andExpect(status().isCreated()));
+    }
+
+    private String registerAndReturnEmail(String role) throws Exception {
+        String email = unique(role.toLowerCase());
+        register(email, role);
+        return email;
     }
 
     private static Map<String, Object> registration(String email, String role) {
