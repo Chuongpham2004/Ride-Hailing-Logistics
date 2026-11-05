@@ -336,3 +336,89 @@ export interface StaffTripDetail {
   pickupCodeFailures: number;
   deliveryCodeFailures: number;
 }
+
+/** payment-service PaymentQueries.EntryView; `amount` is signed (commission is negative). */
+export interface WalletEntry {
+  id: string;
+  type: 'EARNING' | 'COMMISSION' | 'ADJUSTMENT';
+  amount: number;
+  balanceAfter: number;
+  referenceType: 'PAYMENT' | 'ADJUSTMENT';
+  referenceId: string;
+  tripId?: string;
+  commissionRuleVersion?: number;
+  createdAt: string;
+}
+
+/** payment-service PaymentQueries.WalletView; walletId is absent until the first entry. */
+export interface Wallet {
+  walletId?: string;
+  driverId: string;
+  balance: number;
+  currency: string;
+  entries: WalletEntry[];
+  nextBefore?: string;
+}
+
+/** payment-service PaymentQueries.PaymentPage; pass nextBefore as `before` for the next page. */
+export interface PaymentPage {
+  items: Payment[];
+  nextBefore?: string;
+}
+
+/** payment-service PaymentQueries.AttemptView: one call to the payment provider. */
+export interface PaymentAttempt {
+  attemptNo: number;
+  status: PaymentStatus;
+  provider?: string;
+  providerRef?: string;
+  failureCode?: string;
+  createdAt: string;
+  completedAt?: string;
+}
+
+/** payment-service RefundView as finance staff see it, with the internal note. */
+export interface StaffRefund extends Refund {
+  note?: string;
+  provider?: string;
+  providerRef?: string;
+  failureCode?: string;
+  requestedBy?: string;
+}
+
+export type AdjustmentReason = 'REFUND_CLAWBACK' | 'EARNING_CORRECTION' | 'INCENTIVE' | 'OTHER';
+
+/** payment-service PaymentQueries.AdjustmentView; amount is signed (negative debits the driver). */
+export interface WalletAdjustment {
+  id: string;
+  walletId: string;
+  driverId: string;
+  amount: number;
+  currency: string;
+  reason: AdjustmentReason;
+  note?: string;
+  tripId?: string;
+  refundId?: string;
+  balanceAfter: number;
+  requestedBy: string;
+  createdAt: string;
+}
+
+/** pricing-service PricingViews.RuleView; amounts in whole VND. */
+export interface PricingRule {
+  id: string;
+  serviceType: ServiceType;
+  regionCode: string;
+  version: number;
+  baseFare: number;
+  perKm: number;
+  perMinute: number;
+  minimumFare: number;
+  currency: string;
+  effectiveFrom: string;
+  /** Absent for the latest version, which runs until a newer one is scheduled. */
+  effectiveTo?: string;
+  createdAt: string;
+}
+
+export type UserStatus = 'ACTIVE' | 'LOCKED' | 'DISABLED';

@@ -1,4 +1,11 @@
-import type { ActorType, CancelReason, ReviewDecisionType, StaffOffer } from '@/shared/api/types';
+import type {
+  ActorType,
+  AdjustmentReason,
+  CancelReason,
+  ReviewDecisionType,
+  StaffOffer,
+  UserStatus,
+} from '@/shared/api/types';
 
 /* Words for the staff area; staff read about customers and drivers in the third person. */
 
@@ -48,6 +55,19 @@ export function shortId(id: string): string {
 export function changeReason(reason: string): string {
   return CANCEL_REASON_NAMES[reason as CancelReason] ?? reason;
 }
+
+export const ADJUSTMENT_REASON_NAMES: Record<AdjustmentReason, string> = {
+  REFUND_CLAWBACK: 'Thu lại phần đã hoàn cho khách',
+  EARNING_CORRECTION: 'Sửa khoản thu nhập / phí sai',
+  INCENTIVE: 'Thưởng',
+  OTHER: 'Lý do khác',
+};
+
+export const USER_STATUS_NAMES: Record<UserStatus, string> = {
+  ACTIVE: 'Đang hoạt động',
+  LOCKED: 'Tạm khoá',
+  DISABLED: 'Vô hiệu hoá',
+};
 
 /** Inputs and selects in the staff area. */
 export const FIELD = 'h-10 rounded-lg border-[1.5px] border-field bg-white px-3 text-[15px] text-asphalt';
