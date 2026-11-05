@@ -17,17 +17,7 @@ export const VEHICLE_SERVES: Record<VehicleType, ServiceType[]> = {
   VAN: ['DELIVERY'],
 };
 
-export const VEHICLE_NAMES: Record<VehicleType, string> = {
-  MOTORBIKE: 'Xe máy',
-  CAR_4_SEAT: 'Ô tô 4 chỗ',
-  CAR_7_SEAT: 'Ô tô 7 chỗ',
-  VAN: 'Xe tải van',
-};
-
-export const SERVICE_NAMES: Record<ServiceType, string> = {
-  RIDE: 'Chở khách',
-  DELIVERY: 'Giao hàng',
-};
+export { SERVICE_NAMES, VEHICLE_NAMES } from '@/shared/drivers/text';
 
 /** GET /drivers/me/profile; 404 until the driver has created a profile. */
 export function useDriverProfile(refetchInterval?: number) {

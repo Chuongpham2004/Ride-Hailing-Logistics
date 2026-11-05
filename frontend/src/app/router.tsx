@@ -60,7 +60,54 @@ export const router = createBrowserRouter([
   {
     path: '/admin',
     element: <RequireArea area="admin" />,
-    children: [{ index: true, lazy: page(() => import('@/features/admin/AdminHomePage')) }],
+    children: [
+      {
+        lazy: page(() => import('@/features/admin/AdminLayout')),
+        children: [
+          { index: true, lazy: page(() => import('@/features/admin/AdminHomePage')) },
+          // handle.section: AdminLayout shows the page only to roles that may use the section.
+          {
+            handle: { section: 'drivers' },
+            children: [
+              { path: 'drivers', lazy: page(() => import('@/features/admin/DriverQueuePage')) },
+              { path: 'drivers/:driverId', lazy: page(() => import('@/features/admin/DriverReviewPage')) },
+            ],
+          },
+          {
+            handle: { section: 'trips' },
+            children: [
+              { path: 'trips', lazy: page(() => import('@/features/admin/TripSearchPage')) },
+              { path: 'trips/:tripId', lazy: page(() => import('@/features/admin/TripDetailPage')) },
+            ],
+          },
+          {
+            handle: { section: 'payments' },
+            children: [
+              { path: 'payments', lazy: page(() => import('@/features/admin/PaymentsPage')) },
+              { path: 'payments/:paymentId', lazy: page(() => import('@/features/admin/PaymentDetailPage')) },
+            ],
+          },
+          {
+            handle: { section: 'wallets' },
+            children: [
+              { path: 'wallets', lazy: page(() => import('@/features/admin/WalletPage')) },
+              { path: 'wallets/:driverId', lazy: page(() => import('@/features/admin/WalletPage')) },
+            ],
+          },
+          {
+            handle: { section: 'pricing' },
+            children: [{ path: 'pricing', lazy: page(() => import('@/features/admin/PricingPage')) }],
+          },
+          {
+            handle: { section: 'users' },
+            children: [
+              { path: 'users', lazy: page(() => import('@/features/admin/UsersPage')) },
+              { path: 'users/:userId', lazy: page(() => import('@/features/admin/UsersPage')) },
+            ],
+          },
+        ],
+      },
+    ],
   },
   { path: '*', element: <NotFound /> },
 ]);
