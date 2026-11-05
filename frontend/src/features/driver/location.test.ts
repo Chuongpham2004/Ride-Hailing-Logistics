@@ -1,7 +1,14 @@
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { apiUrl, ok, server } from '@/test/server';
-import { createSequence, distanceMeters, reportLocation, stepToward } from './location';
+import {
+  createSequence,
+  distanceMeters,
+  reportablePosition,
+  reportLocation,
+  STALE_FIX_MS,
+  stepToward,
+} from './location';
 
 const socket = vi.hoisted(() => ({ open: true, sent: [] as unknown[][] }));
 
@@ -67,5 +74,33 @@ describe('driver location', () => {
       ),
     );
     await expect(reportLocation(HERE)).rejects.toMatchObject({ code: 'BUSINESS_RULE_VIOLATION' });
+  });
+
+  it('sends the time of the GPS fix, not the time of sending', async () => {
+    socket.open = true;
+    socket.sent.length = 0;
+    const fixedAt = Date.parse('2026-11-05T10:00:00Z');
+    await reportLocation({ ...HERE, fixedAt }, fixedAt + 9000);
+    expect(socket.sent[0]![1]).toMatchObject({ deviceTimestamp: '2026-11-05T10:00:00.000Z' });
+  });
+
+  it('stops reporting a GPS fix once it is older than the freshness window', () => {
+    const now = Date.parse('2026-11-05T10:00:00Z');
+    const fix = { ...HERE, fixedAt: now - 5000 };
+    expect(reportablePosition({ mode: 'gps', position: fix }, now)).toBe(fix);
+    expect(
+      reportablePosition({ mode: 'gps', position: { ...HERE, fixedAt: now - STALE_FIX_MS - 1 } }, now),
+    ).toBeNull();
+    expect(reportablePosition({ mode: 'gps', position: HERE }, now)).toBeNull();
+    expect(reportablePosition({ mode: 'gps', position: null }, now)).toBeNull();
+  });
+
+  it('always reports the simulated position as current', () => {
+    const now = Date.parse('2026-11-05T10:00:00Z');
+    const old = { ...HERE, fixedAt: now - 10 * STALE_FIX_MS };
+    expect(reportablePosition({ mode: 'simulated', position: old }, now)).toEqual({
+      ...HERE,
+      fixedAt: undefined,
+    });
   });
 });

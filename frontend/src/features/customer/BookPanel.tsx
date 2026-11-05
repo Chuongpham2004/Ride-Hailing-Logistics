@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState, type ReactNode } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
 import { useNavigate } from 'react-router';
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
 import type { DeliveryInput, PackageSize, Quote } from '@/shared/api/types';
@@ -17,18 +17,14 @@ const PACKAGE_SIZES: { value: PackageSize; label: string; hint: string }[] = [
 
 /** Limits from trip-service DeliveryRequest. */
 const deliverySchema = z.object({
-  recipientName: z.string().trim().min(1, 'Nhập tên người nhận.').max(120),
-  recipientPhone: z
-    .string()
-    .trim()
-    .regex(/^\+?[0-9 .-]{8,20}$/, 'Số điện thoại chưa đúng.'),
-  packageDescription: z.string().trim().min(1, 'Ghi món hàng là gì.').max(200),
+  recipientName: z.string().check(z.trim(), z.minLength(1, 'Nhập tên người nhận.'), z.maxLength(120)),
+  recipientPhone: z.string().check(z.trim(), z.regex(/^\+?[0-9 .-]{8,20}$/, 'Số điện thoại chưa đúng.')),
+  packageDescription: z.string().check(z.trim(), z.minLength(1, 'Ghi món hàng là gì.'), z.maxLength(200)),
   packageSize: z.enum(['SMALL', 'MEDIUM', 'LARGE']),
   weightKg: z
     .number({ error: 'Nhập khối lượng.' })
-    .positive('Nhập khối lượng.')
-    .max(1000, 'Khối lượng quá lớn.'),
-  instructions: z.string().trim().max(300, 'Tối đa 300 ký tự.'),
+    .check(z.positive('Nhập khối lượng.'), z.maximum(1000, 'Khối lượng quá lớn.')),
+  instructions: z.string().check(z.trim(), z.maxLength(300, 'Tối đa 300 ký tự.')),
 });
 
 type DeliveryForm = z.infer<typeof deliverySchema>;

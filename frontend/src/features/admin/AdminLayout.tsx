@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useMatches, useNavigate } from 'react-router';
 import { logout, useSession } from '@/shared/auth/session';
+import { ConnectionBanner } from '@/shared/realtime/ConnectionBanner';
 import { canUse, ROLE_NAMES, sectionsFor, type SectionKey } from './sections';
 
 /**
@@ -67,7 +68,8 @@ export default function AdminLayout() {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 overflow-y-auto">
+      <main className="relative min-w-0 overflow-y-auto">
+        <ConnectionBanner live={false} />
         {allowed ? (
           <Outlet />
         ) : (

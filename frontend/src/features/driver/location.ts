@@ -24,9 +24,15 @@ export const MAX_ACCURACY_M = 50;
 export const SIM_SPEED_MPS = 15;
 const SIM_TICK_MS = 1000;
 const SIM_ACCURACY_M = 8;
+/** Matching ignores fixes older than this (location-service freshness window): stop sending them. */
+export const STALE_FIX_MS = 30_000;
+/** A parked phone may stop calling back; ask the GPS again once the last fix is this old. */
+export const REFRESH_FIX_MS = 10_000;
+const FRESHNESS_CHECK_MS = 5000;
 
 export type LocationMode = 'gps' | 'simulated';
-export type GpsState = 'waiting' | 'ok' | 'weak' | 'denied' | 'unavailable';
+/** lost: the GPS stopped answering (tunnel, indoors); reports pause until a new fix comes in. */
+export type GpsState = 'waiting' | 'ok' | 'weak' | 'lost' | 'denied' | 'unavailable';
 
 export interface Position {
   latitude: number;
@@ -34,6 +40,8 @@ export interface Position {
   accuracyMeters: number;
   headingDegrees?: number;
   speedMetersPerSecond?: number;
+  /** When the GPS measured it (epoch ms); absent for the simulated position, which is always current. */
+  fixedAt?: number;
 }
 
 interface LocationState {
@@ -146,12 +154,13 @@ export function createSequence(now: () => number = Date.now): () => number {
   };
 }
 
-function toUpdate(position: Position): DriverLocationUpdate {
+function toUpdate(position: Position, now: number): DriverLocationUpdate {
   const update: DriverLocationUpdate = {
     latitude: position.latitude,
     longitude: position.longitude,
     accuracyMeters: Math.max(0, position.accuracyMeters),
-    deviceTimestamp: new Date().toISOString(),
+    // The time of the fix, not of sending: a repeated old fix must not look fresh to matching.
+    deviceTimestamp: new Date(position.fixedAt ?? now).toISOString(),
   };
   if (
     position.headingDegrees !== undefined &&
@@ -169,8 +178,8 @@ function toUpdate(position: Position): DriverLocationUpdate {
 const nextSequence = createSequence();
 
 /** Sends one report: over the socket when it is open, otherwise POST /locations/me. */
-export async function reportLocation(position: Position): Promise<void> {
-  const update = toUpdate(position);
+export async function reportLocation(position: Position, now = Date.now()): Promise<void> {
+  const update = toUpdate(position, now);
   const sequence = nextSequence();
   if (realtime.send('DRIVER_LOCATION_UPDATED', update, { sequence })) return;
   await api('/api/v1/locations/me', { method: 'POST', body: { sequence, ...update } });
@@ -182,6 +191,21 @@ const SERVER_ERRORS: Record<string, string> = {
   DEPENDENCY_UNAVAILABLE: 'Máy chủ tạm chưa nhận được vị trí.',
 };
 
+/**
+ * The position to report now, or null: a GPS fix only while it is younger than the freshness
+ * window; the simulated position always.
+ */
+export function reportablePosition(
+  state: Pick<LocationState, 'mode' | 'position'>,
+  now = Date.now(),
+): Position | null {
+  const { mode, position } = state;
+  if (!position) return null;
+  if (mode === 'simulated') return { ...position, fixedAt: undefined };
+  if (position.fixedAt === undefined || now - position.fixedAt > STALE_FIX_MS) return null;
+  return position;
+}
+
 /** Follows the device GPS while the page is open (also while offline, to show the map). */
 function useGpsWatch(enabled: boolean): void {
   useEffect(() => {
@@ -192,30 +216,61 @@ function useGpsWatch(enabled: boolean): void {
       return;
     }
     useDriverLocation.setState({ gps: 'waiting' });
-    const id = navigator.geolocation.watchPosition(
-      (fix) => {
-        const { latitude, longitude, accuracy, heading, speed } = fix.coords;
-        useDriverLocation.setState({
-          gps: accuracy > MAX_ACCURACY_M ? 'weak' : 'ok',
-          position: {
-            latitude,
-            longitude,
-            accuracyMeters: accuracy,
-            headingDegrees: heading ?? undefined,
-            speedMetersPerSecond: speed ?? undefined,
-          },
-        });
-      },
-      (error) => {
-        // Without a GPS the driver can still test with the simulated position.
-        useDriverLocation.setState({
-          gps: error.code === error.PERMISSION_DENIED ? 'denied' : 'unavailable',
-        });
+    const onFix = (fix: GeolocationPosition) => {
+      const { latitude, longitude, accuracy, heading, speed } = fix.coords;
+      useDriverLocation.setState({
+        gps: accuracy > MAX_ACCURACY_M ? 'weak' : 'ok',
+        position: {
+          latitude,
+          longitude,
+          accuracyMeters: accuracy,
+          headingDegrees: heading ?? undefined,
+          speedMetersPerSecond: speed ?? undefined,
+          fixedAt: fix.timestamp,
+        },
+      });
+    };
+    const onError = (error: GeolocationPositionError) => {
+      if (error.code === error.PERMISSION_DENIED) {
+        // Without access the driver can still test with the simulated position.
+        useDriverLocation.setState({ gps: 'denied' });
         useDriverLocation.getState().setMode('simulated');
-      },
-      { enableHighAccuracy: true, maximumAge: 2000, timeout: 20000 },
-    );
-    return () => navigator.geolocation.clearWatch(id);
+        return;
+      }
+      // No fix for now (tunnel, indoors, timeout): keep watching, the next fix clears it.
+      useDriverLocation.setState({ gps: 'lost' });
+    };
+    const id = navigator.geolocation.watchPosition(onFix, onError, {
+      enableHighAccuracy: true,
+      maximumAge: 2000,
+      timeout: 20000,
+    });
+
+    let asking = false;
+    const check = setInterval(() => {
+      const { position, gps } = useDriverLocation.getState();
+      const age = position?.fixedAt === undefined ? Infinity : Date.now() - position.fixedAt;
+      if (age > STALE_FIX_MS && gps !== 'denied' && gps !== 'waiting')
+        useDriverLocation.setState({ gps: 'lost' });
+      if (age > REFRESH_FIX_MS && !asking) {
+        asking = true;
+        navigator.geolocation.getCurrentPosition(
+          (fix) => {
+            asking = false;
+            onFix(fix);
+          },
+          (error) => {
+            asking = false;
+            if (error.code === error.PERMISSION_DENIED) onError(error);
+          },
+          { enableHighAccuracy: true, maximumAge: 0, timeout: REFRESH_FIX_MS },
+        );
+      }
+    }, FRESHNESS_CHECK_MS);
+    return () => {
+      navigator.geolocation.clearWatch(id);
+      clearInterval(check);
+    };
   }, [enabled]);
 }
 
@@ -283,7 +338,7 @@ export function useLocationReporter(online: boolean): void {
   useEffect(() => {
     if (!online) return;
     const tick = () => {
-      const { position } = useDriverLocation.getState();
+      const position = reportablePosition(useDriverLocation.getState());
       if (!position || sending.current) return;
       sending.current = true;
       reportLocation(position)

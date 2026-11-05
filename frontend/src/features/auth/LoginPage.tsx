@@ -2,7 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
-import { z } from 'zod';
+import { z } from 'zod/mini';
 import { messageFor } from '@/shared/api/messages';
 import { homeFor } from '@/shared/auth/areas';
 import { login, useSession } from '@/shared/auth/session';
@@ -11,8 +11,8 @@ import { RevealBackdrop } from '@/shared/ui/RevealBackdrop';
 import { Splash } from '@/shared/ui/Splash';
 
 const schema = z.object({
-  identifier: z.string().trim().min(1, 'Nhập email hoặc số điện thoại.').max(254),
-  password: z.string().min(1, 'Nhập mật khẩu.').max(128),
+  identifier: z.string().check(z.trim(), z.minLength(1, 'Nhập email hoặc số điện thoại.'), z.maxLength(254)),
+  password: z.string().check(z.minLength(1, 'Nhập mật khẩu.'), z.maxLength(128)),
 });
 
 type Form = z.infer<typeof schema>;
