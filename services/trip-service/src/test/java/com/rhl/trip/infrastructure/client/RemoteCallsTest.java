@@ -167,6 +167,7 @@ class RemoteCallsTest {
                 new TripServiceProperties.Codes(Set.of(ServiceType.RIDE), 4, 5),
                 new TripServiceProperties.Delivery(20_000),
                 new TripServiceProperties.Resilience(50, 4, 4, Duration.ofMinutes(1), 2, Duration.ofMillis(10)),
-                remote, remote, new TripServiceProperties.Kafka(3, (short) 1));
+                remote, remote, new TripServiceProperties.Kafka(3, (short) 1),
+                new TripServiceProperties.Completion(300));
     }
 }

@@ -20,7 +20,7 @@ import java.util.Set;
 public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @NotNull Codes codes,
                                     @Valid @NotNull Delivery delivery, @Valid @NotNull Resilience resilience,
                                     @Valid @NotNull Remote location, @Valid @NotNull Remote pricing,
-                                    @Valid @NotNull Kafka kafka) {
+                                    @Valid @NotNull Kafka kafka, @Valid @NotNull Completion completion) {
 
     /**
      * Circuit breaker and retry applied to each remote service (README §8.5).
@@ -46,6 +46,14 @@ public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @N
      */
     public record Codes(@NotNull Set<ServiceType> pickupRequired, @Min(4) @Max(8) int length,
                         @Min(1) int maxAttempts) {
+    }
+
+    /**
+     * Where trips end. A trip completed farther than this from its drop-off (the driver's last
+     * known position) is flagged for support: the customer may have asked to stop early, or the
+     * driver completed before arriving.
+     */
+    public record Completion(@Positive int maxDistanceMeters) {
     }
 
     /** @param maxWeightGrams heaviest package accepted (TBD-08 placeholder) */

@@ -94,6 +94,17 @@ public class Trip {
     @Column(name = "delivery_code_failures", nullable = false)
     private int deliveryCodeFailures;
 
+    /** The driver's last known position when the trip was completed; null when none was known. */
+    @Column(name = "completion_latitude")
+    private Double completionLatitude;
+
+    @Column(name = "completion_longitude")
+    private Double completionLongitude;
+
+    /** Distance from that position to the planned drop-off, in metres. */
+    @Column(name = "completion_distance_meters")
+    private Integer completionDistanceMeters;
+
     /**
      * Also the {@code aggregateVersion} of trip events, so consumers can drop stale ones (FR-EVT-006).
      * {@code null} until persisted, so Spring Data inserts instead of merging.
@@ -187,6 +198,20 @@ public class Trip {
             completedAt = now;
         }
         return transition;
+    }
+
+    /**
+     * Records where the driver was when completing, and how far that is from the planned
+     * drop-off; support reviews trips completed far from it. Only for a completed trip.
+     */
+    public void recordCompletionPoint(double latitude, double longitude) {
+        if (status != TripStatus.COMPLETED) {
+            throw DomainException.invalidTripState("Only a completed trip has a completion point");
+        }
+        completionLatitude = latitude;
+        completionLongitude = longitude;
+        completionDistanceMeters = (int) Math.round(
+                GeoDistance.meters(latitude, longitude, dropoff.latitude(), dropoff.longitude()));
     }
 
     public Transition cancel(Actor actor, CancelReason reason, String note, Instant now) {

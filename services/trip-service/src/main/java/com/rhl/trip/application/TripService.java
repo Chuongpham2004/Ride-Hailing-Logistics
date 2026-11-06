@@ -21,6 +21,7 @@ import com.rhl.trip.domain.Trip;
 import com.rhl.trip.domain.TripStatus;
 import com.rhl.trip.domain.TripStateMachine;
 import com.rhl.trip.domain.TripStatusChange;
+import com.rhl.trip.infrastructure.client.LocationClient;
 import com.rhl.trip.infrastructure.client.PricingClient;
 import com.rhl.trip.infrastructure.persistence.DeliveryDetailsRepository;
 import com.rhl.trip.infrastructure.persistence.DeliveryProofRepository;
@@ -61,6 +62,7 @@ public class TripService {
     private final ApplicationEventPublisher afterCommit;
     private final MatchingPolicy policy;
     private final PricingClient pricing;
+    private final LocationClient location;
     private final DeliveryDetailsRepository deliveries;
     private final DeliveryProofRepository proofs;
     private final TripServiceProperties properties;
@@ -254,6 +256,11 @@ public class TripService {
         Transition transition = trip.advance(target, driverId, code, properties.codes().maxAttempts(), now);
         if (target == TripStatus.COMPLETED && trip.getServiceType() == ServiceType.DELIVERY) {
             proofs.save(DeliveryProof.byCode(tripId, driverId, now));
+        }
+        if (target == TripStatus.COMPLETED) {
+            // Where the trip really ended; unknown (location-service down or no recent report)
+            // never stops the completion.
+            location.current(driverId).ifPresent(p -> trip.recordCompletionPoint(p.latitude(), p.longitude()));
         }
         record(trip, transition);
         return view(trip, ActorType.DRIVER);

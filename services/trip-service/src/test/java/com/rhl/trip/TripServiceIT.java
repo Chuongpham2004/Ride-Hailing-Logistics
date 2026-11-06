@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.Callable;
@@ -186,7 +187,14 @@ class TripServiceIT {
                 .andExpect(status().isUnprocessableEntity());
         perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(near), Map.of("code", pickupCode))
                 .andExpect(status().isOk());
+        // The driver completes about 1.2 km short of the drop-off: recorded and flagged for support.
+        when(location.current(near)).thenReturn(Optional.of(new LocationClient.DriverPosition(10.7700, 106.6900)));
         perform(post("/api/v1/trips/" + tripId + "/complete"), driverToken(near)).andExpect(status().isOk());
+        JsonNode completion = data(perform(get("/api/v1/admin/trips/" + tripId), staffToken(UUID.randomUUID())))
+                .path("completion");
+        assertThat(completion.path("latitude").asDouble()).isEqualTo(10.7700);
+        assertThat(completion.path("distanceToDropoffMeters").asInt()).isBetween(1000, 1400);
+        assertThat(completion.path("awayFromDropoff").asBoolean()).isTrue();
         // A retried completion changes nothing and publishes nothing (BR-009).
         perform(post("/api/v1/trips/" + tripId + "/complete"), driverToken(near))
                 .andExpect(status().isOk())

@@ -1,6 +1,7 @@
 package com.rhl.trip.application;
 
 import com.rhl.common.web.ApiException;
+import com.rhl.trip.TripServiceProperties;
 import com.rhl.trip.domain.ActorType;
 import com.rhl.trip.domain.DeliveryProof;
 import com.rhl.trip.domain.DriverOffer;
@@ -37,6 +38,7 @@ public class StaffTripService {
     private final DeliveryProofRepository proofs;
     private final TripService tripService;
     private final AuditLog audit;
+    private final TripServiceProperties properties;
 
     /** All filters optional; {@code createdTo} is exclusive. */
     public record Filter(TripStatus status, UUID customerId, UUID driverId, ServiceType serviceType,
@@ -60,12 +62,23 @@ public class StaffTripService {
     }
 
     /**
+     * Where a completed trip ended: the driver's last known position then, and its distance to
+     * the planned drop-off.
+     *
+     * @param awayFromDropoff farther than {@code rhl.completion.max-distance-meters}: worth a look
+     *                        (stopped early on request, or completed before arriving)
+     */
+    public record CompletionView(double latitude, double longitude, int distanceToDropoffMeters,
+                                 boolean awayFromDropoff) {
+    }
+
+    /**
      * Handover codes are never shown to staff; the failure counters tell whether a code got
      * locked and the trip needs an exceptional cancellation.
      */
     public record TripDetail(TripViews.TripView trip, List<TripViews.StatusChangeView> history,
                              List<OfferView> offers, ProofView deliveryProof, String cancelNote,
-                             int pickupCodeFailures, int deliveryCodeFailures) {
+                             int pickupCodeFailures, int deliveryCodeFailures, CompletionView completion) {
     }
 
     @Transactional(readOnly = true)
@@ -87,7 +100,17 @@ public class StaffTripService {
                 history.findByTripIdOrderByIdAsc(tripId).stream().map(TripViews.StatusChangeView::of).toList(),
                 offers.findByTripIdOrderByCreatedAt(tripId).stream().map(OfferView::of).toList(),
                 proofs.findByTripId(tripId).map(ProofView::of).orElse(null), trip.getCancelNote(),
-                trip.getPickupCodeFailures(), trip.getDeliveryCodeFailures());
+                trip.getPickupCodeFailures(), trip.getDeliveryCodeFailures(), completion(trip));
+    }
+
+    /** Null when the trip is not completed, or no position was known at that moment. */
+    private CompletionView completion(Trip trip) {
+        if (trip.getCompletionDistanceMeters() == null) {
+            return null;
+        }
+        int distance = trip.getCompletionDistanceMeters();
+        return new CompletionView(trip.getCompletionLatitude(), trip.getCompletionLongitude(), distance,
+                distance > properties.completion().maxDistanceMeters());
     }
 
     private static String name(Enum<?> value) {

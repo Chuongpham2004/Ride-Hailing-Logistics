@@ -13,6 +13,7 @@ import tools.jackson.databind.JsonNode;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -57,6 +58,30 @@ public class LocationClient {
             }
         }
         return candidates;
+    }
+
+    /** A driver's last accepted position, as location-service keeps it for matching. */
+    public record DriverPosition(double latitude, double longitude) {
+    }
+
+    /**
+     * The driver's current position, or empty when location-service has none (not reported
+     * lately) or cannot be reached: callers record what is known and never fail because of it.
+     */
+    public Optional<DriverPosition> current(UUID driverId) {
+        try {
+            JsonNode response = calls.read(() -> rest.get()
+                    .uri("/internal/v1/drivers/{driverId}/location", driverId)
+                    .retrieve()
+                    .body(JsonNode.class));
+            JsonNode data = response == null ? null : response.path("data");
+            if (data == null || !data.has("latitude") || !data.has("longitude")) {
+                return Optional.empty();
+            }
+            return Optional.of(new DriverPosition(data.path("latitude").asDouble(), data.path("longitude").asDouble()));
+        } catch (RestClientException | CallNotPermittedException e) {
+            return Optional.empty();
+        }
     }
 
     public static class LocationUnavailableException extends RuntimeException {
