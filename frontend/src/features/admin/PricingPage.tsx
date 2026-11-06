@@ -39,7 +39,7 @@ export default function PricingPage() {
   const [notice, setNotice] = useState<string | null>(null);
 
   return (
-    <div className="flex max-w-6xl flex-col gap-5 px-10 py-8">
+    <div className="flex w-full flex-col gap-5 px-10 py-8 2xl:px-14">
       <div className="flex flex-col gap-1">
         <h1 className="m-0 text-[28px] leading-tight font-bold">Bảng giá</h1>
         <p className="m-0 max-w-[70ch] text-[15px] text-ink-2">

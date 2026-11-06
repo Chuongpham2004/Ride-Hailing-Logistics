@@ -12,7 +12,7 @@ export default function EarningsPage() {
   const entries = wallet.data?.pages.flatMap((page) => page.entries) ?? [];
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8">
+    <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8 lg:page-column lg:py-12">
       <h1 className="m-0 text-[28px] leading-tight font-bold">Thu nhập</h1>
 
       {wallet.isPending && <div aria-hidden="true" className="h-28 animate-pulse rounded-xl bg-concrete-2" />}

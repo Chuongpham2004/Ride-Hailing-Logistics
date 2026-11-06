@@ -3,10 +3,12 @@ import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
-import type { CancelReason, Trip } from '@/shared/api/types';
+import type { CancelReason, Stop, Trip } from '@/shared/api/types';
 import { formatDistance, formatDuration } from '@/shared/lib/format';
-import { useHeight } from '@/shared/lib/useHeight';
 import { MapView } from '@/shared/map/MapView';
+import { MapPanel } from '@/shared/ui/MapPanel';
+import { BESIDE_PANEL, useMapPanel } from '@/shared/ui/panelLayout';
+import type { LngLat } from '@/shared/map/polyline';
 import { Button } from '@/shared/ui/Button';
 import { Money } from '@/shared/ui/Money';
 import { Sheet } from '@/shared/ui/Sheet';
@@ -20,6 +22,7 @@ import {
   useTripStep,
   type TripStep,
 } from './driverTrips';
+import { useLegRoute, waypointsFrom } from './driverRoute';
 import { LocationPanel } from './LocationPanel';
 import { distanceMeters, useDriverLocation, useMapPosition } from './location';
 import { rememberActiveTrip, SERVICE_NAMES } from './profile';
@@ -37,11 +40,13 @@ export default function DriverTripPage() {
   const { tripId = '' } = useParams();
   const { data: trip, isPending, error } = useTrip(tripId);
   useTripSnapshotSync(tripId);
-  const [sheetRef, sheetHeight] = useHeight<HTMLDivElement>();
+  const { ref: sheetRef, insets } = useMapPanel();
   const ended = trip !== undefined && ENDED.has(trip.status);
   const { driver, onPick } = useMapPosition(!ended);
   // On the way to the pickup the map shows the pickup; once on board, the way to the drop-off.
   const toDropoff = trip?.status === 'IN_TRIP' || ended;
+  // Road route of the current leg; without one (estimate, still loading) a straight dashed line.
+  const route = useLegRoute(trip);
 
   return (
     <div className="absolute inset-0">
@@ -49,14 +54,16 @@ export default function DriverTripPage() {
         className="absolute inset-0"
         pickup={trip?.pickup}
         dropoff={trip ? trip.dropoff : null}
+        route={route}
         straightLine={toDropoff}
         driver={ended ? null : driver}
         onPick={ended ? undefined : onPick}
-        bottomInset={sheetHeight}
+        bottomInset={insets.bottom}
+        leftInset={insets.left}
       />
-      {!ended && <LocationPanel online className="absolute top-14 right-4 left-4" />}
+      {!ended && <LocationPanel online className={`absolute top-14 right-4 left-4 ${BESIDE_PANEL}`} />}
 
-      <div ref={sheetRef} className="absolute inset-x-0 bottom-0 max-h-[80%] overflow-y-auto">
+      <MapPanel panelRef={sheetRef} maxHeight={80}>
         <Sheet>
           {isPending && <div aria-hidden="true" className="h-40 animate-pulse rounded bg-concrete-2" />}
           {error && (
@@ -71,14 +78,14 @@ export default function DriverTripPage() {
               </Link>
             </div>
           )}
-          {trip && <TripSheet key={trip.status} trip={trip} />}
+          {trip && <TripSheet key={trip.status} trip={trip} route={route} />}
         </Sheet>
-      </div>
+      </MapPanel>
     </div>
   );
 }
 
-function TripSheet({ trip }: { trip: Trip }) {
+function TripSheet({ trip, route }: { trip: Trip; route: LngLat[] | null }) {
   const [cancelling, setCancelling] = useState(false);
   if (cancelling && DRIVER_CANCELLABLE.has(trip.status)) {
     return <CancelPanel trip={trip} onClose={() => setCancelling(false)} />;
@@ -89,7 +96,7 @@ function TripSheet({ trip }: { trip: Trip }) {
       <StepBlock trip={trip} />
       <Stops trip={trip} />
       {delivery && trip.delivery && !ENDED.has(trip.status) && <Recipient trip={trip} />}
-      <SimulatedDrive trip={trip} />
+      <SimulatedDrive trip={trip} route={route} />
       {DRIVER_CANCELLABLE.has(trip.status) && (
         <Button variant="secondary" onClick={() => setCancelling(true)}>
           Huỷ chuyến
@@ -170,9 +177,10 @@ function StepBlock({ trip }: { trip: Trip }) {
             codeName="mã giao"
             hint={`Hỏi ${trip.delivery?.recipientName ?? 'người nhận'} mã giao rồi nhập vào đây.`}
             label="Hoàn tất giao hàng"
+            checkNear={trip.dropoff}
           />
         ) : (
-          <PlainStep trip={trip} step={step} label="Hoàn tất chuyến" />
+          <CompleteStep trip={trip} />
         ))}
     </div>
   );
@@ -244,6 +252,65 @@ function ArriveStep({ trip }: { trip: Trip }) {
   );
 }
 
+/**
+ * Whether the car is still far from `stop` (the pickup when arriving, the drop-off when
+ * completing). The server takes both steps anywhere, since a customer may ask to stop early, so
+ * the app asks once more instead of refusing.
+ */
+function useNearCheck(stop: Stop | undefined) {
+  const position = useDriverLocation((state) => state.position);
+  const [confirming, setConfirming] = useState(false);
+  const away = position && stop ? distanceMeters(position, stop) : null;
+  return {
+    away,
+    confirming,
+    /** True when the step should wait for a second tap. */
+    needsConfirm: !confirming && away !== null && away > ARRIVE_CHECK_M,
+    confirm: () => setConfirming(true),
+    cancel: () => setConfirming(false),
+  };
+}
+
+function FarWarning({ away, stopName }: { away: number; stopName: string }) {
+  return (
+    <p role="alert" className="m-0 rounded-[10px] bg-concrete-2 px-3.5 py-3 text-[15px]">
+      Bạn còn cách {stopName} khoảng <strong>{formatDistance(away)}</strong>. Khách xin dừng sớm thì vẫn hoàn
+      tất được; nơi hoàn tất được ghi lại cho tổng đài đối soát.
+    </p>
+  );
+}
+
+/** Completing a ride: asks again when the car is still far from the drop-off. */
+function CompleteStep({ trip }: { trip: Trip }) {
+  const move = useTripStep(trip.id);
+  const near = useNearCheck(trip.dropoff);
+  const onComplete = () => {
+    if (near.needsConfirm) {
+      near.confirm();
+      return;
+    }
+    move.mutate({ step: 'complete' });
+  };
+  return (
+    <>
+      {near.confirming && near.away !== null && <FarWarning away={near.away} stopName="điểm đến" />}
+      {move.isError && (
+        <p role="alert" className="m-0 text-sm text-stop">
+          {messageFor(move.error)}
+        </p>
+      )}
+      <Button busy={move.isPending} onClick={onComplete}>
+        {near.confirming ? 'Vẫn hoàn tất chuyến' : 'Hoàn tất chuyến'}
+      </Button>
+      {near.confirming && (
+        <Button variant="secondary" onClick={near.cancel}>
+          Chưa, đi tiếp
+        </Button>
+      )}
+    </>
+  );
+}
+
 /** A number pad entry for the pickup or delivery code the other side reads out. */
 function CodeStep({
   trip,
@@ -251,20 +318,28 @@ function CodeStep({
   codeName,
   hint,
   label,
+  checkNear,
 }: {
   trip: Trip;
   step: TripStep;
   codeName: string;
   hint: string;
   label: string;
+  /** Ask again before the step when the car is far from this stop (the drop-off of a delivery). */
+  checkNear?: Stop;
 }) {
   const move = useTripStep(trip.id);
+  const near = useNearCheck(checkNear);
   const [code, setCode] = useState('');
   const inputId = useId();
   const errorId = useId();
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (near.needsConfirm) {
+      near.confirm();
+      return;
+    }
     move.mutate({ step, code: code || undefined });
   };
 
@@ -291,9 +366,15 @@ function CodeStep({
           {stepErrorText(move.error, codeName)}
         </p>
       )}
+      {near.confirming && near.away !== null && <FarWarning away={near.away} stopName="điểm giao" />}
       <Button type="submit" busy={move.isPending}>
-        {label}
+        {near.confirming ? `Vẫn ${label.charAt(0).toLowerCase()}${label.slice(1)}` : label}
       </Button>
+      {near.confirming && (
+        <Button variant="secondary" onClick={near.cancel}>
+          Chưa, đi tiếp
+        </Button>
+      )}
     </form>
   );
 }
@@ -353,7 +434,7 @@ function Recipient({ trip }: { trip: Trip }) {
 }
 
 /** Simulated mode only: drive the car to the next stop, for testing without moving. */
-function SimulatedDrive({ trip }: { trip: Trip }) {
+function SimulatedDrive({ trip, route }: { trip: Trip; route: LngLat[] | null }) {
   const mode = useDriverLocation((state) => state.mode);
   const target = useDriverLocation((state) => state.target);
   const driveTo = useDriverLocation((state) => state.driveTo);
@@ -361,7 +442,12 @@ function SimulatedDrive({ trip }: { trip: Trip }) {
   const toDropoff = trip.status === 'IN_TRIP';
   const stop = toDropoff ? trip.dropoff : trip.pickup;
   return (
-    <Button variant="secondary" disabled={target !== null} onClick={() => driveTo(stop)}>
+    <Button
+      variant="secondary"
+      disabled={target !== null}
+      // Along the road route when there is one, so the car does not cut through buildings.
+      onClick={() => driveTo(stop, waypointsFrom(route, useDriverLocation.getState().position))}
+    >
       {target
         ? 'Xe giả lập đang chạy…'
         : toDropoff

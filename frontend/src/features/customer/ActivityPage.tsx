@@ -13,7 +13,7 @@ export default function ActivityPage() {
   const items = trips.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <div className="flex h-full flex-col gap-4 overflow-y-auto px-5 py-8">
+    <div className="flex h-full flex-col gap-4 overflow-y-auto px-5 py-8 lg:page-column lg:py-12">
       <h1 className="m-0 text-[28px] leading-tight font-bold">Hoạt động</h1>
 
       {trips.isPending && (

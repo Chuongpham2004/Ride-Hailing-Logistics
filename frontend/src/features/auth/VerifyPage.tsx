@@ -1,5 +1,5 @@
 import { Link, Navigate, useLocation, useParams, useSearchParams } from 'react-router';
-import { homeFor } from '@/shared/auth/areas';
+import { areaOfPath, homeFor, LOGIN_PATH } from '@/shared/auth/areas';
 import type { Channel } from '@/shared/auth/contacts';
 import { ContactVerification } from '@/shared/auth/ContactVerification';
 import { useSession } from '@/shared/auth/session';
@@ -29,7 +29,8 @@ export default function VerifyPage() {
   if (status === 'loading') return <Splash />;
   if (!user) {
     const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
+    // Sign in at the door of the area the user came from.
+    return <Navigate to={`${LOGIN_PATH[areaOfPath(params.get('next'))]}?next=${next}`} replace />;
   }
 
   const back = safeNext(params.get('next')) ?? homeFor(user.roles);

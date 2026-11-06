@@ -22,7 +22,7 @@ export default function DriverReviewPage() {
   const review = useDriverReview(driverId);
 
   return (
-    <div className="flex max-w-5xl flex-col gap-6 px-10 py-8">
+    <div className="flex w-full flex-col gap-6 px-10 py-8 2xl:px-14">
       <Link to="/admin/drivers" className="flex items-center gap-1 self-start text-[15px] font-semibold">
         <BackIcon width={18} height={18} /> Hàng chờ duyệt
       </Link>
@@ -135,31 +135,33 @@ function Review({ review }: { review: DriverReview }) {
         </section>
       )}
 
-      <Card title="Thông tin">
-        <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-[15px]">
-          <dt className="text-curb">Loại chuyến</dt>
-          <dd className="m-0">{profile.serviceTypes.map((s) => SERVICE_NAMES[s]).join(', ')}</dd>
-          <dt className="text-curb">Ngày sinh</dt>
-          <dd className="m-0">{profile.dateOfBirth ? formatDate(profile.dateOfBirth) : '—'}</dd>
-          <dt className="text-curb">Đang</dt>
-          <dd className="m-0">{AVAILABILITY[profile.availability]}</dd>
-        </dl>
-        <div className="flex flex-wrap gap-5 text-[15px] font-semibold">
-          {canUse('trips', user?.roles ?? []) && (
-            <Link to={`/admin/trips?driverId=${profile.driverId}`}>Xem chuyến của tài xế</Link>
-          )}
-          {canUse('wallets', user?.roles ?? []) && (
-            <Link to={`/admin/wallets/${profile.driverId}`}>Ví tài xế</Link>
-          )}
-          {canUse('users', user?.roles ?? []) && (
-            <Link to={`/admin/users/${profile.driverId}`}>Tài khoản đăng nhập</Link>
-          )}
-        </div>
-      </Card>
+      <div className="flex flex-col gap-6 xl:block xl:columns-2 xl:gap-6 xl:[&>*]:mb-6 xl:[&>*]:break-inside-avoid">
+        <Card title="Thông tin">
+          <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-[15px]">
+            <dt className="text-curb">Loại chuyến</dt>
+            <dd className="m-0">{profile.serviceTypes.map((s) => SERVICE_NAMES[s]).join(', ')}</dd>
+            <dt className="text-curb">Ngày sinh</dt>
+            <dd className="m-0">{profile.dateOfBirth ? formatDate(profile.dateOfBirth) : '—'}</dd>
+            <dt className="text-curb">Đang</dt>
+            <dd className="m-0">{AVAILABILITY[profile.availability]}</dd>
+          </dl>
+          <div className="flex flex-wrap gap-5 text-[15px] font-semibold">
+            {canUse('trips', user?.roles ?? []) && (
+              <Link to={`/admin/trips?driverId=${profile.driverId}`}>Xem chuyến của tài xế</Link>
+            )}
+            {canUse('wallets', user?.roles ?? []) && (
+              <Link to={`/admin/wallets/${profile.driverId}`}>Ví tài xế</Link>
+            )}
+            {canUse('users', user?.roles ?? []) && (
+              <Link to={`/admin/users/${profile.driverId}`}>Tài khoản đăng nhập</Link>
+            )}
+          </div>
+        </Card>
 
-      <Vehicles profile={profile} />
-      <Documents profile={profile} />
-      <Decisions decisions={decisions} />
+        <Vehicles profile={profile} />
+        <Documents profile={profile} />
+        <Decisions decisions={decisions} />
+      </div>
 
       {pending && dialog && (
         <ReasonDialog
@@ -305,7 +307,7 @@ function Documents({ profile }: { profile: DriverProfile }) {
   );
 
   return (
-    <Card title="Giấy tờ">
+    <Card title="Giấy tờ" className="xl:[column-span:all]">
       {documents.length === 0 ? (
         <p className="m-0 text-[15px] text-curb">Chưa có giấy tờ.</p>
       ) : (

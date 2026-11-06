@@ -23,7 +23,7 @@ export default function ActivityDetailPage() {
   const trip = useTrip(tripId);
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
+    <div className="flex h-full flex-col overflow-y-auto lg:page-column lg:py-12">
       <header className="flex items-center gap-3 px-4 pt-5 pb-2">
         <button
           type="button"

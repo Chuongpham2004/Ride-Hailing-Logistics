@@ -43,6 +43,26 @@ class TripTest {
     }
 
     @Test
+    void aCompletedTripRecordsWhereItEndedAndHowFarFromTheDropoff() {
+        Trip trip = matchingTrip();
+        assertThatThrownBy(() -> trip.recordCompletionPoint(10.7626, 106.6822))
+                .isInstanceOf(DomainException.class);
+        trip.assign(driver, NOW);
+        trip.advance(TripStatus.PICKING_UP, driver, null, 5, NOW);
+        trip.advance(TripStatus.ARRIVED, driver, null, 5, NOW);
+        trip.advance(TripStatus.IN_TRIP, driver, null, 5, NOW);
+        trip.advance(TripStatus.COMPLETED, driver, null, 5, NOW);
+
+        trip.recordCompletionPoint(10.76265, 106.68225);
+        assertThat(trip.getCompletionDistanceMeters()).isLessThan(10);
+
+        // About 1.9 km away, back at the pickup.
+        trip.recordCompletionPoint(PICKUP.latitude(), PICKUP.longitude());
+        assertThat(trip.getCompletionLatitude()).isEqualTo(PICKUP.latitude());
+        assertThat(trip.getCompletionDistanceMeters()).isBetween(1800, 2100);
+    }
+
+    @Test
     void onlyTheAssignedDriverMovesTheTrip() {
         Trip trip = matchingTrip();
         trip.assign(driver, NOW);

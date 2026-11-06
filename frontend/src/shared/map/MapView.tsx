@@ -33,6 +33,8 @@ export interface MapViewProps {
   straightLine?: boolean;
   /** Space kept clear of the bottom sheet when fitting the stops, in px. */
   bottomInset?: number;
+  /** Space kept clear of a panel docked on the left (wide screens), in px. */
+  leftInset?: number;
   /** The assigned driver's last known position; glides between updates. */
   driver?: DriverMarker | null;
   onPick?: (point: MapPoint) => void;
@@ -52,6 +54,7 @@ export function MapView({
   route,
   straightLine = false,
   bottomInset = 0,
+  leftInset = 0,
   driver,
   onPick,
   className,
@@ -92,12 +95,20 @@ export function MapView({
     // A tall sheet (the address search) could leave no room at all; MapLibre then refuses to fit.
     const top = 72;
     const room = map.getContainer().clientHeight - top - 120;
-    const padding = { top, left: 40, right: 40, bottom: Math.max(0, Math.min(bottomInset + 32, room)) };
+    const padding = {
+      top,
+      left: leftInset + 40,
+      right: 40,
+      bottom: Math.max(0, Math.min(bottomInset + 32, room)),
+    };
     if (points.length === 1) {
       const [lng, lat] = points[0]!;
       // An offset, not padding: easeTo keeps its padding on the map, and fitBounds would then add
       // its own on top and run out of room.
-      const offset: [number, number] = [0, (padding.top - padding.bottom) / 2];
+      const offset: [number, number] = [
+        (padding.left - padding.right) / 2,
+        (padding.top - padding.bottom) / 2,
+      ];
       map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15), offset, duration: 500 });
       return;
     }
@@ -110,7 +121,7 @@ export function MapView({
       ],
       { padding, maxZoom: 16, duration: 600 },
     );
-  }, [points, bottomInset, loaded]);
+  }, [points, bottomInset, leftInset, loaded]);
 
   const handleClick = (event: MapLayerMouseEvent) => {
     onPick?.({ latitude: event.lngLat.lat, longitude: event.lngLat.lng });

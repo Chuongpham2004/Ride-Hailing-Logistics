@@ -23,7 +23,7 @@ export default function UserDetailPage() {
   const valid = UUID.test(userId);
 
   return (
-    <div className="flex max-w-4xl flex-col gap-6 px-10 py-8">
+    <div className="flex w-full flex-col gap-6 px-10 py-8 2xl:px-14">
       <Link to="/admin/users" className="flex items-center gap-1 self-start text-[15px] font-semibold">
         <BackIcon width={18} height={18} /> Danh sách người dùng
       </Link>
@@ -72,48 +72,56 @@ function Loaded({ account }: { account: AdminUser }) {
         </p>
       )}
 
-      <Card title="Thông tin">
-        <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-[15px]">
-          <dt className="text-curb">Email</dt>
-          <dd className="m-0">
-            {account.email ?? '—'}
-            {account.email && (
-              <span className="text-curb"> · {account.emailVerified ? 'đã xác minh' : 'chưa xác minh'}</span>
+      <div className="flex flex-col gap-6 xl:block xl:columns-2 xl:gap-6 xl:[&>*]:mb-6 xl:[&>*]:break-inside-avoid">
+        <Card title="Thông tin">
+          <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-[15px]">
+            <dt className="text-curb">Email</dt>
+            <dd className="m-0">
+              {account.email ?? '—'}
+              {account.email && (
+                <span className="text-curb">
+                  {' '}
+                  · {account.emailVerified ? 'đã xác minh' : 'chưa xác minh'}
+                </span>
+              )}
+            </dd>
+            <dt className="text-curb">Số điện thoại</dt>
+            <dd className="m-0 tabular-nums">
+              {account.phone ?? '—'}
+              {account.phone && (
+                <span className="text-curb">
+                  {' '}
+                  · {account.phoneVerified ? 'đã xác minh' : 'chưa xác minh'}
+                </span>
+              )}
+            </dd>
+            <dt className="text-curb">Vai trò</dt>
+            <dd className="m-0">{account.roles.map((role) => ROLE_NAMES[role]).join(', ')}</dd>
+            {isDriver && (
+              <>
+                <dt className="text-curb">Hồ sơ tài xế</dt>
+                <dd className="m-0">
+                  {account.driverReviewStatus ? REVIEW_STATUS_NAMES[account.driverReviewStatus] : 'Chưa tạo'}
+                  {account.driverReviewStatus && seesDrivers && (
+                    <>
+                      {' · '}
+                      <Link to={`/admin/drivers/${account.id}`} className="font-semibold">
+                        Xem hồ sơ
+                      </Link>
+                    </>
+                  )}
+                </dd>
+              </>
             )}
-          </dd>
-          <dt className="text-curb">Số điện thoại</dt>
-          <dd className="m-0 tabular-nums">
-            {account.phone ?? '—'}
-            {account.phone && (
-              <span className="text-curb"> · {account.phoneVerified ? 'đã xác minh' : 'chưa xác minh'}</span>
-            )}
-          </dd>
-          <dt className="text-curb">Vai trò</dt>
-          <dd className="m-0">{account.roles.map((role) => ROLE_NAMES[role]).join(', ')}</dd>
-          {isDriver && (
-            <>
-              <dt className="text-curb">Hồ sơ tài xế</dt>
-              <dd className="m-0">
-                {account.driverReviewStatus ? REVIEW_STATUS_NAMES[account.driverReviewStatus] : 'Chưa tạo'}
-                {account.driverReviewStatus && seesDrivers && (
-                  <>
-                    {' · '}
-                    <Link to={`/admin/drivers/${account.id}`} className="font-semibold">
-                      Xem hồ sơ
-                    </Link>
-                  </>
-                )}
-              </dd>
-            </>
-          )}
-          <dt className="text-curb">Cập nhật</dt>
-          <dd className="m-0">{formatDateTime(account.updatedAt)}</dd>
-        </dl>
-      </Card>
+            <dt className="text-curb">Cập nhật</dt>
+            <dd className="m-0">{formatDateTime(account.updatedAt)}</dd>
+          </dl>
+        </Card>
 
-      {/* Remount on each server answer so the forms start from the saved values. */}
-      <RolesForm key={account.roles.join()} userId={account.id} current={account.roles} />
-      {!own && <StatusForm key={account.status} userId={account.id} current={account.status} />}
+        {/* Remount on each server answer so the forms start from the saved values. */}
+        <RolesForm key={account.roles.join()} userId={account.id} current={account.roles} />
+        {!own && <StatusForm key={account.status} userId={account.id} current={account.status} />}
+      </div>
     </>
   );
 }

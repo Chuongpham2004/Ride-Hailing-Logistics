@@ -3,8 +3,9 @@ import { useNavigate } from 'react-router';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
 import type { ServiceType, Stop } from '@/shared/api/types';
-import { useHeight } from '@/shared/lib/useHeight';
 import { MapView, type MapPoint } from '@/shared/map/MapView';
+import { MapPanel } from '@/shared/ui/MapPanel';
+import { useMapPanel } from '@/shared/ui/panelLayout';
 import { CITY_CENTER, pinLabel, reverseGeocode, type Place } from '@/shared/map/geocoder';
 import { Button } from '@/shared/ui/Button';
 import { ParcelIcon, RideIcon } from '@/shared/ui/icons';
@@ -39,7 +40,7 @@ export default function BookingPage() {
   const [editing, setEditing] = useState<StopKind | null>(null);
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
-  const [sheetRef, sheetHeight] = useHeight<HTMLDivElement>();
+  const { ref: sheetRef, insets } = useMapPanel();
 
   /** Sets the stop at once, then swaps the coordinates label for an address when one is found. */
   const placeStop = (kind: StopKind, point: MapPoint, label?: string) => {
@@ -99,11 +100,12 @@ export default function BookingPage() {
         className="absolute inset-0"
         pickup={pickup}
         dropoff={dropoff}
-        bottomInset={sheetHeight}
+        bottomInset={insets.bottom}
+        leftInset={insets.left}
         onPick={editing ? (point) => placeStop(editing, point) : undefined}
       />
 
-      <div ref={sheetRef} className="absolute inset-x-0 bottom-0 max-h-[75%] overflow-y-auto">
+      <MapPanel panelRef={sheetRef} maxHeight={75}>
         <Sheet>
           {editing ? (
             <AddressPicker
@@ -168,7 +170,7 @@ export default function BookingPage() {
             </>
           )}
         </Sheet>
-      </div>
+      </MapPanel>
     </div>
   );
 }

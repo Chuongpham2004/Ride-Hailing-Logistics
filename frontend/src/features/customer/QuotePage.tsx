@@ -4,8 +4,9 @@ import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
 import { formatCountdown, formatDistance, formatDuration } from '@/shared/lib/format';
 import { useCountdown } from '@/shared/lib/useCountdown';
-import { useHeight } from '@/shared/lib/useHeight';
 import { MapView } from '@/shared/map/MapView';
+import { MapPanel } from '@/shared/ui/MapPanel';
+import { BESIDE_PANEL, useMapPanel } from '@/shared/ui/panelLayout';
 import { Button } from '@/shared/ui/Button';
 import { BackIcon, ClockIcon } from '@/shared/ui/icons';
 import { Money } from '@/shared/ui/Money';
@@ -23,7 +24,7 @@ export default function QuotePage() {
   const renew = useCreateQuote();
   const secondsLeft = useCountdown(quote?.expiresAt);
   const route = useMemo(() => decodeRoute(quote), [quote]);
-  const [sheetRef, sheetHeight] = useHeight<HTMLDivElement>();
+  const { ref: sheetRef, insets } = useMapPanel();
 
   const expired = quote !== undefined && secondsLeft === 0;
   const estimate = quote !== undefined && quote.routeSource !== 'OSRM';
@@ -44,19 +45,20 @@ export default function QuotePage() {
         dropoff={quote?.dropoff}
         route={route}
         straightLine={estimate}
-        bottomInset={sheetHeight}
+        bottomInset={insets.bottom}
+        leftInset={insets.left}
       />
 
       <button
         type="button"
         aria-label="Quay lại chọn điểm"
         onClick={() => navigate('/app')}
-        className="absolute top-5 left-4 flex size-12 items-center justify-center rounded-full bg-white text-asphalt shadow-[0_2px_6px_rgba(43,46,51,0.18)]"
+        className={`absolute top-5 left-4 flex size-12 items-center justify-center rounded-full bg-white text-asphalt shadow-[0_2px_6px_rgba(43,46,51,0.18)] ${BESIDE_PANEL}`}
       >
         <BackIcon />
       </button>
 
-      <div ref={sheetRef} className="absolute inset-x-0 bottom-0 max-h-[70%] overflow-y-auto">
+      <MapPanel panelRef={sheetRef} maxHeight={70}>
         <Sheet>
           {isPending && <QuoteSkeleton />}
 
@@ -139,7 +141,7 @@ export default function QuotePage() {
             </>
           )}
         </Sheet>
-      </div>
+      </MapPanel>
     </div>
   );
 }

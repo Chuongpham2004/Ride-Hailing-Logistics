@@ -34,7 +34,7 @@ export default function PaymentDetailPage() {
   const payment = usePayment(paymentId);
 
   return (
-    <div className="flex max-w-5xl flex-col gap-6 px-10 py-8">
+    <div className="flex w-full flex-col gap-6 px-10 py-8 2xl:px-14">
       <Link to="/admin/payments" className="flex items-center gap-1 self-start text-[15px] font-semibold">
         <BackIcon width={18} height={18} /> Danh sách thanh toán
       </Link>
@@ -94,56 +94,58 @@ function Detail({ payment }: { payment: Payment }) {
         </span>
       </div>
 
-      <Card title="Thông tin">
-        <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-[15px]">
-          <dt className="text-curb">Chuyến</dt>
-          <dd className="m-0 tabular-nums">
-            {canUse('trips', roles) ? (
-              <Link to={`/admin/trips/${payment.tripId}`} className="font-semibold">
-                {payment.tripId}
-              </Link>
-            ) : (
-              payment.tripId
+      <div className="flex flex-col gap-6 xl:block xl:columns-2 xl:gap-6 xl:[&>*]:mb-6 xl:[&>*]:break-inside-avoid">
+        <Card title="Thông tin">
+          <dl className="m-0 grid grid-cols-[max-content_1fr] gap-x-8 gap-y-2 text-[15px]">
+            <dt className="text-curb">Chuyến</dt>
+            <dd className="m-0 tabular-nums">
+              {canUse('trips', roles) ? (
+                <Link to={`/admin/trips/${payment.tripId}`} className="font-semibold">
+                  {payment.tripId}
+                </Link>
+              ) : (
+                payment.tripId
+              )}
+            </dd>
+            <dt className="text-curb">Khách</dt>
+            <dd className="m-0 tabular-nums">{payment.customerId}</dd>
+            <dt className="text-curb">Tài xế</dt>
+            <dd className="m-0 tabular-nums">
+              {payment.driverId ? (
+                <Link to={`/admin/wallets/${payment.driverId}`} className="font-semibold">
+                  {payment.driverId}
+                </Link>
+              ) : (
+                '—'
+              )}
+            </dd>
+            <dt className="text-curb">Đã hoàn</dt>
+            <dd className="m-0">
+              <Money amount={payment.refundedAmount} />
+            </dd>
+            <dt className="text-curb">Nhà cung cấp</dt>
+            <dd className="m-0">
+              {payment.provider ?? '—'}
+              {payment.providerRef && <span className="text-curb"> · {payment.providerRef}</span>}
+            </dd>
+            {payment.succeededAt && (
+              <>
+                <dt className="text-curb">Thu thành công</dt>
+                <dd className="m-0">{formatDateTime(payment.succeededAt)}</dd>
+              </>
             )}
-          </dd>
-          <dt className="text-curb">Khách</dt>
-          <dd className="m-0 tabular-nums">{payment.customerId}</dd>
-          <dt className="text-curb">Tài xế</dt>
-          <dd className="m-0 tabular-nums">
-            {payment.driverId ? (
-              <Link to={`/admin/wallets/${payment.driverId}`} className="font-semibold">
-                {payment.driverId}
-              </Link>
-            ) : (
-              '—'
+            {payment.failureCode && (
+              <>
+                <dt className="text-curb">Mã lỗi</dt>
+                <dd className="m-0 text-stop">{payment.failureCode}</dd>
+              </>
             )}
-          </dd>
-          <dt className="text-curb">Đã hoàn</dt>
-          <dd className="m-0">
-            <Money amount={payment.refundedAmount} />
-          </dd>
-          <dt className="text-curb">Nhà cung cấp</dt>
-          <dd className="m-0">
-            {payment.provider ?? '—'}
-            {payment.providerRef && <span className="text-curb"> · {payment.providerRef}</span>}
-          </dd>
-          {payment.succeededAt && (
-            <>
-              <dt className="text-curb">Thu thành công</dt>
-              <dd className="m-0">{formatDateTime(payment.succeededAt)}</dd>
-            </>
-          )}
-          {payment.failureCode && (
-            <>
-              <dt className="text-curb">Mã lỗi</dt>
-              <dd className="m-0 text-stop">{payment.failureCode}</dd>
-            </>
-          )}
-        </dl>
-      </Card>
+          </dl>
+        </Card>
 
-      <Refunds paymentId={payment.id} />
-      <Attempts paymentId={payment.id} />
+        <Attempts paymentId={payment.id} />
+        <Refunds paymentId={payment.id} />
+      </div>
 
       {refunding && (
         <RefundDialog
@@ -163,7 +165,7 @@ function Detail({ payment }: { payment: Payment }) {
 function Refunds({ paymentId }: { paymentId: string }) {
   const refunds = useRefunds(paymentId);
   return (
-    <Card title="Hoàn tiền">
+    <Card title="Hoàn tiền" className="xl:[column-span:all]">
       {refunds.isPending && (
         <div aria-hidden="true" className="h-16 animate-pulse rounded-lg bg-concrete-2" />
       )}

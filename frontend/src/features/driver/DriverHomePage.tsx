@@ -4,8 +4,9 @@ import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
 import type { DriverProfile, ServiceType } from '@/shared/api/types';
 import { useSession } from '@/shared/auth/session';
-import { useHeight } from '@/shared/lib/useHeight';
 import { MapView } from '@/shared/map/MapView';
+import { MapPanel } from '@/shared/ui/MapPanel';
+import { BESIDE_PANEL, useMapPanel } from '@/shared/ui/panelLayout';
 import { Button } from '@/shared/ui/Button';
 import { Sheet } from '@/shared/ui/Sheet';
 import { LocationPanel } from './LocationPanel';
@@ -29,7 +30,7 @@ export default function DriverHomePage() {
   const { data: profile } = useDriverProfile();
   const navigate = useNavigate();
   const { data: activeTrip } = useActiveTrip(profile !== undefined);
-  const [sheetRef, sheetHeight] = useHeight<HTMLDivElement>();
+  const { ref: sheetRef, insets } = useMapPanel();
   const online = profile !== undefined && profile.availability !== 'OFFLINE';
   const { driver, onPick } = useMapPosition(online);
 
@@ -40,12 +41,18 @@ export default function DriverHomePage() {
 
   return (
     <div className="absolute inset-0">
-      <MapView className="absolute inset-0" driver={driver} onPick={onPick} bottomInset={sheetHeight} />
-      <LocationPanel online={online} className="absolute top-14 right-4 left-4" />
+      <MapView
+        className="absolute inset-0"
+        driver={driver}
+        onPick={onPick}
+        bottomInset={insets.bottom}
+        leftInset={insets.left}
+      />
+      <LocationPanel online={online} className={`absolute top-14 right-4 left-4 ${BESIDE_PANEL}`} />
 
-      <div ref={sheetRef} className="absolute inset-x-0 bottom-0 max-h-[80%] overflow-y-auto">
+      <MapPanel panelRef={sheetRef} maxHeight={80}>
         <Sheet>{profile && <WorkPanel profile={profile} />}</Sheet>
-      </div>
+      </MapPanel>
     </div>
   );
 }

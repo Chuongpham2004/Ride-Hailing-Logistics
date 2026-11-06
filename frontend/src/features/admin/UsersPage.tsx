@@ -31,7 +31,7 @@ export default function UsersPage() {
   const items = users.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <div className="flex max-w-6xl flex-col gap-5 px-10 py-8">
+    <div className="flex w-full flex-col gap-5 px-10 py-8 2xl:px-14">
       <h1 className="m-0 text-[28px] leading-tight font-bold">Người dùng</h1>
 
       <Filters

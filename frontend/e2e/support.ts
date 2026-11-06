@@ -116,7 +116,8 @@ export async function bookByApi(customerToken: string, serviceType: 'RIDE' | 'DE
 }
 
 export async function uiLogin(page: Page, who: Account, area: 'app' | 'driver' | 'admin'): Promise<void> {
-  await page.goto('/login');
+  // Each area has its own sign-in page.
+  await page.goto(area === 'app' ? '/login' : `/${area}/login`);
   await page.getByLabel('Email hoặc số điện thoại').fill(who.identifier);
   await page.getByLabel('Mật khẩu').fill(who.password);
   await page.locator('button[type=submit]').click();

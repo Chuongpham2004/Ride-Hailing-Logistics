@@ -21,7 +21,7 @@ export default function PaymentsPage() {
   const items = payments.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <div className="flex max-w-6xl flex-col gap-5 px-10 py-8">
+    <div className="flex w-full flex-col gap-5 px-10 py-8 2xl:px-14">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="m-0 text-[28px] leading-tight font-bold">Thanh toán</h1>
         <IdLookup label="Mở theo mã thanh toán" to={(id) => `/admin/payments/${id}`} />
