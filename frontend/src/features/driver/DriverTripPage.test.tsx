@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router';
@@ -48,6 +48,8 @@ const DELIVERY: Partial<Trip> = {
     packageWeightGrams: 500,
   },
 };
+
+const AT_DROPOFF = { latitude: 10.79, longitude: 106.72 };
 
 function renderTrip(initial: Trip) {
   let current = initial;
@@ -112,6 +114,8 @@ describe('DriverTripPage', () => {
     await userEvent.type(await screen.findByLabelText(/mã đón/), '48a2913');
     await userEvent.click(screen.getByRole('button', { name: 'Bắt đầu chuyến' }));
 
+    // Driven to the drop-off, so "complete" does not ask again either.
+    act(() => useDriverLocation.setState({ position: { ...AT_DROPOFF, accuracyMeters: 5 } }));
     page.answer({ ...TRIP, status: 'COMPLETED', version: 6 });
     await userEvent.click(await screen.findByRole('button', { name: 'Hoàn tất chuyến' }));
 
@@ -160,7 +164,25 @@ describe('DriverTripPage', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('mã đã bị khoá');
   });
 
+  it('asks again before completing far from the drop-off, then completes on request', async () => {
+    useDriverLocation.setState({ position: { latitude: 10.77, longitude: 106.7, accuracyMeters: 5 } });
+    const page = renderTrip({ ...TRIP, status: 'IN_TRIP', version: 5 });
+    await userEvent.click(await screen.findByRole('button', { name: 'Hoàn tất chuyến' }));
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/Bạn còn cách điểm đến khoảng 3,1 km/);
+    expect(page.steps).toEqual([]);
+    await userEvent.click(screen.getByRole('button', { name: 'Chưa, đi tiếp' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hoàn tất chuyến' }));
+    page.answer({ ...TRIP, status: 'COMPLETED', version: 6 });
+    await userEvent.click(screen.getByRole('button', { name: 'Vẫn hoàn tất chuyến' }));
+    expect(await screen.findByText('Chuyến đi đã hoàn tất')).toBeInTheDocument();
+    expect(page.steps).toEqual([{ step: 'complete', body: null }]);
+  });
+
   it('needs the delivery code and shows the recipient for a delivery', async () => {
+    useDriverLocation.setState({ position: { ...AT_DROPOFF, accuracyMeters: 5 } });
     const page = renderTrip({ ...TRIP, ...DELIVERY, status: 'IN_TRIP', version: 5 });
     expect(await screen.findByText('Chị Lan')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: '0901234567' })).toHaveAttribute('href', 'tel:0901234567');

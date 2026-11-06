@@ -3,7 +3,7 @@ import { useId, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
-import type { CancelReason, Trip } from '@/shared/api/types';
+import type { CancelReason, Stop, Trip } from '@/shared/api/types';
 import { formatDistance, formatDuration } from '@/shared/lib/format';
 import { MapView } from '@/shared/map/MapView';
 import { MapPanel } from '@/shared/ui/MapPanel';
@@ -177,9 +177,10 @@ function StepBlock({ trip }: { trip: Trip }) {
             codeName="mã giao"
             hint={`Hỏi ${trip.delivery?.recipientName ?? 'người nhận'} mã giao rồi nhập vào đây.`}
             label="Hoàn tất giao hàng"
+            checkNear={trip.dropoff}
           />
         ) : (
-          <PlainStep trip={trip} step={step} label="Hoàn tất chuyến" />
+          <CompleteStep trip={trip} />
         ))}
     </div>
   );
@@ -251,6 +252,65 @@ function ArriveStep({ trip }: { trip: Trip }) {
   );
 }
 
+/**
+ * Whether the car is still far from `stop` (the pickup when arriving, the drop-off when
+ * completing). The server takes both steps anywhere, since a customer may ask to stop early, so
+ * the app asks once more instead of refusing.
+ */
+function useNearCheck(stop: Stop | undefined) {
+  const position = useDriverLocation((state) => state.position);
+  const [confirming, setConfirming] = useState(false);
+  const away = position && stop ? distanceMeters(position, stop) : null;
+  return {
+    away,
+    confirming,
+    /** True when the step should wait for a second tap. */
+    needsConfirm: !confirming && away !== null && away > ARRIVE_CHECK_M,
+    confirm: () => setConfirming(true),
+    cancel: () => setConfirming(false),
+  };
+}
+
+function FarWarning({ away, stopName }: { away: number; stopName: string }) {
+  return (
+    <p role="alert" className="m-0 rounded-[10px] bg-concrete-2 px-3.5 py-3 text-[15px]">
+      Bạn còn cách {stopName} khoảng <strong>{formatDistance(away)}</strong>. Khách xin dừng sớm thì vẫn hoàn
+      tất được; nơi hoàn tất được ghi lại cho tổng đài đối soát.
+    </p>
+  );
+}
+
+/** Completing a ride: asks again when the car is still far from the drop-off. */
+function CompleteStep({ trip }: { trip: Trip }) {
+  const move = useTripStep(trip.id);
+  const near = useNearCheck(trip.dropoff);
+  const onComplete = () => {
+    if (near.needsConfirm) {
+      near.confirm();
+      return;
+    }
+    move.mutate({ step: 'complete' });
+  };
+  return (
+    <>
+      {near.confirming && near.away !== null && <FarWarning away={near.away} stopName="điểm đến" />}
+      {move.isError && (
+        <p role="alert" className="m-0 text-sm text-stop">
+          {messageFor(move.error)}
+        </p>
+      )}
+      <Button busy={move.isPending} onClick={onComplete}>
+        {near.confirming ? 'Vẫn hoàn tất chuyến' : 'Hoàn tất chuyến'}
+      </Button>
+      {near.confirming && (
+        <Button variant="secondary" onClick={near.cancel}>
+          Chưa, đi tiếp
+        </Button>
+      )}
+    </>
+  );
+}
+
 /** A number pad entry for the pickup or delivery code the other side reads out. */
 function CodeStep({
   trip,
@@ -258,20 +318,28 @@ function CodeStep({
   codeName,
   hint,
   label,
+  checkNear,
 }: {
   trip: Trip;
   step: TripStep;
   codeName: string;
   hint: string;
   label: string;
+  /** Ask again before the step when the car is far from this stop (the drop-off of a delivery). */
+  checkNear?: Stop;
 }) {
   const move = useTripStep(trip.id);
+  const near = useNearCheck(checkNear);
   const [code, setCode] = useState('');
   const inputId = useId();
   const errorId = useId();
 
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
+    if (near.needsConfirm) {
+      near.confirm();
+      return;
+    }
     move.mutate({ step, code: code || undefined });
   };
 
@@ -298,9 +366,15 @@ function CodeStep({
           {stepErrorText(move.error, codeName)}
         </p>
       )}
+      {near.confirming && near.away !== null && <FarWarning away={near.away} stopName="điểm giao" />}
       <Button type="submit" busy={move.isPending}>
-        {label}
+        {near.confirming ? `Vẫn ${label.charAt(0).toLowerCase()}${label.slice(1)}` : label}
       </Button>
+      {near.confirming && (
+        <Button variant="secondary" onClick={near.cancel}>
+          Chưa, đi tiếp
+        </Button>
+      )}
     </form>
   );
 }

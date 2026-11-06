@@ -130,6 +130,20 @@ function Detail({ detail }: { detail: StaffTripDetail }) {
             )}
             {trip.acceptedAt && <Row label="Tài xế nhận">{formatDateTime(trip.acceptedAt)}</Row>}
             {trip.completedAt && <Row label="Hoàn tất">{formatDateTime(trip.completedAt)}</Row>}
+            {trip.status === 'COMPLETED' && (
+              <Row label="Nơi hoàn tất">
+                {!detail.completion ? (
+                  <span className="text-curb">Không rõ: lúc đó chưa có vị trí của tài xế</span>
+                ) : detail.completion.awayFromDropoff ? (
+                  <span className="font-semibold text-stop">
+                    Cách điểm đến {formatDistance(detail.completion.distanceToDropoffMeters)}: dừng sớm hoặc
+                    hoàn tất trước khi tới, nên kiểm tra
+                  </span>
+                ) : (
+                  <span>Tại điểm đến (cách {formatDistance(detail.completion.distanceToDropoffMeters)})</span>
+                )}
+              </Row>
+            )}
             {trip.cancelledAt && (
               <Row label="Huỷ">
                 {formatDateTime(trip.cancelledAt)} bởi {ACTOR_NAMES[trip.cancelledBy ?? 'SYSTEM']}
