@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { NavLink, Outlet, useMatches, useNavigate } from 'react-router';
+import { LOGIN_PATH } from '@/shared/auth/areas';
 import { logout, useSession } from '@/shared/auth/session';
 import { ConnectionBanner } from '@/shared/realtime/ConnectionBanner';
 import { canUse, ROLE_NAMES, sectionsFor, type SectionKey } from './sections';
@@ -23,12 +24,17 @@ export default function AdminLayout() {
   const signOut = async () => {
     setLeaving(true);
     await logout();
-    navigate('/login', { replace: true });
+    navigate(LOGIN_PATH.admin, { replace: true });
   };
 
   return (
     <div className="grid h-dvh grid-cols-[232px_1fr] bg-concrete-2">
-      <aside className="flex flex-col gap-6 bg-asphalt px-4 py-6 text-white">
+      <aside className="relative flex flex-col gap-6 bg-asphalt px-4 py-6 text-white">
+        {/* The same lane marking as the customer and driver road bar, along the sidebar edge. */}
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-0 right-0 w-[3px] bg-[repeating-linear-gradient(180deg,var(--color-sign)_0_32px,transparent_32px_56px)]"
+        />
         <div className="flex items-baseline gap-2 px-2">
           <span className="rounded bg-sign px-1.5 font-plate text-xl leading-tight text-asphalt">RHL</span>
           <span className="text-sm text-white/70">Nhân viên</span>

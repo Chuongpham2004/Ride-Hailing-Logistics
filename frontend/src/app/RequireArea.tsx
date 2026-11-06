@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from 'react-router';
-import { canEnter, homeFor, type Area } from '@/shared/auth/areas';
+import { canEnter, homeFor, LOGIN_PATH, type Area } from '@/shared/auth/areas';
 import { useSession } from '@/shared/auth/session';
 import { Splash } from '@/shared/ui/Splash';
 
@@ -14,7 +14,7 @@ export function RequireArea({ area }: { area: Area }) {
   if (status === 'loading') return <Splash />;
   if (status === 'anonymous' || !user) {
     const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={`/login?next=${next}`} replace />;
+    return <Navigate to={`${LOGIN_PATH[area]}?next=${next}`} replace />;
   }
   if (!canEnter(area, user.roles)) return <Navigate to={homeFor(user.roles)} replace />;
   return <Outlet />;
@@ -24,5 +24,5 @@ export function RequireArea({ area }: { area: Area }) {
 export function HomeRedirect() {
   const { status, user } = useSession();
   if (status === 'loading') return <Splash />;
-  return <Navigate to={user ? homeFor(user.roles) : '/login'} replace />;
+  return <Navigate to={user ? homeFor(user.roles) : LOGIN_PATH.customer} replace />;
 }

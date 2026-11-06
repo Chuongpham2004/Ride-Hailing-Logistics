@@ -91,3 +91,11 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/*
+ * Reading column for the list screens (history, wallet, profile, receipt) on a wide screen: the
+ * page stays white edge to edge and scrolls as a whole, the content keeps a readable width.
+ */
+@utility page-column {
+  padding-inline: max(2.5rem, calc((100% - 46rem) / 2));
+}

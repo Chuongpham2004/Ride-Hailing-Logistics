@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
+import { LOGIN_PATH } from '@/shared/auth/areas';
 import { logout } from '@/shared/auth/session';
 import { Button } from '@/shared/ui/Button';
 
@@ -14,7 +15,7 @@ export function SignOutButton({ className = '' }: { className?: string }) {
       onClick={async () => {
         setLeaving(true);
         await logout();
-        navigate('/login', { replace: true });
+        navigate(LOGIN_PATH.driver, { replace: true });
       }}
     >
       Đăng xuất

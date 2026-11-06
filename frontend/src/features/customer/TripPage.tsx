@@ -5,8 +5,9 @@ import { messageFor } from '@/shared/api/messages';
 import type { CancelReason, Trip } from '@/shared/api/types';
 import { formatCountdown, formatDistance, formatDuration } from '@/shared/lib/format';
 import { useCountdown } from '@/shared/lib/useCountdown';
-import { useHeight } from '@/shared/lib/useHeight';
 import { MapView } from '@/shared/map/MapView';
+import { MapPanel } from '@/shared/ui/MapPanel';
+import { BESIDE_PANEL, useMapPanel } from '@/shared/ui/panelLayout';
 import { Button } from '@/shared/ui/Button';
 import { BackIcon } from '@/shared/ui/icons';
 import { Money } from '@/shared/ui/Money';
@@ -40,7 +41,7 @@ export default function TripPage() {
   const navigate = useNavigate();
   const { data: trip, isPending, error } = useTrip(tripId);
   const driver = useLiveTrip(tripId, trip);
-  const [sheetRef, sheetHeight] = useHeight<HTMLDivElement>();
+  const { ref: sheetRef, insets } = useMapPanel();
 
   // Before pickup the map shows the driver coming to the pickup; after it, the way to the drop-off.
   const toDropoff = trip?.status === 'IN_TRIP' || (trip !== undefined && ENDED.has(trip.status));
@@ -58,19 +59,20 @@ export default function TripPage() {
         route={showsDropoff ? route : null}
         straightLine={showsDropoff}
         driver={driver}
-        bottomInset={sheetHeight}
+        bottomInset={insets.bottom}
+        leftInset={insets.left}
       />
 
       <button
         type="button"
         aria-label="Về trang đặt xe"
         onClick={() => navigate('/app')}
-        className="absolute top-5 left-4 flex size-12 items-center justify-center rounded-full bg-white text-asphalt shadow-[0_2px_6px_rgba(43,46,51,0.18)]"
+        className={`absolute top-5 left-4 flex size-12 items-center justify-center rounded-full bg-white text-asphalt shadow-[0_2px_6px_rgba(43,46,51,0.18)] ${BESIDE_PANEL}`}
       >
         <BackIcon />
       </button>
 
-      <div ref={sheetRef} className="absolute inset-x-0 bottom-0 max-h-[75%] overflow-y-auto">
+      <MapPanel panelRef={sheetRef} maxHeight={75}>
         <Sheet>
           {isPending && <div aria-hidden="true" className="h-40 animate-pulse rounded bg-concrete-2" />}
           {error && (
@@ -87,7 +89,7 @@ export default function TripPage() {
           )}
           {trip && <TripSheet trip={trip} driver={driver} />}
         </Sheet>
-      </div>
+      </MapPanel>
     </div>
   );
 }

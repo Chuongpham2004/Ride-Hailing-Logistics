@@ -8,6 +8,7 @@ import {
   reportLocation,
   STALE_FIX_MS,
   stepToward,
+  useDriverLocation,
 } from './location';
 
 const socket = vi.hoisted(() => ({ open: true, sent: [] as unknown[][] }));
@@ -102,5 +103,14 @@ describe('driver location', () => {
       ...HERE,
       fixedAt: undefined,
     });
+  });
+
+  it('reports a simulated car at the simulation accuracy, not the GPS guess it started from', () => {
+    const wifiGuess = { latitude: 20.9894, longitude: 105.9423, accuracyMeters: 76, fixedAt: Date.now() };
+    useDriverLocation.setState({ mode: 'gps', position: wifiGuess, target: null });
+    useDriverLocation.getState().setMode('simulated');
+    const state = useDriverLocation.getState();
+    expect(state.position).toMatchObject({ latitude: 20.9894, longitude: 105.9423, accuracyMeters: 8 });
+    expect(reportablePosition({ mode: 'simulated', position: wifiGuess })!.accuracyMeters).toBe(8);
   });
 });

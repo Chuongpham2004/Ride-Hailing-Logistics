@@ -18,7 +18,7 @@ export default function DriverProfilePage() {
   const user = useSession((state) => state.user);
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8">
+    <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8 lg:page-column lg:py-12">
       <h1 className="m-0 text-[28px] leading-tight font-bold">
         {profile?.fullName ?? user?.fullName ?? 'Hồ sơ'}
       </h1>

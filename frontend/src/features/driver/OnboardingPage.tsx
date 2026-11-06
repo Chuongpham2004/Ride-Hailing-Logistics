@@ -137,7 +137,11 @@ function Steps({ profile, contactVerified }: { profile: DriverProfile | null; co
 }
 
 function Frame({ children }: { children: ReactNode }) {
-  return <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8">{children}</div>;
+  return (
+    <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8 lg:page-column lg:py-12">
+      {children}
+    </div>
+  );
 }
 
 function Loading() {

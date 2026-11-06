@@ -127,6 +127,9 @@ describe('ForgotPasswordPage', () => {
     renderAt('/login?identifier=khach%40rhl.local&reset=1');
     expect(screen.getByLabelText('Email hoặc số điện thoại')).toHaveValue('khach@rhl.local');
     expect(screen.getByRole('status')).toHaveTextContent('Đã đặt mật khẩu mới');
-    expect(screen.getByRole('link', { name: 'Quên mật khẩu?' })).toHaveAttribute('href', '/forgot-password');
+    expect(screen.getByRole('link', { name: 'Quên mật khẩu?' })).toHaveAttribute(
+      'href',
+      '/forgot-password?portal=customer',
+    );
   });
 });

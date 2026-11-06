@@ -5,8 +5,10 @@ import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
 import type { CancelReason, Trip } from '@/shared/api/types';
 import { formatDistance, formatDuration } from '@/shared/lib/format';
-import { useHeight } from '@/shared/lib/useHeight';
 import { MapView } from '@/shared/map/MapView';
+import { MapPanel } from '@/shared/ui/MapPanel';
+import { BESIDE_PANEL, useMapPanel } from '@/shared/ui/panelLayout';
+import type { LngLat } from '@/shared/map/polyline';
 import { Button } from '@/shared/ui/Button';
 import { Money } from '@/shared/ui/Money';
 import { Sheet } from '@/shared/ui/Sheet';
@@ -20,6 +22,7 @@ import {
   useTripStep,
   type TripStep,
 } from './driverTrips';
+import { useLegRoute, waypointsFrom } from './driverRoute';
 import { LocationPanel } from './LocationPanel';
 import { distanceMeters, useDriverLocation, useMapPosition } from './location';
 import { rememberActiveTrip, SERVICE_NAMES } from './profile';
@@ -37,11 +40,13 @@ export default function DriverTripPage() {
   const { tripId = '' } = useParams();
   const { data: trip, isPending, error } = useTrip(tripId);
   useTripSnapshotSync(tripId);
-  const [sheetRef, sheetHeight] = useHeight<HTMLDivElement>();
+  const { ref: sheetRef, insets } = useMapPanel();
   const ended = trip !== undefined && ENDED.has(trip.status);
   const { driver, onPick } = useMapPosition(!ended);
   // On the way to the pickup the map shows the pickup; once on board, the way to the drop-off.
   const toDropoff = trip?.status === 'IN_TRIP' || ended;
+  // Road route of the current leg; without one (estimate, still loading) a straight dashed line.
+  const route = useLegRoute(trip);
 
   return (
     <div className="absolute inset-0">
@@ -49,14 +54,16 @@ export default function DriverTripPage() {
         className="absolute inset-0"
         pickup={trip?.pickup}
         dropoff={trip ? trip.dropoff : null}
+        route={route}
         straightLine={toDropoff}
         driver={ended ? null : driver}
         onPick={ended ? undefined : onPick}
-        bottomInset={sheetHeight}
+        bottomInset={insets.bottom}
+        leftInset={insets.left}
       />
-      {!ended && <LocationPanel online className="absolute top-14 right-4 left-4" />}
+      {!ended && <LocationPanel online className={`absolute top-14 right-4 left-4 ${BESIDE_PANEL}`} />}
 
-      <div ref={sheetRef} className="absolute inset-x-0 bottom-0 max-h-[80%] overflow-y-auto">
+      <MapPanel panelRef={sheetRef} maxHeight={80}>
         <Sheet>
           {isPending && <div aria-hidden="true" className="h-40 animate-pulse rounded bg-concrete-2" />}
           {error && (
@@ -71,14 +78,14 @@ export default function DriverTripPage() {
               </Link>
             </div>
           )}
-          {trip && <TripSheet key={trip.status} trip={trip} />}
+          {trip && <TripSheet key={trip.status} trip={trip} route={route} />}
         </Sheet>
-      </div>
+      </MapPanel>
     </div>
   );
 }
 
-function TripSheet({ trip }: { trip: Trip }) {
+function TripSheet({ trip, route }: { trip: Trip; route: LngLat[] | null }) {
   const [cancelling, setCancelling] = useState(false);
   if (cancelling && DRIVER_CANCELLABLE.has(trip.status)) {
     return <CancelPanel trip={trip} onClose={() => setCancelling(false)} />;
@@ -89,7 +96,7 @@ function TripSheet({ trip }: { trip: Trip }) {
       <StepBlock trip={trip} />
       <Stops trip={trip} />
       {delivery && trip.delivery && !ENDED.has(trip.status) && <Recipient trip={trip} />}
-      <SimulatedDrive trip={trip} />
+      <SimulatedDrive trip={trip} route={route} />
       {DRIVER_CANCELLABLE.has(trip.status) && (
         <Button variant="secondary" onClick={() => setCancelling(true)}>
           Huỷ chuyến
@@ -353,7 +360,7 @@ function Recipient({ trip }: { trip: Trip }) {
 }
 
 /** Simulated mode only: drive the car to the next stop, for testing without moving. */
-function SimulatedDrive({ trip }: { trip: Trip }) {
+function SimulatedDrive({ trip, route }: { trip: Trip; route: LngLat[] | null }) {
   const mode = useDriverLocation((state) => state.mode);
   const target = useDriverLocation((state) => state.target);
   const driveTo = useDriverLocation((state) => state.driveTo);
@@ -361,7 +368,12 @@ function SimulatedDrive({ trip }: { trip: Trip }) {
   const toDropoff = trip.status === 'IN_TRIP';
   const stop = toDropoff ? trip.dropoff : trip.pickup;
   return (
-    <Button variant="secondary" disabled={target !== null} onClick={() => driveTo(stop)}>
+    <Button
+      variant="secondary"
+      disabled={target !== null}
+      // Along the road route when there is one, so the car does not cut through buildings.
+      onClick={() => driveTo(stop, waypointsFrom(route, useDriverLocation.getState().position))}
+    >
       {target
         ? 'Xe giả lập đang chạy…'
         : toDropoff

@@ -20,7 +20,7 @@ export default function WalletPage() {
   const { driverId } = useParams();
 
   return (
-    <div className="flex max-w-5xl flex-col gap-5 px-10 py-8">
+    <div className="flex w-full flex-col gap-5 px-10 py-8 2xl:px-14">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <h1 className="m-0 text-[28px] leading-tight font-bold">Ví tài xế</h1>
         <IdLookup key={driverId} label="Mã tài xế" initial={driverId} to={(id) => `/admin/wallets/${id}`} />

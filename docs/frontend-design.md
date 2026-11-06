@@ -52,11 +52,10 @@ lớp realtime, phiên đăng nhập và bộ component; tách thành ba ứng d
 /admin/*          → nhân viên       (REVIEWER, SUPPORT_STAFF, FINANCE_STAFF, ADMINISTRATOR)  bố cục máy tính
 ```
 
-Sau khi đăng nhập, ứng dụng đọc `roles` từ `GET /api/v1/users/me` và chuyển tới khu vực tương ứng. Route
+Mỗi khu vực có trang đăng nhập riêng (`/login`, `/driver/login`, `/admin/login`) dùng chung một API. Sau khi đăng nhập, ứng dụng đọc `roles` từ `GET /api/v1/users/me`: tài khoản không thuộc khu vực của trang đó bị đăng xuất ngay và được chỉ tới đúng trang đăng nhập; tài khoản nhiều vai trò chọn khu vực bằng trang đăng nhập mình dùng. Vào một trang của khu vực khi chưa đăng nhập thì chuyển tới trang đăng nhập của khu vực đó, kèm `?next=` (chỉ nhận đường dẫn trong cùng khu vực hoặc trang dùng chung như `/verify`). Route
 guard chỉ để điều hướng cho tiện; quyền thật luôn do server quyết định (403 / 404).
 
-Khu vực khách và tài xế thiết kế **mobile-first** (khung nội dung tối đa ~480 px, canh giữa trên màn hình
-lớn), nút bấm chính nằm trong tầm ngón cái ở cạnh dưới. Khu vực quản trị dùng thanh bên + bảng dữ liệu.
+Mọi khu vực dùng **toàn màn hình**. Khách và tài xế thiết kế mobile-first: trên điện thoại bản đồ tràn màn hình, bảng trượt từ cạnh dưới, thanh tab dưới trong tầm ngón cái. Từ 1024 px trở lên: thanh "mặt đường" màu nhựa đường ở trên (thương hiệu, các mục, người đang đăng nhập) với vạch kẻ vàng đứt quãng, bảng neo bên trái rộng 420 px và bản đồ chiếm phần còn lại; các trang danh sách nền trắng tràn màn hình với một cột nội dung dễ đọc. Khu vực quản trị dùng thanh bên (cùng vạch kẻ) + bảng dữ liệu tràn chiều ngang; trang chi tiết dàn thẻ thành hai cột trên màn rộng. Trang đăng nhập giữ dạng thẻ giữa nền.
 
 ## 4. Màn hình
 
@@ -64,7 +63,9 @@ lớn), nút bấm chính nằm trong tầm ngón cái ở cạnh dưới. Khu v
 
 | Route | Màn hình | API |
 |---|---|---|
-| `/login` | Đăng nhập bằng email hoặc SĐT | `POST /auth/login` |
+| `/login` | Đăng nhập khách hàng bằng email hoặc SĐT | `POST /auth/login` |
+| `/driver/login` | Đăng nhập tài xế (link đăng ký sẵn vai trò tài xế) | `POST /auth/login` |
+| `/admin/login` | Đăng nhập nhân viên (nền tối, không có đăng ký) | `POST /auth/login` |
 | `/register` | Đăng ký, chọn Khách hàng hoặc Tài xế | `POST /auth/register` |
 | `/forgot-password` | Nhập email/SĐT → nhập mã 6 số + mật khẩu mới | `POST /auth/password-reset`, `…/confirm` |
 | `/verify/:channel` | Xác minh email / SĐT bằng mã, có đếm ngược gửi lại | `POST /users/me/contacts/{channel}/verification`, `…/confirm` |
@@ -190,6 +191,7 @@ và URL lấy từ biến môi trường, nên đổi nhà cung cấp chỉ sử
 | Gợi ý địa chỉ khi gõ | Photon `https://photon.komoot.io/api` | Debounce 300 ms, tối thiểu 3 ký tự, `lang=default`, giới hạn `bbox` Việt Nam, ưu tiên quanh vị trí hiện tại (`lat`/`lon`); cache theo chuỗi đã gõ; huỷ request cũ bằng `AbortController` |
 | Toạ độ → địa chỉ | Nominatim `https://nominatim.openstreetmap.org/reverse` | Chỉ gọi khi thả / kéo xong ghim, tối đa 1 request/giây (chính sách Nominatim), không dùng cho gợi ý khi gõ |
 | Tuyến đường | Không gọi từ trình duyệt: báo giá đã có `routePolyline` do pricing-service lấy từ OSRM | Giải mã polyline độ chính xác 6 (`decodePolyline6`) rồi vẽ thành lớp line; `routeSource = ESTIMATE` (OSRM tắt hoặc lỗi) thì không có `routePolyline`, vẽ đường thẳng nét đứt |
+| Tuyến đường của tài xế | Không gọi từ trình duyệt: `GET /api/v1/routes?fromLatitude=&fromLongitude=&toLatitude=&toLongitude=` của pricing-service (cùng nguồn OSRM, có ước tính dự phòng), vì tài xế không đọc được báo giá của khách | Một lần cho mỗi chặng: đi đón (từ vị trí xe lúc bắt đầu chặng) và chở khách (điểm đón → điểm đến); không hỏi lại khi xe di chuyển. Xe giả lập chạy theo các điểm của tuyến này thay vì đường thẳng |
 
 Không gọi lại định tuyến khi tài xế di chuyển: chỉ nội suy marker giữa các bản tin vị trí. Địa chỉ chữ chỉ để
 hiển thị; server tính giá theo toạ độ.

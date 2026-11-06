@@ -50,14 +50,19 @@ interface LocationState {
   position: Position | null;
   /** Where the simulated car is driving to. */
   target: { latitude: number; longitude: number } | null;
+  /** Road points the simulated car passes before the target, in order (a road route). */
+  waypoints: { latitude: number; longitude: number }[];
   /** The last problem the server reported about a location message. */
   serverError: string | null;
   lastSentAt: number | null;
   setMode: (mode: LocationMode) => void;
   /** Simulated mode: put the car here at once (only sensible while offline). */
   placeAt: (point: { latitude: number; longitude: number }) => void;
-  /** Simulated mode: drive the car here. */
-  driveTo: (point: { latitude: number; longitude: number }) => void;
+  /** Simulated mode: drive the car here, along `via` when a road route is known. */
+  driveTo: (
+    point: { latitude: number; longitude: number },
+    via?: { latitude: number; longitude: number }[],
+  ) => void;
 }
 
 export const useDriverLocation = create<LocationState>()(
@@ -67,26 +72,35 @@ export const useDriverLocation = create<LocationState>()(
       gps: 'waiting',
       position: null,
       target: null,
+      waypoints: [],
       serverError: null,
       lastSentAt: null,
       setMode: (mode) =>
         set((state) => ({
           mode,
           target: null,
-          // Start the simulation where the driver last was, or in the city centre.
+          waypoints: [],
+          // Start the simulation where the driver last was, or in the city centre. The GPS fix's
+          // accuracy does not carry over: a Wi-Fi guess of 76 m would keep every simulated report
+          // out of matching (location-service max-accuracy-meters 50).
           position:
             mode === 'simulated'
-              ? (state.position ?? { ...CITY_CENTER, accuracyMeters: SIM_ACCURACY_M })
+              ? {
+                  ...(state.position ?? CITY_CENTER),
+                  accuracyMeters: SIM_ACCURACY_M,
+                  fixedAt: undefined,
+                }
               : state.position,
         })),
       placeAt: (point) =>
         set({
           position: { ...point, accuracyMeters: SIM_ACCURACY_M, speedMetersPerSecond: 0 },
           target: null,
+          waypoints: [],
         }),
-      driveTo: (point) => {
+      driveTo: (point, via = []) => {
         if (!get().position) get().placeAt(point);
-        else set({ target: point });
+        else set({ target: point, waypoints: via });
       },
     }),
     {
@@ -95,7 +109,7 @@ export const useDriverLocation = create<LocationState>()(
       storage: createJSONStorage(() => sessionStorage),
       partialize: (state) =>
         state.mode === 'simulated'
-          ? { mode: state.mode, position: state.position, target: state.target }
+          ? { mode: state.mode, position: state.position, target: state.target, waypoints: state.waypoints }
           : { mode: state.mode },
     },
   ),
@@ -201,7 +215,8 @@ export function reportablePosition(
 ): Position | null {
   const { mode, position } = state;
   if (!position) return null;
-  if (mode === 'simulated') return { ...position, fixedAt: undefined };
+  // The simulated car is exactly where it is drawn, and always current.
+  if (mode === 'simulated') return { ...position, accuracyMeters: SIM_ACCURACY_M, fixedAt: undefined };
   if (position.fixedAt === undefined || now - position.fixedAt > STALE_FIX_MS) return null;
   return position;
 }
@@ -274,23 +289,57 @@ function useGpsWatch(enabled: boolean): void {
   }, [enabled]);
 }
 
-/** Drives the simulated car toward its target, one step a second. */
+type Point = { latitude: number; longitude: number };
+
+/**
+ * Moves `meters` along the waypoints and then to the target, passing as many corners as the
+ * distance covers, so the car keeps its speed on a winding road. Pure, for the simulation tick.
+ */
+export function advanceAlong(
+  from: Point,
+  waypoints: Point[],
+  target: Point,
+  meters: number,
+): { position: Point; waypoints: Point[]; arrived: boolean; heading: number } {
+  let position = from;
+  let remaining = meters;
+  const queue = [...waypoints, target];
+  let heading = bearingDegrees(from, queue[0]!);
+  while (remaining > 0 && queue.length > 0) {
+    const goal = queue[0]!;
+    const gap = distanceMeters(position, goal);
+    if (gap > 0) heading = bearingDegrees(position, goal);
+    if (gap <= remaining) {
+      position = { latitude: goal.latitude, longitude: goal.longitude };
+      remaining -= gap;
+      queue.shift();
+    } else {
+      const step = stepToward(position, goal, remaining);
+      position = { latitude: step.latitude, longitude: step.longitude };
+      remaining = 0;
+    }
+  }
+  const arrived = queue.length === 0;
+  return { position, waypoints: arrived ? [] : queue.slice(0, -1), arrived, heading };
+}
+
+/** Drives the simulated car toward its target, along its waypoints, one step a second. */
 function useSimulation(enabled: boolean): void {
   useEffect(() => {
     if (!enabled) return;
     const id = setInterval(() => {
-      const { position, target } = useDriverLocation.getState();
+      const { position, target, waypoints } = useDriverLocation.getState();
       if (!position || !target) return;
-      const next = stepToward(position, target, (SIM_SPEED_MPS * SIM_TICK_MS) / 1000);
+      const next = advanceAlong(position, waypoints, target, (SIM_SPEED_MPS * SIM_TICK_MS) / 1000);
       useDriverLocation.setState({
         position: {
-          latitude: next.latitude,
-          longitude: next.longitude,
+          ...next.position,
           accuracyMeters: SIM_ACCURACY_M,
-          headingDegrees: bearingDegrees(position, target),
+          headingDegrees: next.heading,
           speedMetersPerSecond: next.arrived ? 0 : SIM_SPEED_MPS,
         },
         target: next.arrived ? null : target,
+        waypoints: next.waypoints,
       });
     }, SIM_TICK_MS);
     return () => clearInterval(id);

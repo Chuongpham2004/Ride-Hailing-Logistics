@@ -27,6 +27,8 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // Screen tests that type and click through a whole flow can pass 5 s when every file runs at once.
+    testTimeout: 15_000,
     // e2e/ holds Playwright specs that need the running stack (npm run e2e).
     include: ['src/**/*.test.{ts,tsx}'],
     css: false,

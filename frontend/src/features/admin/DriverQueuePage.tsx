@@ -18,7 +18,7 @@ export default function DriverQueuePage() {
   const items = queue.data?.pages.flatMap((page) => page.items) ?? [];
 
   return (
-    <div className="flex max-w-5xl flex-col gap-5 px-10 py-8">
+    <div className="flex w-full flex-col gap-5 px-10 py-8 2xl:px-14">
       <h1 className="m-0 text-[28px] leading-tight font-bold">Hồ sơ tài xế</h1>
 
       <div role="tablist" aria-label="Trạng thái hồ sơ" className="flex flex-wrap gap-2">
