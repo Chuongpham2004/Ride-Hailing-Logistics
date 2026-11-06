@@ -56,7 +56,7 @@ spring:
             - id: pricing-service
               uri: ${PRICING_SERVICE_URL:lb://pricing-service}
               predicates:
-                - Path=/api/v1/quotes/**,/api/v1/admin/pricing/**
+                - Path=/api/v1/quotes/**,/api/v1/routes/**,/api/v1/admin/pricing/**
             - id: payment-service
               uri: ${PAYMENT_SERVICE_URL:lb://payment-service}
               predicates:
