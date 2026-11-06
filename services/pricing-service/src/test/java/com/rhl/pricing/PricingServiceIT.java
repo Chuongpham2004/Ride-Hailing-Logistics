@@ -382,6 +382,14 @@ class PricingServiceIT {
                         .param("toLatitude", "10.7725").param("toLongitude", "106.6980")
                         .with(token(UUID.randomUUID(), "DRIVER")))
                 .andExpect(status().isBadRequest());
+        for (String notANumber : new String[]{"NaN", "Infinity", "-Infinity"}) {
+            mvc.perform(get("/api/v1/routes")
+                            .param("fromLatitude", notANumber).param("fromLongitude", "106.6980")
+                            .param("toLatitude", "10.7725").param("toLongitude", "106.6980")
+                            .with(token(UUID.randomUUID(), "DRIVER")))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+        }
         mvc.perform(get("/api/v1/routes")
                         .param("fromLatitude", "10.7725").param("fromLongitude", "106.6980")
                         .param("toLatitude", "10.7629").param("toLongitude", "106.6822")

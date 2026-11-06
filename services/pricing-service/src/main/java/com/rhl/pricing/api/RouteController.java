@@ -1,6 +1,8 @@
 package com.rhl.pricing.api;
 
+import com.rhl.common.web.ApiException;
 import com.rhl.common.web.ApiResponse;
+import com.rhl.common.web.ErrorCode;
 import com.rhl.pricing.application.RouteProvider;
 import com.rhl.pricing.domain.RouteEstimate;
 import com.rhl.pricing.domain.ServiceType;
@@ -13,6 +15,8 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * Road route between two points for the apps' maps: the driver's way to the pickup, and the way
@@ -46,8 +50,29 @@ public class RouteController {
             @RequestParam @DecimalMin("-90") @DecimalMax("90") double toLatitude,
             @RequestParam @DecimalMin("-180") @DecimalMax("180") double toLongitude,
             @RequestParam(defaultValue = "RIDE") ServiceType serviceType) {
-        Stop from = new Stop(fromLatitude, fromLongitude, "from");
-        Stop to = new Stop(toLatitude, toLongitude, "to");
+        Stop from = new Stop(latitude("fromLatitude", fromLatitude), longitude("fromLongitude", fromLongitude),
+                "from");
+        Stop to = new Stop(latitude("toLatitude", toLatitude), longitude("toLongitude", toLongitude), "to");
         return ApiResponse.ok(RouteView.of(routes.route(serviceType, from, to)));
+    }
+
+    /*
+     * The bean constraints above let NaN and Infinity through (they are not comparable decimals):
+     * checked here, before any distance arithmetic, with comparisons that NaN always fails.
+     */
+    private static double latitude(String field, double value) {
+        return within(field, value, 90);
+    }
+
+    private static double longitude(String field, double value) {
+        return within(field, value, 180);
+    }
+
+    private static double within(String field, double value, double limit) {
+        if (!(value >= -limit && value <= limit)) {
+            throw new ApiException(ErrorCode.VALIDATION_ERROR, "Invalid coordinate",
+                    List.of(new ApiResponse.FieldError(field, "must be between -" + (int) limit + " and " + (int) limit)));
+        }
+        return value;
     }
 }
