@@ -466,7 +466,9 @@ class TripServiceIT {
                 .isZero());
         List<JsonNode> events = consume(Topics.TRIP_EVENTS, tripId, 6);
         assertThat(events.getLast().path("eventType").asString()).isEqualTo("TripCompleted");
-        assertThat(events.toString()).doesNotContain("Nhan", "912345678", pickupCode + "\"", deliveryCode + "\"");
+        // Codes as whole JSON values: a bare "7781\"" also matched a UUID ending in ...7781 (CI flake).
+        assertThat(events.toString()).doesNotContain("Nhan", "912345678", "\"" + pickupCode + "\"",
+                "\"" + deliveryCode + "\"");
     }
 
     /** FR-CAN: the fee is shown before cancelling; only to someone who may cancel the trip now. */
