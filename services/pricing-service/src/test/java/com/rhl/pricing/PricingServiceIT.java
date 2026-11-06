@@ -358,6 +358,39 @@ class PricingServiceIT {
                 .andExpect(status().isForbidden());
     }
 
+    @Test
+    void driversAndCustomersGetARouteForTheirMap() throws Exception {
+        // OSRM is off in tests: the straight-line estimate, without geometry.
+        mvc.perform(get("/api/v1/routes")
+                        .param("fromLatitude", "10.7725").param("fromLongitude", "106.6980")
+                        .param("toLatitude", "10.7629").param("toLongitude", "106.6822")
+                        .with(token(UUID.randomUUID(), "DRIVER")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.source").value("ESTIMATE"))
+                .andExpect(jsonPath("$.data.distanceMeters").value(org.hamcrest.Matchers.greaterThan(1000)))
+                .andExpect(jsonPath("$.data.durationSeconds").value(org.hamcrest.Matchers.greaterThan(0)))
+                .andExpect(jsonPath("$.data.polyline").doesNotExist());
+        // The driver standing at the pickup: still an answer, not an error.
+        mvc.perform(get("/api/v1/routes")
+                        .param("fromLatitude", "10.7725").param("fromLongitude", "106.6980")
+                        .param("toLatitude", "10.7725").param("toLongitude", "106.6980")
+                        .with(customerToken(UUID.randomUUID())))
+                .andExpect(status().isOk());
+
+        mvc.perform(get("/api/v1/routes")
+                        .param("fromLatitude", "95").param("fromLongitude", "106.6980")
+                        .param("toLatitude", "10.7725").param("toLongitude", "106.6980")
+                        .with(token(UUID.randomUUID(), "DRIVER")))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get("/api/v1/routes")
+                        .param("fromLatitude", "10.7725").param("fromLongitude", "106.6980")
+                        .param("toLatitude", "10.7629").param("toLongitude", "106.6822")
+                        .with(token(UUID.randomUUID(), "FINANCE_STAFF")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get("/api/v1/routes").param("fromLatitude", "10.7725"))
+                .andExpect(status().isUnauthorized());
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     private ResultActions quote(UUID customer, String serviceType, Map<String, Object> pickup,
