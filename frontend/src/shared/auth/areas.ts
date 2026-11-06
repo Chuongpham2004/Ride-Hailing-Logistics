@@ -14,8 +14,31 @@ const AREA_HOME: Record<Area, string> = {
   admin: '/admin',
 };
 
+/** Each area has its own sign-in page (customer, driver, staff portals). */
+export const LOGIN_PATH: Record<Area, string> = {
+  customer: '/login',
+  driver: '/driver/login',
+  admin: '/admin/login',
+};
+
+/** The area a path belongs to, by its first segment; anything else is the customer's. */
+export function areaOfPath(path: string | null | undefined): Area {
+  if (path?.startsWith('/driver')) return 'driver';
+  if (path?.startsWith('/admin')) return 'admin';
+  return 'customer';
+}
+
 export function canEnter(area: Area, roles: readonly Role[]): boolean {
   return AREA_ROLES[area].some((role) => roles.includes(role));
+}
+
+/** The areas a signed-in user may use, in a fixed order. */
+export function areasFor(roles: readonly Role[]): Area[] {
+  return (['customer', 'driver', 'admin'] as const).filter((a) => canEnter(a, roles));
+}
+
+export function areaHome(area: Area): string {
+  return AREA_HOME[area];
 }
 
 /**
@@ -24,5 +47,5 @@ export function canEnter(area: Area, roles: readonly Role[]): boolean {
  */
 export function homeFor(roles: readonly Role[]): string {
   const area = (['customer', 'driver', 'admin'] as const).find((a) => canEnter(a, roles));
-  return area ? AREA_HOME[area] : '/login';
+  return area ? AREA_HOME[area] : LOGIN_PATH.customer;
 }

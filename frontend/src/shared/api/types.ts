@@ -335,6 +335,14 @@ export interface StaffTripDetail {
   cancelNote?: string;
   pickupCodeFailures: number;
   deliveryCodeFailures: number;
+  /** Where a completed trip ended (driver's last known position); absent when unknown. */
+  completion?: {
+    latitude: number;
+    longitude: number;
+    distanceToDropoffMeters: number;
+    /** Farther than the server's limit (300 m): ended early or before arriving. */
+    awayFromDropoff: boolean;
+  };
 }
 
 /** payment-service PaymentQueries.EntryView; `amount` is signed (commission is negative). */

@@ -16,7 +16,7 @@ export default function AccountPage() {
   };
 
   return (
-    <div className="flex h-full flex-col gap-6 overflow-y-auto px-5 py-8">
+    <div className="flex h-full flex-col gap-6 overflow-y-auto px-5 py-8 lg:page-column lg:py-12">
       <h1 className="m-0 text-[28px] leading-tight font-bold">{user?.fullName ?? 'Tài khoản'}</h1>
       <dl className="m-0 flex flex-col text-[15px]">
         <ContactRow label="Email" channel="email" value={user?.email} verified={user?.emailVerified} />

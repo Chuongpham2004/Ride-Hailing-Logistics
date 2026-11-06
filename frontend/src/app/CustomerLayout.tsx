@@ -1,53 +1,32 @@
-import { NavLink, Outlet, useMatch } from 'react-router';
+import { Outlet, useMatch } from 'react-router';
 import { ConnectionBanner } from '@/shared/realtime/ConnectionBanner';
 import { useRealtimeSession } from '@/shared/realtime/realtime';
+import { BottomTabs, RoadBar, type AreaTab } from '@/shared/ui/AreaNav';
 import { ListIcon, PinIcon, UserIcon } from '@/shared/ui/icons';
-import { RevealBackdrop } from '@/shared/ui/RevealBackdrop';
 
-const TABS = [
+const TABS: AreaTab[] = [
   { to: '/app', end: true, label: 'Đặt xe', Icon: PinIcon },
   { to: '/app/activity', end: false, label: 'Hoạt động', Icon: ListIcon },
   { to: '/app/account', end: false, label: 'Tài khoản', Icon: UserIcon },
 ];
 
 /**
- * Mobile-first frame for the customer area: at most 480 px wide, centred on larger screens, with
- * the bottom tab bar. The quote and trip screens hide the tabs so their action stays under the
- * thumb. Holds the realtime connection open for the whole area.
+ * The customer area fills the screen: on a phone the bottom tab bar (hidden on the quote and trip
+ * screens so their action stays under the thumb), on a wide screen the road bar on top. Holds the
+ * realtime connection open for the whole area.
  */
 export function CustomerLayout() {
   useRealtimeSession();
   const onQuote = useMatch('/app/quote/:quoteId');
   const onTrip = useMatch('/app/trips/:tripId');
   return (
-    <>
-      <RevealBackdrop />
-      <div className="relative mx-auto flex h-dvh max-w-[480px] flex-col bg-white shadow-[0_0_0_1px_var(--color-line)]">
-        <main className="relative min-h-0 flex-1">
-          <ConnectionBanner />
-          <Outlet />
-        </main>
-        {!onQuote && !onTrip && (
-          <nav
-            aria-label="Điều hướng chính"
-            className="grid grid-cols-3 border-t border-concrete bg-white px-2 pt-1.5 pb-[max(14px,env(safe-area-inset-bottom))]"
-          >
-            {TABS.map(({ to, end, label, Icon }) => (
-              <NavLink
-                key={to}
-                to={to}
-                end={end}
-                className={({ isActive }) =>
-                  `flex flex-col items-center gap-0.5 py-1.5 text-xs no-underline ${isActive ? 'font-semibold text-asphalt' : 'text-curb'}`
-                }
-              >
-                <Icon />
-                {label}
-              </NavLink>
-            ))}
-          </nav>
-        )}
-      </div>
-    </>
+    <div className="flex h-dvh flex-col bg-white">
+      <RoadBar tabs={TABS} label="Điều hướng chính" area="Khách hàng" />
+      <main className="relative min-h-0 flex-1">
+        <ConnectionBanner />
+        <Outlet />
+      </main>
+      {!onQuote && !onTrip && <BottomTabs tabs={TABS} label="Điều hướng chính" />}
+    </div>
   );
 }

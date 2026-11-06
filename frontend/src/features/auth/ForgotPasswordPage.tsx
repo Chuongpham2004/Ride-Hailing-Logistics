@@ -5,7 +5,7 @@ import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { z } from 'zod/mini';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
-import { homeFor } from '@/shared/auth/areas';
+import { homeFor, LOGIN_PATH, type Area } from '@/shared/auth/areas';
 import { confirmPasswordReset, login, requestPasswordReset, useSession } from '@/shared/auth/session';
 import { formatCountdown } from '@/shared/lib/format';
 import { useCountdown } from '@/shared/lib/useCountdown';
@@ -70,6 +70,9 @@ export default function ForgotPasswordPage() {
   const { status, user } = useSession();
   const [params] = useSearchParams();
   const [identifier, setIdentifier] = useState<string | null>(null);
+  // Which sign-in page sent the user here, to send them back to the same one.
+  const asked = params.get('portal');
+  const loginPath = LOGIN_PATH[asked === 'driver' || asked === 'admin' ? (asked as Area) : 'customer'];
 
   if (status === 'loading') return <Splash />;
   if (user) return <Navigate to={homeFor(user.roles)} replace />;
@@ -81,13 +84,17 @@ export default function ForgotPasswordPage() {
         <header className="flex flex-col gap-2">
           <h1 className="m-0 text-[28px] leading-tight font-bold">Quên mật khẩu</h1>
           <p className="m-0 text-ink-2">
-            Nhớ ra rồi? <Link to="/login">Đăng nhập</Link>
+            Nhớ ra rồi? <Link to={loginPath}>Đăng nhập</Link>
           </p>
         </header>
         {identifier === null ? (
           <AskStep initial={params.get('identifier') ?? ''} onSent={setIdentifier} />
         ) : (
-          <ResetStep identifier={identifier} onChangeAddress={() => setIdentifier(null)} />
+          <ResetStep
+            identifier={identifier}
+            loginPath={loginPath}
+            onChangeAddress={() => setIdentifier(null)}
+          />
         )}
       </div>
     </div>
@@ -147,7 +154,15 @@ function AskStep({ initial, onSent }: { initial: string; onSent: (identifier: st
   );
 }
 
-function ResetStep({ identifier, onChangeAddress }: { identifier: string; onChangeAddress: () => void }) {
+function ResetStep({
+  identifier,
+  loginPath,
+  onChangeAddress,
+}: {
+  identifier: string;
+  loginPath: string;
+  onChangeAddress: () => void;
+}) {
   const navigate = useNavigate();
   const [failure, setFailure] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -176,7 +191,7 @@ function ResetStep({ identifier, onChangeAddress }: { identifier: string; onChan
       navigate(homeFor(signedIn.roles), { replace: true });
     } catch {
       // The password is changed even if signing in right now fails (network, say).
-      navigate(`/login?identifier=${encodeURIComponent(identifier)}&reset=1`, { replace: true });
+      navigate(`${loginPath}?identifier=${encodeURIComponent(identifier)}&reset=1`, { replace: true });
     }
   });
 

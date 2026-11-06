@@ -34,7 +34,7 @@ export default function ReviewPage() {
   if (profile.reviewStatus === 'DRAFT') return <Navigate to="/driver/onboarding" replace />;
 
   return (
-    <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8">
+    <div className="flex h-full flex-col gap-5 overflow-y-auto px-5 py-8 lg:page-column lg:py-12">
       {profile.reviewStatus === 'PENDING_REVIEW' && (
         <Block tone="bg-sign" title="Hồ sơ đang chờ duyệt">
           <p className="m-0 text-[15px] text-ink-2">

@@ -123,4 +123,60 @@ describe('TripDetailPage', () => {
     expect(await screen.findByText('Đã huỷ')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Huỷ chuyến (ngoại lệ)' })).not.toBeInTheDocument();
   });
+
+  it('says where a completed trip ended, and flags one ended far from the drop-off', async () => {
+    const completed = {
+      ...detail('COMPLETED' as TripStatus),
+      trip: { ...detail('COMPLETED' as TripStatus).trip, completedAt: '2026-11-05T02:30:00Z' },
+    };
+    server.use(
+      http.get(apiUrl(`/api/v1/admin/trips/${TRIP_ID}`), () =>
+        ok({
+          ...completed,
+          completion: {
+            latitude: 10.77,
+            longitude: 106.69,
+            distanceToDropoffMeters: 1250,
+            awayFromDropoff: true,
+          },
+        }),
+      ),
+    );
+    renderPage();
+    expect(
+      await screen.findByText(/Cách điểm đến 1,3 km: dừng sớm hoặc hoàn tất trước khi tới/),
+    ).toBeInTheDocument();
+  });
+
+  it('shows a completion at the drop-off plainly, and an unknown one as unknown', async () => {
+    const completed = {
+      ...detail('COMPLETED' as TripStatus),
+      trip: { ...detail('COMPLETED' as TripStatus).trip, completedAt: '2026-11-05T02:30:00Z' },
+    };
+    server.use(
+      http.get(apiUrl(`/api/v1/admin/trips/${TRIP_ID}`), () =>
+        ok({
+          ...completed,
+          completion: {
+            latitude: 10.78,
+            longitude: 106.69,
+            distanceToDropoffMeters: 40,
+            awayFromDropoff: false,
+          },
+        }),
+      ),
+    );
+    renderPage();
+    expect(await screen.findByText('Tại điểm đến (cách 40 m)')).toBeInTheDocument();
+  });
+
+  it('says so when no position was known at completion', async () => {
+    const completed = {
+      ...detail('COMPLETED' as TripStatus),
+      trip: { ...detail('COMPLETED' as TripStatus).trip, completedAt: '2026-11-05T02:30:00Z' },
+    };
+    server.use(http.get(apiUrl(`/api/v1/admin/trips/${TRIP_ID}`), () => ok(completed)));
+    renderPage();
+    expect(await screen.findByText(/Không rõ: lúc đó chưa có vị trí của tài xế/)).toBeInTheDocument();
+  });
 });

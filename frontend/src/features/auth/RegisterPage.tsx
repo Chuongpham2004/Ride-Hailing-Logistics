@@ -1,11 +1,11 @@
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useState } from 'react';
 import { useForm, useWatch } from 'react-hook-form';
-import { Link, Navigate, useNavigate } from 'react-router';
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router';
 import { z } from 'zod/mini';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
-import { homeFor } from '@/shared/auth/areas';
+import { homeFor, LOGIN_PATH } from '@/shared/auth/areas';
 import { register as signUp, useSession } from '@/shared/auth/session';
 import { Button } from '@/shared/ui/Button';
 import { RevealBackdrop } from '@/shared/ui/RevealBackdrop';
@@ -80,6 +80,7 @@ function failureText(error: unknown): string {
 export default function RegisterPage() {
   const { status, user } = useSession();
   const navigate = useNavigate();
+  const [params] = useSearchParams();
   const [failure, setFailure] = useState<string | null>(null);
   const [conflict, setConflict] = useState(false);
   const {
@@ -89,9 +90,18 @@ export default function RegisterPage() {
     formState: { errors, isSubmitting },
   } = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(schema),
-    defaultValues: { role: 'CUSTOMER', fullName: '', email: '', phone: '', password: '', confirm: '' },
+    // The drivers' sign-in page links here with ?role=DRIVER.
+    defaultValues: {
+      role: params.get('role') === 'DRIVER' ? 'DRIVER' : 'CUSTOMER',
+      fullName: '',
+      email: '',
+      phone: '',
+      password: '',
+      confirm: '',
+    },
   });
   const role = useWatch({ control, name: 'role' });
+  const loginPath = role === 'DRIVER' ? LOGIN_PATH.driver : LOGIN_PATH.customer;
 
   if (status === 'loading') return <Splash />;
   if (user) return <Navigate to={homeFor(user.roles)} replace />;
@@ -132,7 +142,7 @@ export default function RegisterPage() {
         <header className="flex flex-col gap-2">
           <h1 className="m-0 text-[28px] leading-tight font-bold">Tạo tài khoản</h1>
           <p className="m-0 text-ink-2">
-            Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
+            Đã có tài khoản? <Link to={loginPath}>Đăng nhập</Link>
           </p>
         </header>
 
@@ -216,7 +226,7 @@ export default function RegisterPage() {
 
           {failure && (
             <p role="alert" className="m-0 rounded-[10px] bg-stop-tint px-3.5 py-3 text-[15px] text-asphalt">
-              {failure} {conflict && <Link to="/login">Đến trang đăng nhập</Link>}
+              {failure} {conflict && <Link to={loginPath}>Đến trang đăng nhập</Link>}
             </p>
           )}
 
