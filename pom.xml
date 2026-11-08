@@ -58,7 +58,7 @@
           scan), and still does in the 4.2.1 that Spring Boot 4.1.1 manages. Drop once Spring Boot
           ships a kafka-clients with an equal or newer version.
         -->
-        <lz4-java.version>1.12.1</lz4-java.version>
+        <lz4-java.version>1.13.0</lz4-java.version>
         <!--
           kafka-clients also brings snappy-java 1.1.10.7 (CVE-2026-108106, CVE-2026-93451 HIGH,
           fixed in 1.1.10.9; found by the pricing-service image scan on 2026-10-29). Drop once
