@@ -83,7 +83,7 @@
           API eureka-core uses is unchanged. Drop once Spring Cloud ships an eureka-core with an
           equal or newer guava.
         -->
-        <guava.version>33.7.2-jre</guava.version>
+        <guava.version>33.8.0-jre</guava.version>
         <!-- Raised per module once real coverage exists; 0 keeps the gate wired but non-blocking. -->
         <jacoco.minimum.line.coverage>0.00</jacoco.minimum.line.coverage>
     </properties>
