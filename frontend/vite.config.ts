@@ -15,8 +15,8 @@ export default defineConfig({
     strictPort: true,
   },
   build: {
-    // MapLibre alone is ~800 kB minified; it gets its own chunk.
-    chunkSizeWarningLimit: 1100,
+    // MapLibre alone is ~1.1 MB minified (6.16); it gets its own chunk.
+    chunkSizeWarningLimit: 1200,
     rollupOptions: {
       output: {
         manualChunks: (id) => (id.includes('maplibre-gl') ? 'maplibre' : undefined),
