@@ -45,7 +45,7 @@
           Security patch newer than what Spring Boot / Spring Cloud manage; drop once they ship an
           equal or newer version. Found by Trivy in the v0.1.0 image scan.
         -->
-        <bouncycastle.version>1.86</bouncycastle.version>
+        <bouncycastle.version>1.87</bouncycastle.version>
         <!--
           Override newer than what Spring Boot 4.1.2 ships; the BOM brings Jackson 3.1.7, which the
           v0.1.0 image scan flagged (CVE-2026-89407/89425/68497/91776/91777 on tools.jackson.core).
