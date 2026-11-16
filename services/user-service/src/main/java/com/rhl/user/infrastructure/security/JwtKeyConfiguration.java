@@ -5,7 +5,7 @@ import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
-import com.rhl.common.security.JwtClaims;
+import com.rhl.common.security.TokenRules;
 import com.rhl.user.UserServiceProperties;
 import com.rhl.user.infrastructure.cache.TokenRevocationStore;
 import org.slf4j.Logger;
@@ -14,10 +14,6 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.converter.RsaKeyConverters;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2Error;
-import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
@@ -80,21 +76,10 @@ public class JwtKeyConfiguration {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withPublicKey(signingKey.toRSAPublicKey()).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 JwtValidators.createDefaultWithIssuer(properties.jwt().issuer()),
-                accessTokenOnly(),
-                notRevoked(revocations)));
+                // user-service has no internal API: service tokens are refused here.
+                TokenRules.accessTokenOnly(),
+                TokenRules.notRevoked(revocations::isRevoked)));
         return decoder;
-    }
-
-    private static OAuth2TokenValidator<Jwt> accessTokenOnly() {
-        return jwt -> JwtClaims.ACCESS_TOKEN.equals(jwt.getClaimAsString(JwtClaims.TOKEN_TYPE))
-                ? OAuth2TokenValidatorResult.success()
-                : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Not an access token", null));
-    }
-
-    private static OAuth2TokenValidator<Jwt> notRevoked(TokenRevocationStore revocations) {
-        return jwt -> jwt.getId() != null && revocations.isRevoked(jwt.getId())
-                ? OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Token revoked", null))
-                : OAuth2TokenValidatorResult.success();
     }
 
     private static KeyPair generate() {

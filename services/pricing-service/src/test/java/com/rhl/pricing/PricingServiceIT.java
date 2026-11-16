@@ -1,6 +1,8 @@
 package com.rhl.pricing;
 
 import com.rhl.common.id.UuidV7;
+import com.rhl.common.security.JwtClaims;
+import com.rhl.common.security.ServiceScopes;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
@@ -327,7 +329,7 @@ class PricingServiceIT {
 
     private MockHttpServletRequestBuilder preview(String actor, String status, String reason, Instant acceptedAt,
                                                   Long bookedFare) {
-        MockHttpServletRequestBuilder request = get("/internal/v1/cancellation-fees/preview")
+        MockHttpServletRequestBuilder request = get("/internal/v1/cancellation-fees/preview").with(serviceToken())
                 .param("serviceType", "RIDE").param("actorType", actor).param("status", status)
                 .param("reason", reason);
         if (acceptedAt != null) {
@@ -337,6 +339,21 @@ class PricingServiceIT {
             request.param("bookedFare", bookedFare.toString());
         }
         return request;
+    }
+
+    @Test
+    void internalApiTakesOnlyAServiceTokenWithItsScope() throws Exception {
+        String path = "/internal/v1/quotes/" + UUID.randomUUID();
+        UUID customer = UUID.randomUUID();
+        mvc.perform(get(path).param("customerId", customer.toString())).andExpect(status().isUnauthorized());
+        mvc.perform(get(path).param("customerId", customer.toString()).with(token(customer, "ADMINISTRATOR")))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(path).param("customerId", customer.toString())
+                .with(serviceToken(ServiceScopes.INTERNAL_LOCATION))).andExpect(status().isForbidden());
+        mvc.perform(get(path).param("customerId", customer.toString()).with(serviceToken()))
+                .andExpect(status().isNotFound());
+        // A service token does not open the user-facing API.
+        mvc.perform(get("/api/v1/admin/pricing/rules").with(serviceToken())).andExpect(status().isForbidden());
     }
 
     @Test
@@ -499,7 +516,7 @@ class PricingServiceIT {
     }
 
     private static MockHttpServletRequestBuilder validate(String quoteId, UUID customer, String serviceType) {
-        return get("/internal/v1/quotes/" + quoteId)
+        return get("/internal/v1/quotes/" + quoteId).with(serviceToken())
                 .param("customerId", customer.toString())
                 .param("serviceType", serviceType);
     }
@@ -526,6 +543,16 @@ class PricingServiceIT {
             }
         }
         throw new AssertionError("No " + serviceType + " v" + version);
+    }
+
+    /** What trip-service sends: a client credentials token from user-service. */
+    private static RequestPostProcessor serviceToken() {
+        return serviceToken(ServiceScopes.INTERNAL_PRICING);
+    }
+
+    private static RequestPostProcessor serviceToken(String scope) {
+        return jwt().jwt(j -> j.subject("trip-service").claim(JwtClaims.TOKEN_TYPE, JwtClaims.SERVICE_TOKEN)
+                .claim(JwtClaims.SCOPE, scope));
     }
 
     private static RequestPostProcessor customerToken(UUID id) {

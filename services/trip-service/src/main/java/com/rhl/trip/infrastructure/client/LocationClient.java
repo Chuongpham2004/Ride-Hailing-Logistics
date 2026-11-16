@@ -28,9 +28,9 @@ public class LocationClient {
     private final RemoteCalls calls;
 
     public LocationClient(RestClient.Builder builder, TripServiceProperties properties,
-                          LoadBalancerClient loadBalancer) {
+                          LoadBalancerClient loadBalancer, ServiceTokenSource tokens) {
         this.calls = new RemoteCalls("location-service", properties.resilience());
-        this.rest = RemoteRestClient.create(builder, properties.location(), loadBalancer);
+        this.rest = RemoteRestClient.create(builder, properties.location(), loadBalancer, tokens);
     }
 
     /** @throws LocationUnavailableException when location-service cannot be reached or answers with an error */

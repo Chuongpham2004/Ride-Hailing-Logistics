@@ -19,6 +19,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.List;
 
 /** Signs access tokens and creates opaque refresh tokens. */
 @Component
@@ -48,6 +49,25 @@ public class TokenService {
         JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(properties.jwt().keyId()).build();
         String value = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
         return new AccessToken(value, expiresAt);
+    }
+
+    /**
+     * A service's token for {@code /internal/**} calls: subject is the client ID, no roles, and
+     * {@code typ=service}, so user-facing APIs refuse it (README §8.5).
+     */
+    public AccessToken issueServiceToken(String clientId, List<String> scopes, Instant now) {
+        Instant expiresAt = now.plus(properties.jwt().serviceTokenTtl());
+        JwtClaimsSet claims = JwtClaimsSet.builder()
+                .issuer(properties.jwt().issuer())
+                .subject(clientId)
+                .id(UuidV7.randomString())
+                .issuedAt(now)
+                .expiresAt(expiresAt)
+                .claim(JwtClaims.TOKEN_TYPE, JwtClaims.SERVICE_TOKEN)
+                .claim(JwtClaims.SCOPE, String.join(" ", scopes))
+                .build();
+        JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(properties.jwt().keyId()).build();
+        return new AccessToken(encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue(), expiresAt);
     }
 
     /** 256 random bits, URL-safe. */

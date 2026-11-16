@@ -4,7 +4,9 @@ import com.rhl.common.web.CorrelationId;
 import com.rhl.trip.TripServiceProperties;
 import org.springframework.cloud.client.ServiceInstance;
 import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.client.ClientHttpRequestInterceptor;
+import org.springframework.http.client.ClientHttpResponse;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.http.client.support.HttpRequestWrapper;
 import org.springframework.web.client.RestClient;
@@ -15,7 +17,7 @@ import java.net.http.HttpClient;
 
 /**
  * The {@link RestClient} every remote client in this package is built on: timeouts from
- * configuration and the caller's correlation ID on each request. A base URL of the form
+ * configuration, the caller's correlation ID and a service token on each request. A base URL of the form
  * {@code lb://<service>} is resolved through the service registry on every call; any other URL
  * is a fixed address and is used as is.
  */
@@ -27,7 +29,7 @@ final class RemoteRestClient {
     }
 
     static RestClient create(RestClient.Builder builder, TripServiceProperties.Remote config,
-                             LoadBalancerClient loadBalancer) {
+                             LoadBalancerClient loadBalancer, ServiceTokenSource tokens) {
         HttpClient http = HttpClient.newBuilder().connectTimeout(config.connectTimeout()).build();
         JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(http);
         factory.setReadTimeout(config.readTimeout());
@@ -46,7 +48,29 @@ final class RemoteRestClient {
                     }
                     return execution.execute(request, body);
                 })
+                // Last, so that its second attempt goes straight to the network.
+                .requestInterceptor(bearer(tokens))
                 .build();
+    }
+
+    /**
+     * {@code Authorization: Bearer <service token>}. A 401 means the token is no longer accepted
+     * (for example user-service restarted with a new key): it is dropped and the call is sent once
+     * more with a new token.
+     */
+    static ClientHttpRequestInterceptor bearer(ServiceTokenSource tokens) {
+        return (request, body, execution) -> {
+            String token = tokens.token();
+            request.getHeaders().setBearerAuth(token);
+            ClientHttpResponse response = execution.execute(request, body);
+            if (!response.getStatusCode().isSameCodeAs(HttpStatus.UNAUTHORIZED)) {
+                return response;
+            }
+            response.close();
+            tokens.invalidate(token);
+            request.getHeaders().setBearerAuth(tokens.token());
+            return execution.execute(request, body);
+        };
     }
 
     private static ClientHttpRequestInterceptor viaRegistry(String serviceId, LoadBalancerClient loadBalancer) {
