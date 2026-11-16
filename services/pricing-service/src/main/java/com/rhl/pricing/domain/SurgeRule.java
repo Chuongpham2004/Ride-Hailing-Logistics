@@ -6,14 +6,16 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Version;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import org.hibernate.annotations.Immutable;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -21,11 +23,13 @@ import java.util.UUID;
  * {@code 1 + slope × (demand / max(supply, 1) − ratioThreshold)}, clamped to
  * [1, maxMultiplier] and rounded down to a multiple of {@code step}. Below {@code minDemand}
  * requests there is no surge at all. Never lowers a price, never exceeds the cap.
+ *
+ * <p>A version is never edited: administrators schedule the next one, which closes this one when
+ * it starts, so every quote can name the formula it was priced with.
  */
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @Entity
-@Immutable
 @Table(name = "surge_rules")
 public class SurgeRule {
 
@@ -60,20 +64,105 @@ public class SurgeRule {
     @Column(name = "effective_to")
     private Instant effectiveTo;
 
-    /** For tests and future administration; rules are otherwise created by migration. */
+    /** {@code null} for versions created by migration. */
+    @Column(name = "created_by")
+    private UUID createdBy;
+
+    @Column(name = "created_at", nullable = false)
+    private Instant createdAt;
+
+    /** Optimistic lock; {@code null} until persisted so Spring Data inserts instead of merging. */
+    @Version
+    @Column(name = "row_version")
+    private Long rowVersion;
+
+    /**
+     * The numbers of a surge formula. Bounds follow the columns (two decimals) and keep a typo
+     * from producing an absurd price.
+     */
+    public record Formula(int minDemand, BigDecimal ratioThreshold, BigDecimal slope, BigDecimal maxMultiplier,
+                          BigDecimal step) {
+
+        public static final BigDecimal HIGHEST_CAP = new BigDecimal("5.00");
+
+        public Formula {
+            Objects.requireNonNull(ratioThreshold);
+            Objects.requireNonNull(slope);
+            Objects.requireNonNull(maxMultiplier);
+            Objects.requireNonNull(step);
+            if (minDemand < 1 || minDemand > 10_000) {
+                throw DomainException.rule("minDemand must be between 1 and 10000");
+            }
+            requireRange("ratioThreshold", ratioThreshold, BigDecimal.ZERO, new BigDecimal("100.00"));
+            requireRange("slope", slope, BigDecimal.ZERO, new BigDecimal("10.00"));
+            requireRange("maxMultiplier", maxMultiplier, BigDecimal.ONE, HIGHEST_CAP);
+            requireRange("step", step, new BigDecimal("0.01"), BigDecimal.ONE);
+            ratioThreshold = ratioThreshold.setScale(2);
+            slope = slope.setScale(2);
+            maxMultiplier = maxMultiplier.setScale(2);
+            step = step.setScale(2);
+        }
+
+        private static void requireRange(String name, BigDecimal value, BigDecimal min, BigDecimal max) {
+            if (value.compareTo(min) < 0 || value.compareTo(max) > 0) {
+                throw DomainException.rule(name + " must be between " + min + " and " + max);
+            }
+            if (value.stripTrailingZeros().scale() > 2) {
+                throw DomainException.rule(name + " has at most two decimals");
+            }
+        }
+    }
+
+    /** For tests; production versions come from migration or {@link #supersede}. */
     public static SurgeRule of(ServiceType serviceType, int version, int minDemand, String ratioThreshold,
                                String slope, String maxMultiplier, String step) {
+        return create(UUID.randomUUID(), serviceType, version, new Formula(minDemand, new BigDecimal(ratioThreshold),
+                new BigDecimal(slope), new BigDecimal(maxMultiplier), new BigDecimal(step)), Instant.EPOCH, null,
+                Instant.EPOCH);
+    }
+
+    private static SurgeRule create(UUID id, ServiceType serviceType, int version, Formula formula,
+                                    Instant effectiveFrom, UUID createdBy, Instant now) {
         SurgeRule rule = new SurgeRule();
-        rule.id = UUID.randomUUID();
-        rule.serviceType = serviceType;
+        rule.id = Objects.requireNonNull(id);
+        rule.serviceType = Objects.requireNonNull(serviceType);
         rule.version = version;
-        rule.minDemand = minDemand;
-        rule.ratioThreshold = new BigDecimal(ratioThreshold);
-        rule.slope = new BigDecimal(slope);
-        rule.maxMultiplier = new BigDecimal(maxMultiplier);
-        rule.step = new BigDecimal(step);
-        rule.effectiveFrom = Instant.EPOCH;
+        rule.minDemand = formula.minDemand();
+        rule.ratioThreshold = formula.ratioThreshold();
+        rule.slope = formula.slope();
+        rule.maxMultiplier = formula.maxMultiplier();
+        rule.step = formula.step();
+        rule.effectiveFrom = Objects.requireNonNull(effectiveFrom);
+        rule.createdBy = createdBy;
+        rule.createdAt = now;
         return rule;
+    }
+
+    /**
+     * The next version of this rule, taking over at {@code effectiveFrom}; closes this one then.
+     * Quotes issued before keep the multiplier they were given.
+     *
+     * @throws DomainException when the new version would not start in the future, after this one
+     */
+    public SurgeRule supersede(UUID newId, Formula formula, Instant effectiveFrom, UUID createdBy, Instant now) {
+        effectiveFrom = effectiveFrom.truncatedTo(ChronoUnit.MICROS); // stored precision
+        if (!effectiveFrom.isAfter(now)) {
+            throw DomainException.rule("A new surge rule must take effect in the future, not retroactively");
+        }
+        if (!effectiveFrom.isAfter(this.effectiveFrom)) {
+            throw DomainException.rule("A new surge rule must start after the current one (" + this.effectiveFrom
+                    + ")");
+        }
+        if (effectiveTo != null && effectiveTo.isBefore(effectiveFrom)) {
+            throw DomainException.rule("The current surge rule ends at " + effectiveTo + ", leaving a gap");
+        }
+        SurgeRule next = create(newId, serviceType, version + 1, formula, effectiveFrom, createdBy, now);
+        this.effectiveTo = effectiveFrom;
+        return next;
+    }
+
+    public Formula formula() {
+        return new Formula(minDemand, ratioThreshold, slope, maxMultiplier, step);
     }
 
     /** Deterministic: the same counts and rule version always give the same multiplier. */

@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -19,4 +20,8 @@ public interface SurgeRuleRepository extends JpaRepository<SurgeRule, UUID> {
               AND r.effectiveFrom <= :at AND (r.effectiveTo IS NULL OR r.effectiveTo > :at)
             """)
     Optional<SurgeRule> findEffective(@Param("serviceType") ServiceType serviceType, @Param("at") Instant at);
+
+    Optional<SurgeRule> findFirstByServiceTypeOrderByVersionDesc(ServiceType serviceType);
+
+    List<SurgeRule> findAllByOrderByServiceTypeAscVersionDesc();
 }

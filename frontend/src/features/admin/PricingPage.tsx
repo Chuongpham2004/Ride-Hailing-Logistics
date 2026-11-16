@@ -14,9 +14,11 @@ import {
   ruleState,
   type RuleGroup,
   type Tariff,
+  tomorrowInput,
   usePricingRules,
   useScheduleRule,
 } from './pricing';
+import { SurgeRules } from './SurgeRules';
 import { FIELD } from './text';
 
 const STATE_BADGES = {
@@ -43,8 +45,9 @@ export default function PricingPage() {
       <div className="flex flex-col gap-1">
         <h1 className="m-0 text-[28px] leading-tight font-bold">Bảng giá</h1>
         <p className="m-0 max-w-[70ch] text-[15px] text-ink-2">
-          Mỗi lần đổi giá là một phiên bản mới, bắt đầu từ một thời điểm trong tương lai. Báo giá đã phát
-          trước đó giữ nguyên giá cũ. Khu vực mới được thêm bằng migration, không thêm ở đây.
+          Mỗi lần đổi giá hoặc hệ số cao điểm là một phiên bản mới, bắt đầu từ một thời điểm trong tương lai,
+          và được ghi nhật ký. Báo giá đã phát trước đó giữ nguyên giá cũ. Khu vực mới được thêm bằng
+          migration, không thêm ở đây.
         </p>
       </div>
 
@@ -122,6 +125,8 @@ export default function PricingPage() {
           </section>
         ))}
 
+      <SurgeRules onScheduled={setNotice} />
+
       {scheduling && (
         <ScheduleDialog
           group={scheduling}
@@ -136,12 +141,6 @@ export default function PricingPage() {
       )}
     </div>
   );
-}
-
-/** "yyyy-MM-ddTHH:mm" in local time, the value a datetime-local input takes. */
-function localInputValue(date: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
 function ScheduleDialog({
@@ -162,12 +161,7 @@ function ScheduleDialog({
     minimumFare: String(latest.minimumFare),
   });
   // Default: tomorrow at midnight, local time.
-  const [from, setFrom] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 1);
-    d.setHours(0, 0, 0, 0);
-    return localInputValue(d);
-  });
+  const [from, setFrom] = useState(tomorrowInput);
   const fromId = useId();
   const [pastStart, setPastStart] = useState(false);
 

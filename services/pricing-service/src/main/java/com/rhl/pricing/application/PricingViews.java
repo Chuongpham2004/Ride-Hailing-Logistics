@@ -5,6 +5,7 @@ import com.rhl.pricing.domain.FareQuote;
 import com.rhl.pricing.domain.PricingRule;
 import com.rhl.pricing.domain.ServiceType;
 import com.rhl.pricing.domain.Stop;
+import com.rhl.pricing.domain.SurgeRule;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -42,14 +43,28 @@ public final class PricingViews {
         }
     }
 
+    /** @param createdBy the administrator who scheduled it; {@code null} for versions created by migration */
     public record RuleView(UUID id, ServiceType serviceType, String regionCode, int version, long baseFare,
                            long perKm, long perMinute, long minimumFare, String currency, Instant effectiveFrom,
-                           Instant effectiveTo, Instant createdAt) {
+                           Instant effectiveTo, UUID createdBy, Instant createdAt) {
 
         static RuleView of(PricingRule r) {
             return new RuleView(r.getId(), r.getServiceType(), r.getRegionCode(), r.getVersion(), r.getBaseFare(),
                     r.getPerKm(), r.getPerMinute(), r.getMinimumFare(), r.getCurrency(), r.getEffectiveFrom(),
-                    r.getEffectiveTo(), r.getCreatedAt());
+                    r.getEffectiveTo(), r.getCreatedBy(), r.getCreatedAt());
+        }
+    }
+
+    /** @param createdBy the administrator who scheduled it; {@code null} for versions created by migration */
+    public record SurgeRuleView(UUID id, ServiceType serviceType, int version, int minDemand,
+                                BigDecimal ratioThreshold, BigDecimal slope, BigDecimal maxMultiplier,
+                                BigDecimal step, Instant effectiveFrom, Instant effectiveTo, UUID createdBy,
+                                Instant createdAt) {
+
+        static SurgeRuleView of(SurgeRule r) {
+            return new SurgeRuleView(r.getId(), r.getServiceType(), r.getVersion(), r.getMinDemand(),
+                    r.getRatioThreshold(), r.getSlope(), r.getMaxMultiplier(), r.getStep(), r.getEffectiveFrom(),
+                    r.getEffectiveTo(), r.getCreatedBy(), r.getCreatedAt());
         }
     }
 }
