@@ -49,6 +49,43 @@ class HandoverTest {
     }
 
     @Test
+    void supportUnlocksALockedCodeAndTheSameCodeWorksAgain() {
+        Trip trip = arrived(ServiceType.RIDE, "4821", null);
+        assertThatThrownBy(() -> trip.unlockCode(HandoverCode.PICKUP, 3, NOW))
+                .isInstanceOf(DomainException.class).hasMessageContaining("not locked");
+        for (int i = 0; i < 3; i++) {
+            assertThatThrownBy(() -> trip.advance(TripStatus.IN_TRIP, driver, "1111", 3, NOW));
+        }
+
+        assertThat(trip.unlockCode(HandoverCode.PICKUP, 3, NOW)).isEqualTo(3);
+        assertThat(trip.getPickupCodeFailures()).isZero();
+        trip.advance(TripStatus.IN_TRIP, driver, "4821", 3, NOW);
+        assertThat(trip.getStatus()).isEqualTo(TripStatus.IN_TRIP);
+
+        // The pickup code is done with once the trip has started.
+        assertThatThrownBy(() -> trip.unlockCode(HandoverCode.PICKUP, 3, NOW))
+                .isInstanceOf(DomainException.class).hasMessageContaining("not in use");
+        // A ride has no delivery code.
+        assertThatThrownBy(() -> trip.unlockCode(HandoverCode.DELIVERY, 3, NOW))
+                .isInstanceOf(DomainException.class).hasMessageContaining("no delivery code");
+    }
+
+    @Test
+    void theDeliveryCodeIsUnlockedOnlyDuringTheTrip() {
+        Trip trip = arrived(ServiceType.DELIVERY, "1234", "9876");
+        assertThatThrownBy(() -> trip.unlockCode(HandoverCode.DELIVERY, 3, NOW))
+                .isInstanceOf(DomainException.class).hasMessageContaining("not in use");
+        trip.advance(TripStatus.IN_TRIP, driver, "1234", 3, NOW);
+        for (int i = 0; i < 3; i++) {
+            assertThatThrownBy(() -> trip.advance(TripStatus.COMPLETED, driver, "0000", 3, NOW));
+        }
+
+        assertThat(trip.unlockCode(HandoverCode.DELIVERY, 3, NOW)).isEqualTo(3);
+        trip.advance(TripStatus.COMPLETED, driver, "9876", 3, NOW);
+        assertThat(trip.getStatus()).isEqualTo(TripStatus.COMPLETED);
+    }
+
+    @Test
     void codesAreOnlyCheckedInTheRightStateAndForTheAssignedDriver() {
         Trip trip = arrived(ServiceType.RIDE, "4821", null);
         // Completing straight from ARRIVED is not a move: nothing is counted.

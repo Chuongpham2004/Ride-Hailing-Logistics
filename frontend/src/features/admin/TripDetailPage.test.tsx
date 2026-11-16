@@ -65,6 +65,8 @@ function detail(status: TripStatus, failures = 0): StaffTripDetail {
     ],
     pickupCodeFailures: failures,
     deliveryCodeFailures: 0,
+    codeMaxAttempts: 5,
+    codeUnlocks: [],
   };
 }
 
@@ -93,6 +95,53 @@ describe('TripDetailPage', () => {
     expect(screen.getByText(/mã đã bị khoá/)).toBeInTheDocument();
     // Support without the reviewer role sees driver ids, not links to the review pages.
     expect(screen.queryByRole('link', { name: 'driver-1' })).not.toBeInTheDocument();
+  });
+
+  it('unlocks a locked pickup code with a note and lists the unlock', async () => {
+    let failures = 5;
+    let sent: unknown;
+    server.use(
+      http.get(apiUrl(`/api/v1/admin/trips/${TRIP_ID}`), () => ok(detail('ARRIVED', failures))),
+      http.post(apiUrl(`/api/v1/admin/trips/${TRIP_ID}/code-unlocks`), async ({ request }) => {
+        sent = await request.json();
+        failures = 0;
+        return ok({
+          ...detail('ARRIVED', 0),
+          codeUnlocks: [
+            {
+              code: 'PICKUP',
+              staffId: 'staff-1',
+              failuresBefore: 5,
+              note: 'Đã gọi khách xác nhận mã',
+              createdAt: '2026-11-05T02:20:00Z',
+            },
+          ],
+        });
+      }),
+    );
+    renderPage();
+    const user = userEvent.setup();
+
+    await user.click(await screen.findByRole('button', { name: 'Mở khoá mã đón' }));
+    const dialog = screen.getByRole('dialog');
+    const confirm = within(dialog).getByRole('button', { name: 'Mở khoá' });
+    await user.type(within(dialog).getByLabelText('Lý do'), 'ngắn');
+    expect(confirm).toBeDisabled();
+    await user.clear(within(dialog).getByLabelText('Lý do'));
+    await user.type(within(dialog).getByLabelText('Lý do'), 'Đã gọi khách xác nhận mã');
+    await user.click(confirm);
+
+    expect(await screen.findByText(/Đã mở khoá mã đón/)).toBeInTheDocument();
+    expect(sent).toEqual({ code: 'PICKUP', note: 'Đã gọi khách xác nhận mã' });
+    expect(screen.getByText('Đã gọi khách xác nhận mã')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mở khoá mã đón' })).not.toBeInTheDocument();
+  });
+
+  it('offers no unlock once the locked code is no longer needed', async () => {
+    server.use(http.get(apiUrl(`/api/v1/admin/trips/${TRIP_ID}`), () => ok(detail('CANCELLED', 5))));
+    renderPage();
+    expect(await screen.findByText(/mã đã bị khoá\./)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Mở khoá mã đón' })).not.toBeInTheDocument();
   });
 
   it('cancels by exception only with a note of at least 10 characters', async () => {

@@ -15,6 +15,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -249,6 +250,38 @@ public class Trip {
         matchingRadiusMeters = next;
         updatedAt = now;
         return true;
+    }
+
+    /**
+     * Support lets the driver try a locked code again (README §6): its wrong-entry counter goes
+     * back to zero, the code itself stays the same. Only a code that is locked and still needed
+     * can be unlocked: the pickup code before the trip starts, the delivery code during it.
+     *
+     * @return wrong entries the code had before the unlock
+     */
+    public int unlockCode(HandoverCode code, int maxAttempts, Instant now) {
+        boolean pickup = code == HandoverCode.PICKUP;
+        String value = pickup ? pickupCode : deliveryCode;
+        int failures = pickup ? pickupCodeFailures : deliveryCodeFailures;
+        String name = code.name().toLowerCase(Locale.ROOT);
+        if (value == null) {
+            throw DomainException.rule("This trip has no " + name + " code");
+        }
+        boolean stillNeeded = pickup ? status.hasAssignedDriver() && status != TripStatus.IN_TRIP
+                : status == TripStatus.IN_TRIP;
+        if (!stillNeeded) {
+            throw DomainException.invalidTripState("The " + name + " code is not in use in status " + status);
+        }
+        if (failures < maxAttempts) {
+            throw DomainException.rule("The " + name + " code is not locked");
+        }
+        if (pickup) {
+            pickupCodeFailures = 0;
+        } else {
+            deliveryCodeFailures = 0;
+        }
+        updatedAt = now;
+        return failures;
     }
 
     /** Missing codes and locked codes are refused without counting; a wrong code returns {@code false}. */

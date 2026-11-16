@@ -557,6 +557,59 @@ class TripServiceIT {
         assertThatThrownBy(() -> jdbc.update("DELETE FROM audit_records")).hasMessageContaining("append-only");
     }
 
+    /** README §6: a code locked by wrong entries is unlocked by support with a note, then works again. */
+    @Test
+    void supportUnlocksALockedPickupCode() throws Exception {
+        UUID customer = UUID.randomUUID();
+        UUID driver = UUID.randomUUID();
+        UUID staff = UUID.randomUUID();
+        candidates(new DriverCandidate(driver, 300, 100));
+        String tripId = data(createTrip(customer, "unlock-" + UUID.randomUUID()).andExpect(status().isCreated()))
+                .path("id").asString();
+        perform(post("/api/v1/offers/" + awaitOffer(driver).path("id").asString() + "/accept"), driverToken(driver))
+                .andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/start-pickup"), driverToken(driver)).andExpect(status().isOk());
+        perform(post("/api/v1/trips/" + tripId + "/arrive"), driverToken(driver)).andExpect(status().isOk());
+        String code = data(perform(get("/api/v1/trips/" + tripId), customerToken(customer))).path("pickupCode")
+                .asString();
+        String wrong = code.equals("0000") ? "1111" : "0000";
+        String unlocks = "/api/v1/admin/trips/" + tripId + "/code-unlocks";
+        String note = "Customer confirmed the code by phone";
+
+        // Nothing to unlock yet.
+        perform(post(unlocks), staffToken(staff), Map.of("code", "PICKUP", "note", note))
+                .andExpect(status().isUnprocessableEntity());
+        for (int i = 0; i < 5; i++) {
+            perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(driver), Map.of("code", wrong))
+                    .andExpect(status().isUnprocessableEntity());
+        }
+        perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(driver), Map.of("code", code))
+                .andExpect(jsonPath("$.message").value("Too many wrong pickup codes; contact support"));
+
+        perform(post(unlocks), customerToken(customer), Map.of("code", "PICKUP", "note", note))
+                .andExpect(status().isForbidden());
+        perform(post(unlocks), staffToken(staff), Map.of("code", "PICKUP", "note", "ok"))
+                .andExpect(status().isUnprocessableEntity());
+        perform(post(unlocks), staffToken(staff), Map.of("code", "PICKUP", "note", note))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.pickupCodeFailures").value(0))
+                .andExpect(jsonPath("$.data.codeMaxAttempts").value(5))
+                .andExpect(jsonPath("$.data.codeUnlocks[0].code").value("PICKUP"))
+                .andExpect(jsonPath("$.data.codeUnlocks[0].failuresBefore").value(5))
+                .andExpect(jsonPath("$.data.codeUnlocks[0].note").value(note))
+                .andExpect(jsonPath("$.data.codeUnlocks[0].staffId").value(staff.toString()));
+        String delta = jdbc.queryForObject("SELECT delta::text FROM audit_records WHERE action = "
+                + "'TRIP_CODE_UNLOCKED' AND target_id = ? AND actor_id = ?", String.class, tripId, staff);
+        assertThat(delta).contains("\"code\": \"PICKUP\"").doesNotContain("phone");
+
+        perform(post("/api/v1/trips/" + tripId + "/start"), driverToken(driver), Map.of("code", code))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("IN_TRIP"));
+        perform(post(unlocks), staffToken(staff), Map.of("code", "PICKUP", "note", note))
+                .andExpect(status().isConflict());
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM handover_code_unlocks")).hasMessageContaining("append-only");
+    }
+
     // ---- helpers --------------------------------------------------------------------------------
 
     /** Stubs pricing-service: a valid quote for {@code customer} from PICKUP to DROPOFF. */
