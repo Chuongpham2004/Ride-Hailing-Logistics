@@ -2,7 +2,7 @@ import { useId, useState, type ReactNode } from 'react';
 import { Link, useParams } from 'react-router';
 import { ApiError } from '@/shared/api/ApiError';
 import { messageFor } from '@/shared/api/messages';
-import type { CancelReason, StaffTripDetail } from '@/shared/api/types';
+import type { CancelReason, HandoverCode, StaffTripDetail, TripStatus } from '@/shared/api/types';
 import { useSession } from '@/shared/auth/session';
 import { SERVICE_NAMES } from '@/shared/drivers/text';
 import { formatDateTime, formatDistance, formatDuration, formatTime } from '@/shared/lib/format';
@@ -18,10 +18,15 @@ import { useTripPayments } from './finance';
 import { ReasonDialog } from './ReasonDialog';
 import { canUse } from './sections';
 import { ACTOR_NAMES, CANCEL_REASON_NAMES, changeReason, FIELD, OFFER_STATUS_NAMES } from './text';
-import { MIN_CANCEL_NOTE, useStaffCancel, useStaffTrip } from './trips';
+import { MIN_CANCEL_NOTE, useCodeUnlock, useStaffCancel, useStaffTrip } from './trips';
 
-/** Wrong codes allowed before a code locks (trip-service rhl.trip.codes.max-attempts). */
-const CODE_LOCK_AFTER = 5;
+const CODE_NAMES: Record<HandoverCode, string> = { PICKUP: 'Mã đón', DELIVERY: 'Mã giao' };
+
+/** When a code is still needed, so unlocking it helps (trip-service Trip.unlockCode). */
+const CODE_IN_USE: Record<HandoverCode, ReadonlySet<TripStatus>> = {
+  PICKUP: new Set(['ACCEPTED', 'PICKING_UP', 'ARRIVED']),
+  DELIVERY: new Set(['IN_TRIP']),
+};
 
 const PACKAGE_SIZES = { SMALL: 'Nhỏ', MEDIUM: 'Vừa', LARGE: 'Lớn' } as const;
 
@@ -97,7 +102,7 @@ function Detail({ detail }: { detail: StaffTripDetail }) {
         </div>
       )}
 
-      <CodeWarnings detail={detail} />
+      <CodeWarnings detail={detail} onUnlocked={setNotice} />
 
       <div className="flex flex-col gap-6 xl:block xl:columns-2 xl:gap-6 xl:[&>*]:mb-6 xl:[&>*]:break-inside-avoid">
         <Card title="Người tham gia">
@@ -271,23 +276,106 @@ function TripPayments({ tripId }: { tripId: string }) {
   );
 }
 
-function CodeWarnings({ detail }: { detail: StaffTripDetail }) {
-  const lines = [
-    { label: 'Mã đón', failures: detail.pickupCodeFailures },
-    { label: 'Mã giao', failures: detail.deliveryCodeFailures },
-  ].filter((line) => line.failures > 0);
-  if (lines.length === 0) return null;
+function CodeWarnings({
+  detail,
+  onUnlocked,
+}: {
+  detail: StaffTripDetail;
+  onUnlocked: (notice: string) => void;
+}) {
+  const [unlocking, setUnlocking] = useState<HandoverCode | null>(null);
+  const max = detail.codeMaxAttempts;
+  const lines = (
+    [
+      { code: 'PICKUP', failures: detail.pickupCodeFailures },
+      { code: 'DELIVERY', failures: detail.deliveryCodeFailures },
+    ] as const
+  ).filter((line) => line.failures > 0);
   return (
-    <section className="rounded-xl bg-stop-tint px-5 py-4 text-[15px]">
-      {lines.map(({ label, failures }) => (
-        <p key={label} className="m-0">
-          <strong className="text-stop">{label}</strong>: tài xế nhập sai {failures} lần
-          {failures >= CODE_LOCK_AFTER
-            ? ', mã đã bị khoá. Chuyến không đi tiếp được; cân nhắc huỷ ngoại lệ.'
-            : ` (khoá sau ${CODE_LOCK_AFTER} lần).`}
-        </p>
-      ))}
-    </section>
+    <>
+      {lines.length > 0 && (
+        <section className="flex flex-col gap-2 rounded-xl bg-stop-tint px-5 py-4 text-[15px]">
+          {lines.map(({ code, failures }) => {
+            const locked = failures >= max;
+            const canUnlock = locked && CODE_IN_USE[code].has(detail.trip.status);
+            return (
+              <div key={code} className="flex flex-wrap items-center justify-between gap-3">
+                <p className="m-0">
+                  <strong className="text-stop">{CODE_NAMES[code]}</strong>: tài xế nhập sai {failures} lần
+                  {!locked
+                    ? ` (khoá sau ${max} lần).`
+                    : canUnlock
+                      ? ', mã đã bị khoá. Xác minh với khách rồi mở khoá, hoặc huỷ ngoại lệ.'
+                      : ', mã đã bị khoá.'}
+                </p>
+                {canUnlock && (
+                  <Button size="compact" onClick={() => setUnlocking(code)}>
+                    Mở khoá {CODE_NAMES[code].toLowerCase()}
+                  </Button>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      )}
+      {detail.codeUnlocks.length > 0 && (
+        <section className="flex flex-col gap-1 rounded-xl bg-white px-5 py-4 text-[15px]">
+          <h2 className="m-0 text-base font-bold">Đã mở khoá mã</h2>
+          <ul className="m-0 flex list-none flex-col gap-1 p-0">
+            {detail.codeUnlocks.map((unlock) => (
+              <li key={unlock.createdAt + unlock.code}>
+                <span className="font-semibold">{CODE_NAMES[unlock.code]}</span> ·{' '}
+                {formatDateTime(unlock.createdAt)} · sau {unlock.failuresBefore} lần sai · nhân viên{' '}
+                <span className="tabular-nums">{unlock.staffId}</span>
+                <span className="block text-curb">{unlock.note}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {unlocking && (
+        <UnlockDialog
+          tripId={detail.trip.id}
+          code={unlocking}
+          onClose={() => setUnlocking(null)}
+          onDone={() => {
+            setUnlocking(null);
+            onUnlocked(`Đã mở khoá ${CODE_NAMES[unlocking].toLowerCase()}. Tài xế nhập lại được mã cũ.`);
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function UnlockDialog({
+  tripId,
+  code,
+  onClose,
+  onDone,
+}: {
+  tripId: string;
+  code: HandoverCode;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const unlock = useCodeUnlock(tripId);
+  return (
+    <ReasonDialog
+      title={`Mở khoá ${CODE_NAMES[code].toLowerCase()}`}
+      confirmLabel="Mở khoá"
+      minLength={MIN_CANCEL_NOTE}
+      maxLength={300}
+      busy={unlock.isPending}
+      error={unlock.error ? messageFor(unlock.error) : undefined}
+      onConfirm={(note) => unlock.mutate({ code, note }, { onSuccess: onDone })}
+      onClose={onClose}
+    >
+      <p className="m-0 text-[15px]">
+        Mã giữ nguyên, tài xế được nhập lại từ đầu. Ghi rõ đã xác minh thế nào (ví dụ gọi khách xác nhận mã);
+        lần mở khoá được ghi nhật ký.
+      </p>
+    </ReasonDialog>
   );
 }
 

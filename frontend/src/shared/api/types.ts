@@ -326,6 +326,17 @@ export interface StaffOffer {
   respondedAt?: string;
 }
 
+export type HandoverCode = 'PICKUP' | 'DELIVERY';
+
+/** trip-service StaffTripService.CodeUnlockView. */
+export interface CodeUnlock {
+  code: HandoverCode;
+  staffId: string;
+  failuresBefore: number;
+  note: string;
+  createdAt: string;
+}
+
 /** trip-service StaffTripService.TripDetail; handover codes are never sent to staff. */
 export interface StaffTripDetail {
   trip: Trip;
@@ -335,6 +346,10 @@ export interface StaffTripDetail {
   cancelNote?: string;
   pickupCodeFailures: number;
   deliveryCodeFailures: number;
+  /** Wrong entries that lock a code (rhl.codes.max-attempts). */
+  codeMaxAttempts: number;
+  /** Locked codes support let the driver try again, oldest first. */
+  codeUnlocks: CodeUnlock[];
   /** Where a completed trip ended (driver's last known position); absent when unknown. */
   completion?: {
     latitude: number;

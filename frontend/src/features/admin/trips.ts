@@ -2,6 +2,7 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tansta
 import { api } from '@/shared/api/client';
 import type {
   CancelReason,
+  HandoverCode,
   ServiceType,
   StaffTripDetail,
   Trip,
@@ -69,6 +70,22 @@ export function useStaffTrip(tripId: string) {
     queryFn: ({ signal }) =>
       api<StaffTripDetail>(`/api/v1/admin/trips/${encodeURIComponent(tripId)}`, { signal }),
     staleTime: Infinity,
+  });
+}
+
+/**
+ * Lets the driver try a locked handover code again (same code, counter back to zero). Needs a
+ * note and is audited; the answer is the updated trip detail.
+ */
+export function useCodeUnlock(tripId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ code, note }: { code: HandoverCode; note: string }) =>
+      api<StaffTripDetail>(`/api/v1/admin/trips/${encodeURIComponent(tripId)}/code-unlocks`, {
+        method: 'POST',
+        body: { code, note },
+      }),
+    onSuccess: (detail) => queryClient.setQueryData(staffTripKey(tripId), detail),
   });
 }
 
