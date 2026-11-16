@@ -60,6 +60,7 @@ describe('PricingPage', () => {
         sent = (await request.json()) as Record<string, unknown>;
         return ok({ ...sent, id: 'r2', version: 2, currency: 'VND', createdAt: '2026-11-05T00:00:00Z' }, 201);
       }),
+      http.get(apiUrl('/api/v1/admin/pricing/surge-rules'), () => ok([])),
     );
     renderAt('/admin/pricing', '/admin/pricing', <PricingPage />);
     const user = userEvent.setup();
@@ -81,6 +82,60 @@ describe('PricingPage', () => {
       perKm: 5500,
       perMinute: 300,
       minimumFare: 15000,
+    });
+    expect(Date.parse(sent!.effectiveFrom as string)).toBeGreaterThan(Date.now());
+  });
+
+  it('schedules the next surge rule and refuses numbers out of range', async () => {
+    let sent: Record<string, unknown> | undefined;
+    server.use(
+      http.get(apiUrl('/api/v1/admin/pricing/rules'), () => ok([])),
+      http.get(apiUrl('/api/v1/admin/pricing/surge-rules'), () =>
+        ok([
+          {
+            id: 's1',
+            serviceType: 'DELIVERY',
+            version: 1,
+            minDemand: 3,
+            ratioThreshold: 1,
+            slope: 0.5,
+            maxMultiplier: 2,
+            step: 0.1,
+            effectiveFrom: '2026-01-01T00:00:00Z',
+            createdAt: '2026-01-01T00:00:00Z',
+          },
+        ]),
+      ),
+      http.post(apiUrl('/api/v1/admin/pricing/surge-rules'), async ({ request }) => {
+        sent = (await request.json()) as Record<string, unknown>;
+        return ok({ ...sent, id: 's2', version: 2, createdAt: '2026-11-16T00:00:00Z' }, 201);
+      }),
+    );
+    renderAt('/admin/pricing', '/admin/pricing', <PricingPage />);
+    const user = userEvent.setup();
+
+    const section = await screen.findByRole('region', { name: /Hệ số cao điểm/ });
+    expect(within(section).getByText('×2')).toBeInTheDocument();
+    await user.click(within(section).getByRole('button', { name: 'Thêm phiên bản' }));
+    const dialog = screen.getByRole('dialog', { name: /Hệ số cao điểm phiên bản 2/ });
+    const cap = within(dialog).getByLabelText(/Hệ số tối đa/);
+    expect(cap).toHaveValue('2');
+    await user.clear(cap);
+    await user.type(cap, '7');
+    expect(within(dialog).getByText(/từ 1 đến 5/)).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Lên lịch' })).toBeDisabled();
+    await user.clear(cap);
+    await user.type(cap, '1,8');
+    await user.click(within(dialog).getByRole('button', { name: 'Lên lịch' }));
+
+    expect(await screen.findByText(/Đã lên lịch hệ số cao điểm phiên bản 2/)).toBeInTheDocument();
+    expect(sent).toMatchObject({
+      serviceType: 'DELIVERY',
+      minDemand: 3,
+      ratioThreshold: 1,
+      slope: 0.5,
+      maxMultiplier: 1.8,
+      step: 0.1,
     });
     expect(Date.parse(sent!.effectiveFrom as string)).toBeGreaterThan(Date.now());
   });
