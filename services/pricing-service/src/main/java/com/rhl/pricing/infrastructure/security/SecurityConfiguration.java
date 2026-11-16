@@ -1,7 +1,8 @@
 package com.rhl.pricing.infrastructure.security;
 
-import com.rhl.common.security.JwtClaims;
 import com.rhl.common.security.RolesJwtAuthenticationConverter;
+import com.rhl.common.security.ServiceScopes;
+import com.rhl.common.security.TokenRules;
 import com.rhl.common.security.servlet.JsonSecurityErrorHandler;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.security.oauth2.server.resource.autoconfigure.OAuth2ResourceServerProperties;
@@ -13,10 +14,6 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2Error;
-import org.springframework.security.oauth2.core.OAuth2TokenValidator;
-import org.springframework.security.oauth2.core.OAuth2TokenValidatorResult;
-import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtValidators;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
@@ -26,9 +23,9 @@ import tools.jackson.databind.ObjectMapper;
 /**
  * Stateless bearer-token API, checked here as well as at the gateway (NFR-SEC-004).
  *
- * <p>{@code /internal/**} is for trip-service (README §8.5). The gateway never routes it, so it is
- * reachable only inside the service network. Service credentials for these calls are not
- * specified yet; until they are, the port must not be exposed publicly.
+ * <p>{@code /internal/**} is for trip-service (README §8.5) and takes only a service token with
+ * scope {@code internal:pricing}, issued by user-service's client credentials grant. Every other
+ * API takes only a person's access token. The gateway never routes {@code /internal/**} either.
  */
 @Configuration(proxyBeanMethods = false)
 @EnableMethodSecurity
@@ -44,10 +41,11 @@ public class SecurityConfiguration {
                 .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/internal/**").permitAll()
+                        .requestMatchers("/internal/**")
+                        .access(TokenRules.serviceScope(ServiceScopes.INTERNAL_PRICING))
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
-                        .anyRequest().authenticated())
+                        .anyRequest().access(TokenRules.userToken()))
                 .oauth2ResourceServer(oauth -> oauth
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(new RolesJwtAuthenticationConverter()))
                         .authenticationEntryPoint(errors)
@@ -56,27 +54,18 @@ public class SecurityConfiguration {
                 .build();
     }
 
-    /** Verifies signature (JWKS from user-service), issuer, expiry, token type and revocation. */
+    /**
+     * Verifies signature (JWKS from user-service), issuer, expiry and revocation; both token types
+     * pass here, the authorization rules above decide which one each path takes.
+     */
     @Bean
     public JwtDecoder jwtDecoder(OAuth2ResourceServerProperties properties, @Value("${rhl.jwt.issuer}") String issuer,
                                  StringRedisTemplate redis) {
         NimbusJwtDecoder decoder = NimbusJwtDecoder.withJwkSetUri(properties.getJwt().getJwkSetUri()).build();
         decoder.setJwtValidator(new DelegatingOAuth2TokenValidator<>(
                 JwtValidators.createDefaultWithIssuer(issuer),
-                accessTokenOnly(),
-                notRevoked(redis)));
+                TokenRules.accessOrServiceToken(),
+                TokenRules.notRevoked(jti -> Boolean.TRUE.equals(redis.hasKey(REVOKED_PREFIX + jti)))));
         return decoder;
-    }
-
-    private static OAuth2TokenValidator<Jwt> accessTokenOnly() {
-        return jwt -> JwtClaims.ACCESS_TOKEN.equals(jwt.getClaimAsString(JwtClaims.TOKEN_TYPE))
-                ? OAuth2TokenValidatorResult.success()
-                : OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Not an access token", null));
-    }
-
-    private static OAuth2TokenValidator<Jwt> notRevoked(StringRedisTemplate redis) {
-        return jwt -> jwt.getId() == null || Boolean.TRUE.equals(redis.hasKey(REVOKED_PREFIX + jwt.getId()))
-                ? OAuth2TokenValidatorResult.failure(new OAuth2Error("invalid_token", "Token revoked", null))
-                : OAuth2TokenValidatorResult.success();
     }
 }

@@ -6,12 +6,14 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 
 /** Business thresholds (NFR-MNT-005); matching values are placeholders until TBD-06 is settled. */
@@ -20,7 +22,8 @@ import java.util.Set;
 public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @NotNull Codes codes,
                                     @Valid @NotNull Delivery delivery, @Valid @NotNull Resilience resilience,
                                     @Valid @NotNull Remote location, @Valid @NotNull Remote pricing,
-                                    @Valid @NotNull Kafka kafka, @Valid @NotNull Completion completion) {
+                                    @Valid @NotNull Kafka kafka, @Valid @NotNull Completion completion,
+                                    @Valid @NotNull ServiceAuth serviceAuth) {
 
     /**
      * Circuit breaker and retry applied to each remote service (README §8.5).
@@ -86,5 +89,18 @@ public record TripServiceProperties(@Valid @NotNull Matching matching, @Valid @N
     }
 
     public record Kafka(@Min(1) int partitions, @Min(1) short replicas) {
+    }
+
+    /**
+     * How trip-service proves itself to location-service and pricing-service: a service token
+     * from user-service's client credentials grant (README §8.5).
+     *
+     * @param tokenUri      user-service {@code /oauth2/token}
+     * @param scopes        scopes asked for, see {@code ServiceScopes}
+     * @param refreshBefore a token is replaced this long before it expires
+     */
+    public record ServiceAuth(@NotBlank String tokenUri, @NotBlank String clientId, @NotBlank String clientSecret,
+                              @NotEmpty List<String> scopes, @NotNull Duration refreshBefore,
+                              @NotNull Duration connectTimeout, @NotNull Duration readTimeout) {
     }
 }

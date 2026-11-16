@@ -1,6 +1,8 @@
 package com.rhl.location;
 
 import com.rhl.common.id.UuidV7;
+import com.rhl.common.security.JwtClaims;
+import com.rhl.common.security.ServiceScopes;
 import com.rhl.location.infrastructure.messaging.Topics;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
@@ -96,7 +98,7 @@ class LocationServiceIT {
                 .andExpect(jsonPath("$.data.outcome").value("CURRENT"));
 
         // ~300 m north of the pickup point.
-        JsonNode nearby = data(mvc.perform(get("/internal/v1/drivers/nearby")
+        JsonNode nearby = data(mvc.perform(get("/internal/v1/drivers/nearby").with(serviceToken())
                 .param("latitude", "10.7698").param("longitude", Double.toString(LNG))
                 .param("serviceType", "RIDE").param("radiusMeters", "2000")));
         JsonNode hit = find(nearby, driver);
@@ -135,7 +137,7 @@ class LocationServiceIT {
                 .andExpect(status().isUnprocessableEntity())
                 .andExpect(jsonPath("$.code").value("BUSINESS_RULE_VIOLATION"));
 
-        mvc.perform(get("/internal/v1/drivers/" + driver + "/location"))
+        mvc.perform(get("/internal/v1/drivers/" + driver + "/location").with(serviceToken()))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.sequence").value(5))
                 .andExpect(jsonPath("$.data.latitude").value(LAT));
@@ -198,7 +200,7 @@ class LocationServiceIT {
                 envelope("DriverLocationReported", "realtime-gateway", driver, 42, payload)).get();
 
         await().atMost(Duration.ofSeconds(15)).untilAsserted(() ->
-                mvc.perform(get("/internal/v1/drivers/" + driver + "/location"))
+                mvc.perform(get("/internal/v1/drivers/" + driver + "/location").with(serviceToken()))
                         .andExpect(status().isOk())
                         .andExpect(jsonPath("$.data.sequence").value(42)));
         assertThat(redisTemplate.opsForZSet().score("geo:drivers:DELIVERY", driver.toString())).isNotNull();
@@ -230,9 +232,24 @@ class LocationServiceIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(body(1, 95, LNG, 8, Instant.now()))))
                 .andExpect(status().isBadRequest());
-        mvc.perform(get("/internal/v1/drivers/nearby").param("latitude", "10.77").param("longitude", "106.69")
+        mvc.perform(get("/internal/v1/drivers/nearby").with(serviceToken())
+                        .param("latitude", "10.77").param("longitude", "106.69")
                         .param("serviceType", "RIDE").param("radiusMeters", "50000"))
                 .andExpect(status().isUnprocessableEntity());
+    }
+
+    @Test
+    void internalApiTakesOnlyAServiceTokenWithItsScope() throws Exception {
+        String path = "/internal/v1/drivers/" + UUID.randomUUID() + "/location";
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        // A person's token, even an administrator's, does not open the internal API.
+        mvc.perform(get(path).with(jwt().jwt(j -> j.subject(UUID.randomUUID().toString()).claim("typ", "access"))
+                        .authorities(new SimpleGrantedAuthority("ROLE_ADMINISTRATOR"))))
+                .andExpect(status().isForbidden());
+        mvc.perform(get(path).with(serviceToken(ServiceScopes.INTERNAL_PRICING))).andExpect(status().isForbidden());
+        mvc.perform(get(path).with(serviceToken())).andExpect(status().isNotFound());
+        // And a service token does not open the user-facing API.
+        mvc.perform(get("/api/v1/locations/me").with(serviceToken())).andExpect(status().isForbidden());
     }
 
     private void goOnline(UUID driver, UUID vehicle, List<String> types, long version) {
@@ -286,6 +303,16 @@ class LocationServiceIT {
                                             Instant deviceTime) {
         return Map.of("sequence", sequence, "latitude", lat, "longitude", lng, "accuracyMeters", accuracy,
                 "deviceTimestamp", deviceTime.toString());
+    }
+
+    private static RequestPostProcessor serviceToken() {
+        return serviceToken(ServiceScopes.INTERNAL_LOCATION);
+    }
+
+    /** What trip-service sends: a client credentials token from user-service. */
+    private static RequestPostProcessor serviceToken(String scope) {
+        return jwt().jwt(j -> j.subject("trip-service").claim(JwtClaims.TOKEN_TYPE, JwtClaims.SERVICE_TOKEN)
+                .claim(JwtClaims.SCOPE, scope));
     }
 
     private static RequestPostProcessor driverToken(UUID driver) {

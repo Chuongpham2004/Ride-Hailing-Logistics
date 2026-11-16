@@ -111,6 +111,13 @@ rhl:
     key-id: ${JWT_KEY_ID:dev}
     private-key: ${JWT_PRIVATE_KEY:}
     public-key: ${JWT_PUBLIC_KEY:}
+    service-token-ttl: 10m
+  # Services that call other services' /internal/** APIs get tokens at POST /oauth2/token
+  # (client credentials, HTTP Basic). The defaults are for local development only.
+  service-clients:
+    trip-service:
+      secret: ${SERVICE_CLIENT_TRIP_SECRET:dev-trip-service-secret}
+      scopes: [ "internal:location", "internal:pricing" ]
   login:
     max-failures: 5
     lock-duration: 15m

@@ -7,6 +7,8 @@ import com.rhl.trip.domain.FareSnapshot;
 import com.rhl.trip.domain.ServiceType;
 import com.rhl.trip.domain.Stop;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cloud.client.loadbalancer.LoadBalancerClient;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -27,13 +29,15 @@ import java.util.UUID;
 @Component
 public class PricingClient {
 
+    private static final Logger log = LoggerFactory.getLogger(PricingClient.class);
+
     private final RestClient rest;
     private final RemoteCalls calls;
 
     public PricingClient(RestClient.Builder builder, TripServiceProperties properties,
-                         LoadBalancerClient loadBalancer) {
+                         LoadBalancerClient loadBalancer, ServiceTokenSource tokens) {
         this.calls = new RemoteCalls("pricing-service", properties.resilience());
-        this.rest = RemoteRestClient.create(builder, properties.pricing(), loadBalancer);
+        this.rest = RemoteRestClient.create(builder, properties.pricing(), loadBalancer, tokens);
     }
 
     /** What trip-service copies from a quote when booking (BR-007). */
@@ -115,6 +119,13 @@ public class PricingClient {
     private static ApiException translate(HttpClientErrorException e) {
         if (e.getStatusCode().isSameCodeAs(HttpStatus.NOT_FOUND)) {
             return ApiException.notFound("Quote");
+        }
+        if (e.getStatusCode().isSameCodeAs(HttpStatus.UNAUTHORIZED)
+                || e.getStatusCode().isSameCodeAs(HttpStatus.FORBIDDEN)) {
+            // Our service credentials were refused: not the customer's fault, and not about the quote.
+            log.error("pricing-service refused trip-service's credentials ({}): check rhl.service-auth",
+                    e.getStatusCode().value());
+            return unavailable();
         }
         JsonNode error = e.getResponseBodyAs(JsonNode.class);
         String code = error == null ? "" : error.path("code").asString();
