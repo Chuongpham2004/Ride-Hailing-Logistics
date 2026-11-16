@@ -45,7 +45,7 @@ updates:
     commit-message:
       prefix: build
       include: scope
-    labels: [dependencies, javascript]
+    labels: [dependencies]
     groups:
       react:
         patterns: ['react', 'react-dom', '@types/react', '@types/react-dom', 'react-router']
