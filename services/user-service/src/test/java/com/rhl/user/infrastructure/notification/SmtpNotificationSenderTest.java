@@ -71,7 +71,7 @@ class SmtpNotificationSenderTest {
 
     private SmtpNotificationSender sender(String from) {
         UserServiceProperties properties = new UserServiceProperties(null, null, null, null, null, null, null,
-                null, null, new UserServiceProperties.Notifications("smtp", from));
+                null, null, new UserServiceProperties.Notifications("smtp", from), null);
         return new SmtpNotificationSender(mailSender, Runnable::run, properties);
     }
 }

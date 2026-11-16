@@ -114,6 +114,16 @@ rhl:
     base-url: ${PRICING_SERVICE_URL:lb://pricing-service}
     connect-timeout: 500ms
     read-timeout: 2s
+  # Token for location-service and pricing-service /internal/** (client credentials at user-service).
+  # The secret must match rhl.service-clients.trip-service.secret there; the default is for local dev only.
+  service-auth:
+    token-uri: ${USER_SERVICE_URL:http://localhost:8081}/oauth2/token
+    client-id: trip-service
+    client-secret: ${SERVICE_CLIENT_SECRET:dev-trip-service-secret}
+    scopes: [ "internal:location", "internal:pricing" ]
+    refresh-before: 60s
+    connect-timeout: 500ms
+    read-timeout: 2s
   kafka:
     partitions: 3
     replicas: 1

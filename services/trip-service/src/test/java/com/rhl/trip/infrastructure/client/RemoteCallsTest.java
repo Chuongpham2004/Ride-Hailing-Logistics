@@ -20,8 +20,10 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -41,15 +43,36 @@ class RemoteCallsTest {
     private volatile int status = 500;
     private volatile String body = "{}";
     private final LoadBalancerClient registry = mock(LoadBalancerClient.class);
+    private final List<String> authorizations = new CopyOnWriteArrayList<>();
+    private final AtomicInteger issued = new AtomicInteger();
+    private final List<String> invalidated = new CopyOnWriteArrayList<>();
+    private final ServiceTokenSource tokens = new ServiceTokenSource() {
+        @Override
+        public String token() {
+            return "token-" + issued.get();
+        }
+
+        @Override
+        public void invalidate(String token) {
+            invalidated.add(token);
+            issued.incrementAndGet();
+        }
+    };
+    /** Answers 401 to requests that carry this token. */
+    private volatile String refusedToken;
 
     @BeforeEach
     void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
         server.createContext("/", exchange -> {
             hits.incrementAndGet();
-            byte[] bytes = body.getBytes(StandardCharsets.UTF_8);
+            String authorization = exchange.getRequestHeaders().getFirst("Authorization");
+            authorizations.add(String.valueOf(authorization));
+            boolean refused = refusedToken != null && ("Bearer " + refusedToken).equals(authorization);
+            String answer = refused ? "{\"code\":\"AUTHENTICATION_REQUIRED\"}" : body;
+            byte[] bytes = answer.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(status, bytes.length);
+            exchange.sendResponseHeaders(refused ? 401 : status, bytes.length);
             try (OutputStream out = exchange.getResponseBody()) {
                 out.write(bytes);
             }
@@ -64,7 +87,7 @@ class RemoteCallsTest {
 
     @Test
     void transientFailuresAreRetriedOnceThenTheCircuitOpens() {
-        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry);
+        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry, tokens);
 
         // Each call: 2 attempts (first + one retry).
         for (int i = 0; i < 2; i++) {
@@ -84,7 +107,7 @@ class RemoteCallsTest {
     void aClientErrorIsTheAnswerNotAFailure() {
         status = 404;
         body = "{\"code\":\"RESOURCE_NOT_FOUND\"}";
-        PricingClient pricing = new PricingClient(RestClient.builder(), properties(), registry);
+        PricingClient pricing = new PricingClient(RestClient.builder(), properties(), registry, tokens);
 
         for (int i = 0; i < 6; i++) {
             assertThatThrownBy(() -> pricing.validQuote(UUID.randomUUID(), UUID.randomUUID()))
@@ -97,7 +120,7 @@ class RemoteCallsTest {
 
     @Test
     void pricingDownIsARetryable503() {
-        PricingClient pricing = new PricingClient(RestClient.builder(), properties(), registry);
+        PricingClient pricing = new PricingClient(RestClient.builder(), properties(), registry, tokens);
         assertThatThrownBy(() -> pricing.cancellationFee(ServiceType.RIDE, "CUSTOMER", "ACCEPTED", "CHANGED_MIND",
                 null, 27_000L))
                 .isInstanceOf(ApiException.class)
@@ -127,7 +150,7 @@ class RemoteCallsTest {
                     + original.getRawQuery());
         });
         LocationClient location = new LocationClient(RestClient.builder(), properties("lb://location-service"),
-                registry);
+                registry, tokens);
 
         assertThat(location.nearby(ServiceType.RIDE, PICKUP, 2000, 10)).isEmpty();
         assertThat(hits.get()).isEqualTo(1);
@@ -136,7 +159,7 @@ class RemoteCallsTest {
     @Test
     void aServiceMissingFromTheRegistryCountsAsDown() {
         LocationClient location = new LocationClient(RestClient.builder(), properties("lb://location-service"),
-                registry);
+                registry, tokens);
 
         assertThatThrownBy(() -> location.nearby(ServiceType.RIDE, PICKUP, 2000, 10))
                 .isInstanceOf(LocationClient.LocationUnavailableException.class)
@@ -148,10 +171,45 @@ class RemoteCallsTest {
     void aFixedUrlBypassesTheRegistry() {
         status = 200;
         body = "{\"data\":[]}";
-        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry);
+        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry, tokens);
 
         assertThat(location.nearby(ServiceType.RIDE, PICKUP, 2000, 10)).isEmpty();
         verifyNoInteractions(registry);
+    }
+
+    @Test
+    void everyCallCarriesTheServiceToken() {
+        status = 200;
+        body = "{\"data\":[]}";
+        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry, tokens);
+
+        location.nearby(ServiceType.RIDE, PICKUP, 2000, 10);
+
+        assertThat(authorizations).containsExactly("Bearer token-0");
+    }
+
+    @Test
+    void aRefusedTokenIsReplacedAndTheCallSentOnceMore() {
+        status = 200;
+        body = "{\"data\":[]}";
+        refusedToken = "token-0";
+        LocationClient location = new LocationClient(RestClient.builder(), properties(), registry, tokens);
+
+        assertThat(location.nearby(ServiceType.RIDE, PICKUP, 2000, 10)).isEmpty();
+
+        assertThat(invalidated).containsExactly("token-0");
+        assertThat(authorizations).containsExactly("Bearer token-0", "Bearer token-1");
+    }
+
+    @Test
+    void refusedCredentialsAreAnOutageNotTheCustomersMistake() {
+        status = 403;
+        body = "{\"code\":\"ACCESS_DENIED\"}";
+        PricingClient pricing = new PricingClient(RestClient.builder(), properties(), registry, tokens);
+
+        assertThatThrownBy(() -> pricing.validQuote(UUID.randomUUID(), UUID.randomUUID()))
+                .isInstanceOf(ApiException.class)
+                .satisfies(e -> assertThat(((ApiException) e).code()).isEqualTo(ErrorCode.DEPENDENCY_UNAVAILABLE));
     }
 
     private TripServiceProperties properties() {
@@ -168,6 +226,12 @@ class RemoteCallsTest {
                 new TripServiceProperties.Delivery(20_000),
                 new TripServiceProperties.Resilience(50, 4, 4, Duration.ofMinutes(1), 2, Duration.ofMillis(10)),
                 remote, remote, new TripServiceProperties.Kafka(3, (short) 1),
-                new TripServiceProperties.Completion(300));
+                new TripServiceProperties.Completion(300), serviceAuth("http://localhost:1/oauth2/token"));
+    }
+
+    static TripServiceProperties.ServiceAuth serviceAuth(String tokenUri) {
+        return new TripServiceProperties.ServiceAuth(tokenUri, "trip-service", "dev-trip-service-secret",
+                List.of("internal:location", "internal:pricing"), Duration.ofSeconds(60), Duration.ofMillis(500),
+                Duration.ofSeconds(1));
     }
 }

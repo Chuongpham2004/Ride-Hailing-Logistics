@@ -5,20 +5,46 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.util.unit.DataSize;
 
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /** Business and security parameters (NFR-MNT-005: nothing here is hard-coded). */
 @ConfigurationProperties("rhl")
 public record UserServiceProperties(Jwt jwt, Login login, Verification verification, RateLimits rateLimits,
                                     Driver driver, Documents documents, Storage storage, Bootstrap bootstrap,
-                                    Kafka kafka, Notifications notifications) {
+                                    Kafka kafka, Notifications notifications,
+                                    Map<String, ServiceClient> serviceClients) {
+
+    public UserServiceProperties {
+        serviceClients = serviceClients == null ? Map.of() : Map.copyOf(serviceClients);
+        serviceClients.forEach((id, client) -> {
+            if (client == null || client.secret() == null || client.secret().length() < 16) {
+                throw new IllegalStateException("rhl.service-clients." + id + ".secret must have at least 16 characters");
+            }
+            if (client.scopes() == null || client.scopes().isEmpty()) {
+                throw new IllegalStateException("rhl.service-clients." + id + ".scopes must not be empty");
+            }
+        });
+    }
 
     /**
      * @param privateKey PKCS#8 PEM; when both keys are empty an ephemeral key pair is generated (dev only)
      * @param publicKey  X.509 PEM matching {@code privateKey}
+     * @param serviceTokenTtl lifetime of a service token (client credentials grant)
      */
     public record Jwt(String issuer, Duration accessTokenTtl, Duration refreshTokenTtl, String keyId,
-                      String privateKey, String publicKey) {
+                      String privateKey, String publicKey, Duration serviceTokenTtl) {
+    }
+
+    /**
+     * A service allowed to call other services' {@code /internal/**} APIs (README §8.5). The map
+     * key is its client ID, which becomes the token subject.
+     *
+     * @param secret client secret, at least 16 characters; from the environment outside local dev
+     * @param scopes scopes it may ask for, see {@code ServiceScopes}
+     */
+    public record ServiceClient(String secret, List<String> scopes) {
     }
 
     /** FR-IAM-006: after {@code maxFailures} wrong passwords the identifier is blocked for {@code lockDuration}. */

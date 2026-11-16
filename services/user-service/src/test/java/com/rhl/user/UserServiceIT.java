@@ -41,6 +41,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -122,6 +123,60 @@ class UserServiceIT {
     /** Stands in for the email/SMS provider; codes are read from its calls. */
     @MockitoBean
     NotificationSender sender;
+
+    @Test
+    void servicesGetScopedTokensWithClientCredentials() throws Exception {
+        String body = mvc.perform(serviceTokenRequest("trip-service", "dev-trip-service-secret", "internal:pricing"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.token_type").value("Bearer"))
+                .andExpect(jsonPath("$.scope").value("internal:pricing"))
+                .andReturn().getResponse().getContentAsString();
+        JsonNode response = json.readTree(body);
+        assertThat(response.path("expires_in").asLong()).isBetween(590L, 600L);
+        String token = response.path("access_token").asString();
+        JsonNode claims = json.readTree(Base64.getUrlDecoder().decode(token.split("\\.")[1]));
+        assertThat(claims.path("sub").asString()).isEqualTo("trip-service");
+        assertThat(claims.path("typ").asString()).isEqualTo("service");
+        assertThat(claims.path("scope").asString()).isEqualTo("internal:pricing");
+        assertThat(claims.has("roles")).isFalse();
+
+        // Without a scope the client gets all of its scopes.
+        mvc.perform(serviceTokenRequest("trip-service", "dev-trip-service-secret", null))
+                .andExpect(jsonPath("$.scope").value("internal:location internal:pricing"));
+        // A service token is not a person's: user APIs refuse it.
+        call(get("/api/v1/users/me"), token, null).andExpect(status().isUnauthorized());
+
+        mvc.perform(serviceTokenRequest("trip-service", "wrong-secret-0000000", null))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.error").value("invalid_client"));
+        mvc.perform(serviceTokenRequest("payment-service", "dev-trip-service-secret", null))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(serviceTokenRequest("trip-service", "dev-trip-service-secret", "internal:payment"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("invalid_scope"));
+        mvc.perform(post("/oauth2/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .param("grant_type", "client_credentials"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(post("/oauth2/token").contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                        .header("Authorization", basic("trip-service", "dev-trip-service-secret"))
+                        .param("grant_type", "password"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.error").value("unsupported_grant_type"));
+    }
+
+    private static MockHttpServletRequestBuilder serviceTokenRequest(String clientId, String secret, String scope) {
+        MockHttpServletRequestBuilder request = post("/oauth2/token")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .header("Authorization", basic(clientId, secret))
+                .param("grant_type", "client_credentials");
+        return scope == null ? request : request.param("scope", scope);
+    }
+
+    private static String basic(String clientId, String secret) {
+        return "Basic " + Base64.getEncoder().encodeToString((clientId + ":" + secret)
+                .getBytes(StandardCharsets.UTF_8));
+    }
 
     @Test
     void driverOnboardingReviewAndGoingOnlinePublishesAnEvent() throws Exception {
