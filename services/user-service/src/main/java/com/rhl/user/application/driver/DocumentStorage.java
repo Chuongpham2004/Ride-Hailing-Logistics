@@ -11,6 +11,13 @@ public interface DocumentStorage {
     /** @throws StorageUnavailableException when the store cannot be reached or the object is gone */
     byte[] get(String key);
 
+    /**
+     * Removes the object; removing one that is already gone succeeds.
+     *
+     * @throws StorageUnavailableException when the store cannot be reached
+     */
+    void delete(String key);
+
     class StorageUnavailableException extends RuntimeException {
 
         public StorageUnavailableException(String message, Throwable cause) {
