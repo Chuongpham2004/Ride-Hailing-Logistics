@@ -139,6 +139,9 @@ rhl:
     max-file-size: 5MB
     max-pixels: 40000000
     uploads-per-hour: 20
+    # Uploaded but never attached to a document: deleted from the store and the database after this.
+    orphan-retention: 24h
+    orphan-check-interval: 1h
   storage:
     endpoint: ${S3_ENDPOINT:http://localhost:19000}
     region: ${S3_REGION:us-east-1}

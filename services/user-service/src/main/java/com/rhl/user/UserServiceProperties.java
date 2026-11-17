@@ -84,8 +84,12 @@ public record UserServiceProperties(Jwt jwt, Login login, Verification verificat
      * @param maxFileSize    largest file accepted
      * @param maxPixels      largest image (width x height), checked before decoding
      * @param uploadsPerHour uploads per driver per hour
+     * @param orphanRetention how long an uploaded file may stay unattached to a document before
+     *                        it is deleted (the driver gave up, or uploaded a replacement)
+     * @param orphanCheckInterval how often unattached files are looked for
      */
-    public record Documents(DataSize maxFileSize, long maxPixels, int uploadsPerHour) {
+    public record Documents(DataSize maxFileSize, long maxPixels, int uploadsPerHour, Duration orphanRetention,
+                            Duration orphanCheckInterval) {
     }
 
     /**

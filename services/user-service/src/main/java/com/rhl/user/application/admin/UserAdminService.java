@@ -7,6 +7,7 @@ import com.rhl.user.application.driver.DriverService;
 import com.rhl.user.domain.driver.DriverProfile;
 import com.rhl.user.domain.user.User;
 import com.rhl.user.domain.user.UserStatus;
+import com.rhl.user.infrastructure.cache.AccessTokenRegistry;
 import com.rhl.user.infrastructure.persistence.DriverProfileRepository;
 import com.rhl.user.infrastructure.persistence.RefreshTokenRepository;
 import com.rhl.user.infrastructure.persistence.UserRepository;
@@ -24,7 +25,7 @@ import java.util.UUID;
 
 /**
  * Role and account-status management (FR-IAM-009, FR-IAM-011). Both revoke the user's refresh
- * tokens so new permissions apply at the next token refresh at the latest.
+ * tokens and every access token still valid, so new roles or a lock apply at once.
  */
 @Service
 @RequiredArgsConstructor
@@ -33,6 +34,7 @@ public class UserAdminService {
     private final UserRepository users;
     private final DriverProfileRepository driverProfiles;
     private final RefreshTokenRepository refreshTokens;
+    private final AccessTokenRegistry accessTokens;
     private final DriverService drivers;
     private final AuditLog audit;
     private final Clock clock;
@@ -68,6 +70,8 @@ public class UserAdminService {
         Instant now = clock.instant();
         user.replaceRoles(roles, now);
         refreshTokens.revokeAllForUser(userId, now);
+        // Tokens carry the roles: old ones must not keep the removed roles until they expire.
+        accessTokens.revokeAll(userId, now);
         audit.success(adminId, "USER_ROLES_CHANGED", "USER", userId,
                 Map.of("before", sorted(before), "after", sorted(roles)));
         return user;
@@ -84,6 +88,7 @@ public class UserAdminService {
         user.changeStatus(status, now);
         if (status != UserStatus.ACTIVE) {
             refreshTokens.revokeAllForUser(userId, now);
+            accessTokens.revokeAll(userId, now);
             if (user.has(Role.DRIVER)) {
                 drivers.forceOffline(userId, "ACCOUNT_" + status.name());
             }

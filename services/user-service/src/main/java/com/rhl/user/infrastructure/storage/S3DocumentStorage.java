@@ -70,6 +70,15 @@ public class S3DocumentStorage implements DocumentStorage, AutoCloseable {
         }
     }
 
+    @Override
+    public void delete(String key) {
+        try {
+            s3.deleteObject(b -> b.bucket(config.bucket()).key(key));
+        } catch (SdkException e) {
+            throw new StorageUnavailableException("Could not delete the file", e);
+        }
+    }
+
     /** Development convenience; in other environments the bucket is provisioned with its policies. */
     private void createBucket() {
         try {

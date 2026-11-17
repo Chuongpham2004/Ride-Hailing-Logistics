@@ -9,6 +9,7 @@ import com.rhl.user.domain.DomainException;
 import com.rhl.user.domain.auth.RefreshToken;
 import com.rhl.user.domain.user.Identifiers;
 import com.rhl.user.domain.user.User;
+import com.rhl.user.infrastructure.cache.AccessTokenRegistry;
 import com.rhl.user.infrastructure.cache.ClientRateLimiter;
 import com.rhl.user.infrastructure.cache.LoginAttemptLimiter;
 import com.rhl.user.infrastructure.cache.TokenRevocationStore;
@@ -42,6 +43,7 @@ public class AuthService {
     private final TokenService tokens;
     private final LoginAttemptLimiter limiter;
     private final TokenRevocationStore revocations;
+    private final AccessTokenRegistry accessTokens;
     private final AuditLog audit;
     private final ClientRateLimiter rateLimiter;
     private final UserServiceProperties properties;
@@ -147,6 +149,8 @@ public class AuthService {
 
     private TokenPair issue(User user, UUID familyId, Instant now) {
         TokenService.AccessToken access = tokens.issueAccessToken(user, now);
+        // Remembered so a password reset or an administrator can revoke it before it expires.
+        accessTokens.register(user.getId(), access.id(), access.expiresAt(), now);
         String refresh = tokens.newRefreshToken();
         Instant refreshExpiry = tokens.refreshTokenExpiry(now);
         refreshTokens.save(RefreshToken.issue(user.getId(), familyId, TokenService.hash(refresh), refreshExpiry, now));

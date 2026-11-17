@@ -9,6 +9,7 @@ import com.rhl.user.domain.DomainException;
 import com.rhl.user.domain.user.ContactChannel;
 import com.rhl.user.domain.user.Identifiers;
 import com.rhl.user.domain.user.User;
+import com.rhl.user.infrastructure.cache.AccessTokenRegistry;
 import com.rhl.user.infrastructure.cache.ClientRateLimiter;
 import com.rhl.user.infrastructure.cache.LoginAttemptLimiter;
 import com.rhl.user.infrastructure.cache.OneTimeCodeStore;
@@ -38,6 +39,7 @@ public class PasswordResetService {
 
     private final UserRepository users;
     private final RefreshTokenRepository refreshTokens;
+    private final AccessTokenRegistry accessTokens;
     private final OneTimeCodeStore codes;
     private final NotificationSender sender;
     private final ClientRateLimiter rateLimiter;
@@ -77,8 +79,8 @@ public class PasswordResetService {
     }
 
     /**
-     * Sets the new password, marks the address that received the code as verified and revokes
-     * every refresh token of the account. Access tokens already issued expire on their own.
+     * Sets the new password, marks the address that received the code as verified and signs out
+     * every device: all refresh tokens and every access token still valid are revoked at once.
      */
     @Transactional
     public void confirm(String rawIdentifier, String code, String newPassword) {
@@ -100,9 +102,10 @@ public class PasswordResetService {
         Instant now = clock.instant();
         user.resetPassword(passwordEncoder.encode(newPassword), channel, now);
         int revoked = refreshTokens.revokeAllForUser(user.getId(), now);
+        int accessRevoked = accessTokens.revokeAll(user.getId(), now);
         loginLimiter.reset(identifier);
         audit.success(user.getId(), "PASSWORD_RESET", "USER", user.getId(),
-                Map.of("channel", channel.name(), "sessionsRevoked", revoked));
+                Map.of("channel", channel.name(), "sessionsRevoked", revoked, "accessTokensRevoked", accessRevoked));
     }
 
     private Optional<User> find(String identifier) {

@@ -31,16 +31,18 @@ public class TokenService {
     private final JwtEncoder encoder;
     private final UserServiceProperties properties;
 
-    public record AccessToken(String value, Instant expiresAt) {
+    /** @param id the {@code jti}, by which the token can be revoked before it expires */
+    public record AccessToken(String id, String value, Instant expiresAt) {
     }
 
     /** Claims carry the user ID and roles only, never PII (README §10.3). */
     public AccessToken issueAccessToken(User user, Instant now) {
         Instant expiresAt = now.plus(properties.jwt().accessTokenTtl());
+        String id = UuidV7.randomString();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.jwt().issuer())
                 .subject(user.getId().toString())
-                .id(UuidV7.randomString())
+                .id(id)
                 .issuedAt(now)
                 .expiresAt(expiresAt)
                 .claim(JwtClaims.TOKEN_TYPE, JwtClaims.ACCESS_TOKEN)
@@ -48,7 +50,7 @@ public class TokenService {
                 .build();
         JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(properties.jwt().keyId()).build();
         String value = encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue();
-        return new AccessToken(value, expiresAt);
+        return new AccessToken(id, value, expiresAt);
     }
 
     /**
@@ -57,17 +59,19 @@ public class TokenService {
      */
     public AccessToken issueServiceToken(String clientId, List<String> scopes, Instant now) {
         Instant expiresAt = now.plus(properties.jwt().serviceTokenTtl());
+        String id = UuidV7.randomString();
         JwtClaimsSet claims = JwtClaimsSet.builder()
                 .issuer(properties.jwt().issuer())
                 .subject(clientId)
-                .id(UuidV7.randomString())
+                .id(id)
                 .issuedAt(now)
                 .expiresAt(expiresAt)
                 .claim(JwtClaims.TOKEN_TYPE, JwtClaims.SERVICE_TOKEN)
                 .claim(JwtClaims.SCOPE, String.join(" ", scopes))
                 .build();
         JwsHeader header = JwsHeader.with(SignatureAlgorithm.RS256).keyId(properties.jwt().keyId()).build();
-        return new AccessToken(encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue(), expiresAt);
+        return new AccessToken(id, encoder.encode(JwtEncoderParameters.from(header, claims)).getTokenValue(),
+                expiresAt);
     }
 
     /** 256 random bits, URL-safe. */

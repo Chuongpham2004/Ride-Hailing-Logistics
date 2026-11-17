@@ -1,5 +1,7 @@
 package com.rhl.user;
 
+import com.rhl.user.application.driver.DocumentStorage;
+import com.rhl.user.application.driver.OrphanFileSweeper;
 import com.rhl.user.application.notification.NotificationSender;
 import com.rhl.user.domain.driver.UploadInspectorTest;
 import java.security.MessageDigest;
@@ -53,6 +55,7 @@ import static org.awaitility.Awaitility.await;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -119,6 +122,12 @@ class UserServiceIT {
 
     @Autowired
     KafkaTemplate<String, String> kafkaTemplate;
+
+    @Autowired
+    OrphanFileSweeper orphanFiles;
+
+    @Autowired
+    DocumentStorage storage;
 
     /** Stands in for the email/SMS provider; codes are read from its calls. */
     @MockitoBean
@@ -507,6 +516,9 @@ class UserServiceIT {
         register(email, "CUSTOMER");
         JsonNode session = data(call(post("/api/v1/auth/login"), null,
                 Map.of("identifier", email, "password", PASSWORD)).andExpect(status().isOk()));
+        // A second device, signed in too.
+        String otherDevice = login(email, PASSWORD);
+        call(get("/api/v1/users/me"), otherDevice, null).andExpect(status().isOk());
         String ghost = unique("ghost");
 
         JsonNode known = data(call(post("/api/v1/auth/password-reset"), null, Map.of("identifier", email))
@@ -539,6 +551,13 @@ class UserServiceIT {
                 .andExpect(status().isUnauthorized());
         call(post("/api/v1/auth/refresh"), null, Map.of("refreshToken", session.path("refreshToken").asString()))
                 .andExpect(status().isUnauthorized());
+        // Access tokens issued before the reset stop working at once, on every device.
+        call(get("/api/v1/users/me"), session.path("accessToken").asString(), null)
+                .andExpect(status().isUnauthorized());
+        call(get("/api/v1/users/me"), otherDevice, null).andExpect(status().isUnauthorized());
+        assertThat(jdbc.queryForObject("SELECT delta->>'accessTokensRevoked' FROM audit_records WHERE action = "
+                + "'PASSWORD_RESET' AND actor_id = (SELECT id FROM users WHERE email = ?)", String.class, email))
+                .isEqualTo("2");
         String token = login(email, "brand-new-pass");
         // The code reached the inbox, so the email counts as verified.
         call(get("/api/v1/users/me"), token, null).andExpect(jsonPath("$.data.emailVerified").value(true));
@@ -563,6 +582,58 @@ class UserServiceIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json.writeValueAsString(Map.of("identifier", unique("probe")))))
                 .andExpect(status().isAccepted());
+    }
+
+    /** FR-IAM-009/011: a lock or a role change signs the account out everywhere at once. */
+    @Test
+    void lockingOrChangingRolesRevokesAccessTokensAtOnce() throws Exception {
+        String email = unique("locked");
+        String userId = register(email, "CUSTOMER").path("id").asString();
+        String admin = login("admin@rhl.test", "admin-password-123");
+
+        String beforeRoles = login(email, PASSWORD);
+        call(put("/api/v1/admin/users/" + userId + "/roles"), admin, Map.of("roles", List.of("CUSTOMER", "DRIVER")))
+                .andExpect(status().isOk());
+        call(get("/api/v1/users/me"), beforeRoles, null).andExpect(status().isUnauthorized());
+
+        String beforeLock = login(email, PASSWORD);
+        call(get("/api/v1/users/me"), beforeLock, null).andExpect(status().isOk());
+        call(put("/api/v1/admin/users/" + userId + "/status"), admin, Map.of("status", "LOCKED", "reason", "test"))
+                .andExpect(status().isOk());
+        call(get("/api/v1/users/me"), beforeLock, null).andExpect(status().isUnauthorized());
+        // The administrator's own session is untouched.
+        call(get("/api/v1/users/me"), admin, null).andExpect(status().isOk());
+    }
+
+    /** README §9: an upload never attached to a document is deleted after the retention period. */
+    @Test
+    void uploadsNeverAttachedAreDeletedAfterTheRetention() throws Exception {
+        String email = unique("orphan");
+        register(email, "DRIVER");
+        String driver = login(email, PASSWORD);
+        call(post("/api/v1/drivers/me/profile"), driver, Map.of(
+                "fullName", "Tran Van Bo", "dateOfBirth", "1990-05-01", "serviceTypes", List.of("RIDE")))
+                .andExpect(status().isCreated());
+        byte[] photo = UploadInspectorTest.pngWithText("Comment", "x");
+        String old = data(upload(driver, "old.png", photo).andExpect(status().isCreated())).path("fileId").asString();
+        String fresh = data(upload(driver, "new.png", photo).andExpect(status().isCreated())).path("fileId")
+                .asString();
+        String kept = data(upload(driver, "kept.png", photo).andExpect(status().isCreated())).path("fileId")
+                .asString();
+        call(post("/api/v1/drivers/me/documents"), driver, Map.of("type", "NATIONAL_ID", "documentNumber",
+                "079090001234", "fileId", kept)).andExpect(status().isCreated());
+        jdbc.update("UPDATE document_files SET created_at = now() - interval '2 days' "
+                + "WHERE id IN (?::uuid, ?::uuid)", old, kept);
+        String oldKey = jdbc.queryForObject("SELECT object_key FROM document_files WHERE id = ?::uuid", String.class,
+                old);
+
+        assertThat(orphanFiles.purge()).isGreaterThanOrEqualTo(1);
+
+        assertThat(fileRows(old)).isZero();
+        assertThat(fileRows(fresh)).isEqualTo(1);
+        assertThat(fileRows(kept)).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> storage.get(oldKey))
+                .isInstanceOf(DocumentStorage.StorageUnavailableException.class);
     }
 
     /** FR-DRV, README §9: checked uploads, one document per file, private downloads, audited reviews. */
@@ -633,6 +704,10 @@ class UserServiceIT {
     }
 
     // ---- helpers --------------------------------------------------------------------------
+
+    private int fileRows(String fileId) {
+        return jdbc.queryForObject("SELECT COUNT(*) FROM document_files WHERE id = ?::uuid", Integer.class, fileId);
+    }
 
     private ResultActions upload(String token, String name, byte[] content) throws Exception {
         return mvc.perform(multipart("/api/v1/drivers/me/documents/files")
