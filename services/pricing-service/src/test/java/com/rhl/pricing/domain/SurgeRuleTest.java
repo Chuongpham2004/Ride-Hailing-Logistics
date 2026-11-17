@@ -9,11 +9,14 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.data.redis.RedisConnectionFailureException;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -55,5 +58,38 @@ class SurgeRuleTest {
         assertThat(assessment.multiplier()).isEqualTo("1.00");
         assertThat(assessment.ruleVersion()).isNull();
         assertThat(assessment.h3Cell()).isEqualTo("8865b1b6d1fffff");
+    }
+
+    @Test
+    void aNewVersionStartsInTheFutureAndClosesTheCurrentOne() {
+        Instant now = Instant.parse("2026-11-16T10:00:00Z");
+        SurgeRule.Formula formula = new SurgeRule.Formula(4, new BigDecimal("1.2"), new BigDecimal("0.4"),
+                new BigDecimal("1.8"), new BigDecimal("0.05"));
+        UUID admin = UUID.randomUUID();
+
+        SurgeRule next = RULE.supersede(UUID.randomUUID(), formula, now.plusSeconds(3600), admin, now);
+
+        assertThat(next.getVersion()).isEqualTo(2);
+        assertThat(next.getMaxMultiplier()).isEqualTo("1.80");
+        assertThat(next.getCreatedBy()).isEqualTo(admin);
+        assertThat(RULE.getEffectiveTo()).isEqualTo(now.plusSeconds(3600));
+        assertThat(next.multiplier(50, 1)).isEqualTo("1.80");
+        assertThatThrownBy(() -> next.supersede(UUID.randomUUID(), formula, now.minusSeconds(1), admin, now))
+                .isInstanceOf(DomainException.class).hasMessageContaining("future");
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "0, 1.00, 0.50, 2.00, 0.10, minDemand",
+            "3, -0.10, 0.50, 2.00, 0.10, ratioThreshold",
+            "3, 1.00, 0.50, 0.90, 0.10, maxMultiplier",
+            "3, 1.00, 0.50, 6.00, 0.10, maxMultiplier",
+            "3, 1.00, 0.50, 2.00, 0, step",
+            "3, 1.00, 0.505, 2.00, 0.10, two decimals"})
+    void formulaNumbersStayInRange(int minDemand, String ratio, String slope, String cap, String step,
+                                   String message) {
+        assertThatThrownBy(() -> new SurgeRule.Formula(minDemand, new BigDecimal(ratio), new BigDecimal(slope),
+                new BigDecimal(cap), new BigDecimal(step)))
+                .isInstanceOf(DomainException.class).hasMessageContaining(message);
     }
 }

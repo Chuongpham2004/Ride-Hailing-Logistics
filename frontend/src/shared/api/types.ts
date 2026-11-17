@@ -441,6 +441,28 @@ export interface PricingRule {
   effectiveFrom: string;
   /** Absent for the latest version, which runs until a newer one is scheduled. */
   effectiveTo?: string;
+  /** The administrator who scheduled it; absent for versions created by migration. */
+  createdBy?: string;
+  createdAt: string;
+}
+
+/**
+ * pricing-service SurgeRuleView: multiplier = 1 + slope × (demand / max(supply, 1) − ratioThreshold),
+ * kept within [1, maxMultiplier] and rounded down to a multiple of step; no surge below minDemand.
+ */
+export interface SurgeRule {
+  id: string;
+  serviceType: ServiceType;
+  version: number;
+  minDemand: number;
+  ratioThreshold: number;
+  slope: number;
+  maxMultiplier: number;
+  step: number;
+  effectiveFrom: string;
+  /** Absent for the latest version, which runs until a newer one is scheduled. */
+  effectiveTo?: string;
+  createdBy?: string;
   createdAt: string;
 }
 

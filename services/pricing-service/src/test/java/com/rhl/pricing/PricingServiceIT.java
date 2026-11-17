@@ -41,6 +41,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.awaitility.Awaitility.await;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -171,6 +172,52 @@ class PricingServiceIT {
         perform(get("/api/v1/quotes/" + before.path("id").asString()), customerToken(customer))
                 .andExpect(jsonPath("$.data.ruleVersion").value(1))
                 .andExpect(jsonPath("$.data.total").value(before.path("total").asLong()));
+    }
+
+    @Test
+    void pricingAndSurgeChangesAreAudited() throws Exception {
+        UUID adminId = UUID.randomUUID();
+        RequestPostProcessor admin = token(adminId, "ADMINISTRATOR");
+        // Far in the future (DELIVERY), so the other tests keep pricing with the current versions.
+        Instant from = Instant.now().plus(Duration.ofDays(30));
+        Map<String, Object> surge = Map.of("serviceType", "DELIVERY", "minDemand", 4, "ratioThreshold", 1.2,
+                "slope", 0.4, "maxMultiplier", 1.8, "step", 0.05, "effectiveFrom", from.toString());
+
+        perform(post("/api/v1/admin/pricing/surge-rules"), customerToken(UUID.randomUUID()), surge)
+                .andExpect(status().isForbidden());
+        Map<String, Object> tooHigh = new java.util.HashMap<>(surge);
+        tooHigh.put("maxMultiplier", 9);
+        perform(post("/api/v1/admin/pricing/surge-rules"), admin, tooHigh)
+                .andExpect(status().isUnprocessableEntity());
+        Map<String, Object> past = new java.util.HashMap<>(surge);
+        past.put("effectiveFrom", Instant.now().minusSeconds(60).toString());
+        perform(post("/api/v1/admin/pricing/surge-rules"), admin, past).andExpect(status().isUnprocessableEntity());
+
+        JsonNode v2 = data(perform(post("/api/v1/admin/pricing/surge-rules"), admin, surge)
+                .andExpect(status().isCreated()));
+        assertThat(v2.path("version").asInt()).isEqualTo(2);
+        assertThat(v2.path("maxMultiplier").decimalValue()).isEqualByComparingTo("1.80");
+        assertThat(v2.path("createdBy").asString()).isEqualTo(adminId.toString());
+        JsonNode surgeRules = data(perform(get("/api/v1/admin/pricing/surge-rules"), admin));
+        JsonNode v1 = find(surgeRules, "DELIVERY", 1);
+        assertThat(Instant.parse(v1.path("effectiveTo").asString()))
+                .isEqualTo(Instant.parse(v2.path("effectiveFrom").asString()));
+        assertThat(v1.has("createdBy")).isFalse();
+
+        String surgeDelta = jdbc.queryForObject("SELECT delta::text FROM audit_records WHERE action = "
+                + "'SURGE_RULE_SCHEDULED' AND target_id = ? AND actor_id = ?", String.class,
+                v2.path("id").asString(), adminId);
+        assertThat(surgeDelta).contains("\"maxMultiplier\": \"2.00\"").contains("\"maxMultiplier\": \"1.80\"");
+
+        Map<String, Object> deliveryRule = Map.of("serviceType", "DELIVERY", "regionCode", "DEFAULT",
+                "baseFare", 18_000, "perKm", 5_500, "perMinute", 300, "minimumFare", 22_000,
+                "effectiveFrom", from.toString());
+        JsonNode rule = data(perform(post("/api/v1/admin/pricing/rules"), admin, deliveryRule)
+                .andExpect(status().isCreated()));
+        String ruleDelta = jdbc.queryForObject("SELECT delta::text FROM audit_records WHERE action = "
+                + "'PRICING_RULE_SCHEDULED' AND target_id = ?", String.class, rule.path("id").asString());
+        assertThat(ruleDelta).contains("\"baseFare\": 18000").contains("\"regionCode\": \"DEFAULT\"");
+        assertThatThrownBy(() -> jdbc.update("DELETE FROM audit_records")).hasMessageContaining("append-only");
     }
 
     /** Hoan Kiem, Ha Noi: far from the other tests' pickups, so its counters are its own. */
