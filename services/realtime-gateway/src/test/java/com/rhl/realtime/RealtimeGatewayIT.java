@@ -134,12 +134,16 @@ class RealtimeGatewayIT {
     @Autowired
     KafkaListenerEndpointRegistry listeners;
 
+    /** dispatch.offers, trip.events, payment.events and location.updates, 3 partitions each. */
+    private static final int LISTENED_PARTITIONS = 4 * 3;
+
     /** Events published before the listener owns its partitions would be skipped (it starts at the latest offset). */
     @BeforeEach
     void listenerAssigned() {
         MessageListenerContainer container = listeners.getListenerContainer(DomainEventListener.LISTENER_ID);
         await().atMost(Duration.ofSeconds(60)).until(() -> container != null
-                && container.getAssignedPartitions() != null && container.getAssignedPartitions().size() == 15);
+                && container.getAssignedPartitions() != null
+                && container.getAssignedPartitions().size() == LISTENED_PARTITIONS);
     }
 
     @Test
