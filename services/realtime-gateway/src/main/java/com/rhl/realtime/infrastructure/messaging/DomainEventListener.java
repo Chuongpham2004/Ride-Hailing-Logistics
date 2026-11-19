@@ -36,7 +36,7 @@ public class DomainEventListener {
     private final TripChannel trips;
 
     @KafkaListener(id = LISTENER_ID, idIsGroup = false, topics = {Topics.DISPATCH_OFFERS, Topics.TRIP_EVENTS,
-            Topics.PAYMENT_EVENTS, Topics.WALLET_EVENTS, Topics.LOCATION_UPDATES})
+            Topics.PAYMENT_EVENTS, Topics.LOCATION_UPDATES})
     public void onMessage(ConsumerRecord<String, String> record) throws JacksonException {
         JsonNode json = objectMapper.readTree(record.value());
         if (json == null || !json.isObject()) {

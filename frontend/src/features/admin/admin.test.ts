@@ -9,12 +9,11 @@ describe('sectionsFor', () => {
   it('shows each role only its own sections', () => {
     expect(sectionsFor(['REVIEWER']).map((s) => s.key)).toEqual(['drivers']);
     expect(sectionsFor(['SUPPORT_STAFF']).map((s) => s.key)).toEqual(['trips']);
-    expect(sectionsFor(['FINANCE_STAFF']).map((s) => s.key)).toEqual(['payments', 'wallets']);
+    expect(sectionsFor(['FINANCE_STAFF']).map((s) => s.key)).toEqual(['payments']);
     expect(sectionsFor(['ADMINISTRATOR']).map((s) => s.key)).toEqual([
       'drivers',
       'trips',
       'payments',
-      'wallets',
       'pricing',
       'users',
     ]);

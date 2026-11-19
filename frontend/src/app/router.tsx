@@ -53,7 +53,6 @@ export const router = createBrowserRouter([
             children: [
               { index: true, lazy: page(() => import('@/features/driver/DriverHomePage')) },
               { path: 'trips/:tripId', lazy: page(() => import('@/features/driver/DriverTripPage')) },
-              { path: 'earnings', lazy: page(() => import('@/features/driver/EarningsPage')) },
               { path: 'activity', lazy: page(() => import('@/features/driver/DriverActivityPage')) },
               { path: 'profile', lazy: page(() => import('@/features/driver/DriverProfilePage')) },
             ],
@@ -90,13 +89,6 @@ export const router = createBrowserRouter([
             children: [
               { path: 'payments', lazy: page(() => import('@/features/admin/PaymentsPage')) },
               { path: 'payments/:paymentId', lazy: page(() => import('@/features/admin/PaymentDetailPage')) },
-            ],
-          },
-          {
-            handle: { section: 'wallets' },
-            children: [
-              { path: 'wallets', lazy: page(() => import('@/features/admin/WalletPage')) },
-              { path: 'wallets/:driverId', lazy: page(() => import('@/features/admin/WalletPage')) },
             ],
           },
           {

@@ -13,7 +13,6 @@ test('an administrator can open every staff section', async ({ page }) => {
     ['Hồ sơ tài xế', /\/admin\/drivers$/, 'Hồ sơ tài xế'],
     ['Chuyến', /\/admin\/trips$/, 'Chuyến'],
     ['Thanh toán', /\/admin\/payments$/, 'Thanh toán'],
-    ['Ví tài xế', /\/admin\/wallets$/, 'Ví tài xế'],
     ['Bảng giá', /\/admin\/pricing$/, 'Bảng giá'],
     ['Người dùng', /\/admin\/users$/, 'Người dùng'],
   ];

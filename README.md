@@ -48,7 +48,7 @@ Nền tảng kết nối **khách hàng** với **tài xế** cho hai loại d�
 - Vòng đời chuyến theo **state machine nghiêm ngặt**.
 - Báo giá theo quãng đường/thời gian + **giá động (surge)** theo cung/cầu khu vực.
 - Theo dõi vị trí và trạng thái qua **WebSocket**.
-- Thanh toán, hoa hồng nền tảng, **ví tài xế dạng ledger bất biến**.
+- Thanh toán: ghi nhận thu tiền thành công hay thất bại và hoàn tiền. Ví tài xế, thu nhập và hoa hồng do **nhà cung cấp thanh toán (bên thứ ba mô phỏng)** quản lý, nền tảng không lưu.
 
 ---
 
@@ -60,30 +60,30 @@ Nền tảng kết nối **khách hàng** với **tài xế** cho hai loại d�
 - Mỗi chuyến có **1 điểm đón/lấy** và **1 điểm đến/giao**.
 - Một tài xế tối đa **1 chuyến hoạt động** tại một thời điểm.
 - Tối thiểu một phương thức thanh toán điện tử (sandbox).
-- Kiểm duyệt hồ sơ tài xế thủ công bởi nhân viên.
+- Kiểm duyệt hồ sơ tài xế thủ công bởi quản trị viên.
 
 ### Ngoài phạm vi
 
-Đi chung xe · đặt lịch trước · nhiều điểm dừng · đội xe doanh nghiệp / vận tải đường dài · gom đơn / tối ưu tuyến nhiều đơn · đấu giá cước · coupon / loyalty · bảo hiểm chuyến · sinh trắc học / kiểm tra lý lịch tự động · tính lương & thuế tài xế · gọi che số / chat đa phương tiện · trung tâm ứng cứu khẩn cấp · đa quốc gia / đa tiền tệ / đa ngôn ngữ · rút tiền khỏi ví (TBD) · chống giả lập vị trí nâng cao.
+Đi chung xe · đặt lịch trước · nhiều điểm dừng · đội xe doanh nghiệp / vận tải đường dài · gom đơn / tối ưu tuyến nhiều đơn · đấu giá cước · coupon / loyalty · bảo hiểm chuyến · sinh trắc học / kiểm tra lý lịch tự động · tính lương & thuế tài xế · gọi che số / chat đa phương tiện · trung tâm ứng cứu khẩn cấp · đa quốc gia / đa tiền tệ / đa ngôn ngữ · ví tài xế, hoa hồng và rút tiền (do nhà cung cấp thanh toán mô phỏng đảm nhận) · chống giả lập vị trí nâng cao.
 
 ---
 
 ## 3. Tác nhân và phân quyền
 
-RBAC tối thiểu: `Customer`, `Driver`, `Reviewer`, `SupportStaff`, `FinanceStaff`, `Administrator`.
+RBAC gồm 3 tác nhân chính: `Customer`, `Driver`, `Administrator`.
 
 | Tác nhân | Quyền chính |
 |---|---|
-| Khách vãng lai | Đăng ký, đăng nhập, xem thông tin công khai |
-| Khách hàng | Hồ sơ, lấy báo giá, đặt/hủy chuyến, theo dõi, thanh toán, xem lịch sử |
-| Tài xế chờ duyệt | Hoàn thiện hồ sơ, theo dõi trạng thái xét duyệt |
-| Tài xế hoạt động | Online/Offline, gửi vị trí, nhận/từ chối offer, cập nhật chuyến, xem ví |
-| Nhân viên kiểm duyệt | Duyệt / từ chối / yêu cầu bổ sung hồ sơ tài xế |
-| Nhân viên hỗ trợ | Tra cứu chuyến, xem lịch sử, hủy ngoại lệ (có audit) |
-| Nhân viên tài chính | Xem thanh toán, ví, hoa hồng; hoàn tiền |
-| Quản trị viên | Quản lý vai trò/quyền, bảng giá, phạm vi dịch vụ |
-| Map Provider *(máy)* | Geocoding, tuyến đường, khoảng cách, ETA |
-| Payment Provider *(máy)* | Xử lý thanh toán, callback kết quả, hoàn tiền |
+| Khách hàng (`Customer`) | Đăng ký, đăng nhập, quản lý hồ sơ, lấy báo giá, đặt/hủy chuyến hoặc đơn giao hàng, theo dõi, thanh toán, xem lịch sử |
+| Tài xế (`Driver`) | Chờ duyệt: hoàn thiện hồ sơ, xe, giấy tờ và theo dõi trạng thái xét duyệt. Đã duyệt: Online/Offline, gửi vị trí, nhận/từ chối offer, cập nhật chuyến, nhập mã giao hàng |
+| Quản trị viên (`Administrator`) | Quản lý tài khoản và vai trò; duyệt / từ chối / yêu cầu bổ sung hồ sơ tài xế; quản lý bảng giá, surge, phí hủy; tra cứu chuyến, hủy ngoại lệ, mở khóa mã giao nhận; xem thanh toán; hoàn tiền. Mọi thao tác nhạy cảm đều được audit |
+
+Người chưa đăng nhập chỉ đăng ký, đăng nhập và xem thông tin công khai. Hệ thống bên ngoài tương tác với nền tảng nhưng không phải vai trò trong RBAC:
+
+| Hệ thống ngoài | Vai trò |
+|---|---|
+| Map Provider | Geocoding, tuyến đường, khoảng cách, ETA |
+| Payment Provider | Bên thứ ba mô phỏng: xử lý thanh toán, callback kết quả, hoàn tiền; giữ ví và thu nhập của tài xế |
 
 > Mọi endpoint/bản tin được bảo vệ **phải** kiểm tra danh tính, quyền và **quyền sở hữu tài nguyên** phía server (FR-IAM-010, NFR-SEC-004).
 
@@ -132,7 +132,7 @@ flowchart LR
         LOC[location-service<br/>Location & Telemetry]
         TRP[trip-service<br/>Trip & Dispatch]
         PRC[pricing-service<br/>Pricing & Surge]
-        PAY[payment-service<br/>Payment & Wallet]
+        PAY[payment-service<br/>Payment]
     end
 
     CA -- HTTPS --> GW
@@ -174,7 +174,7 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 | `trip-service` | 8083 | Tạo chuyến, matching engine, offer, state machine, hủy chuyến | `trips`, `trip_stops`, `trip_status_history`, `driver_offers`, `idempotency_keys`, `outbox_events` | Khóa giữ tài xế khi gửi offer, timer hết hạn offer |
 | `pricing-service` | 8084 | Bảng giá, gọi Map Provider, surge, quote, cước cuối | `pricing_rules`, `surge_rules`, `surge_snapshots`, `fare_quotes`, `final_fares`, `outbox_events` | Cache quote, bộ đếm cung/cầu theo ô H3, hệ số surge hiện hành, cache tuyến đường |
 | `realtime-gateway` | 8085 | Quản lý phiên WSS, xác thực, heartbeat, subscribe theo quyền, đẩy bản tin xuống client | — | Registry phiên (user → instance), danh sách người tham gia chuyến |
-| `payment-service` | 8086 | Thanh toán, callback provider, hoàn tiền, ví, ledger, hoa hồng | `payments`, `payment_attempts`, `refunds`, `wallets`, `wallet_entries`, `commission_rules`, `outbox_events` | Không dùng cho số dư (số dư chỉ lấy từ ledger trong DB) |
+| `payment-service` | 8086 | Thanh toán thành công / thất bại, callback provider, hoàn tiền | `payments`, `payment_attempts`, `provider_callbacks`, `refunds`, `outbox_events` | Không dùng (kết quả thanh toán chỉ lấy từ DB) |
 | `eureka-server` | 8761 | Service registry: nhận đăng ký và heartbeat của 7 service trên, trả danh sách instance theo tên | — | — |
 
 **Service discovery.** SRS không yêu cầu thành phần này; nó được thêm để các service không phải biết địa chỉ cố định của nhau. Cả 7 service đăng ký vào `eureka-server` (`EUREKA_URL`, mặc định `http://localhost:8761/eureka/`). `api-gateway` định tuyến tới `lb://<service>` và `trip-service` gọi location/pricing cũng qua `lb://<service>`, cân bằng tải bằng Spring Cloud LoadBalancer. Đặt `<TÊN>_SERVICE_URL` (ví dụ `TRIP_SERVICE_URL=http://trip:8083`) thì kết nối đó dùng địa chỉ cố định và bỏ qua registry. JWKS của user-service (`USER_SERVICE_URL`, mặc định `http://localhost:8081`) vẫn lấy theo địa chỉ cố định. Registry chạy một node, không xác thực: chỉ để trong mạng nội bộ.
@@ -183,7 +183,7 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 
 | Mã | Ràng buộc | Cách hiện thực với stack |
 |---|---|---|
-| CON-01 | Tách tối thiểu các miền User/Driver, Location, Trip/Dispatch, Pricing, Payment/Wallet | 5 domain service ở §4.3 |
+| CON-01 | Tách tối thiểu các miền User/Driver, Location, Trip/Dispatch, Pricing, Payment | 5 domain service ở §4.3 |
 | CON-02 | Database-per-service | Mỗi service có database và user DB riêng; tích hợp chỉ qua REST hoặc Kafka |
 | CON-03 | Realtime qua WebSocket | `realtime-gateway` (Spring WebSocket) |
 | CON-04 | Spatial index | **Redis GEO** (`GEOADD` / `GEOSEARCH`) |
@@ -198,11 +198,13 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 
 | Database | Service | Bảng chính |
 |---|---|---|
-| `user_db` | user-service | `users`, `user_roles`, `refresh_tokens`, `driver_profiles`, `driver_profile_versions`, `vehicles`, `driver_documents`, `review_decisions`, `driver_availability`, `audit_records`, `outbox_events`, `processed_events` |
-| `location_db` | location-service | `telemetry_history` (partition theo ngày, xóa theo chính sách lưu giữ), `processed_events` |
-| `trip_db` | trip-service | `trips`, `trip_stops`, `trip_status_history`, `driver_offers`, `delivery_details`, `delivery_proofs`, `idempotency_keys`, `audit_records`, `outbox_events`, `processed_events` |
-| `pricing_db` | pricing-service | `pricing_rules`, `surge_rules`, `surge_snapshots`, `fare_quotes`, `final_fares`, `cancellation_fee_rules`, `audit_records`, `outbox_events`, `processed_events` |
-| `payment_db` | payment-service | `payments`, `payment_attempts`, `provider_callbacks`, `refunds`, `wallets`, `wallet_entries`, `commission_rules`, `audit_records`, `outbox_events`, `processed_events` |
+| `user_db` | user-service | `users`, `user_roles`, `refresh_tokens`, `driver_profiles`, `driver_profile_service_types`, `vehicles`, `driver_documents`, `document_files`, `review_decisions`, `audit_records`, `outbox_events`, `processed_events` |
+| `location_db` | location-service | `driver_presence`, `telemetry_history` (partition theo ngày, xóa theo chính sách lưu giữ), `processed_events` |
+| `trip_db` | trip-service | `trips`, `trip_status_history`, `driver_offers`, `delivery_details`, `delivery_proofs`, `handover_code_unlocks`, `idempotency_keys`, `audit_records`, `outbox_events` |
+| `pricing_db` | pricing-service | `pricing_rules`, `surge_rules`, `fare_quotes`, `final_fares`, `cancellation_fee_rules`, `cancellation_fees`, `audit_records`, `outbox_events`, `processed_events` |
+| `payment_db` | payment-service | `payments`, `payment_attempts`, `provider_callbacks`, `refunds`, `audit_records`, `outbox_events`, `processed_events` |
+
+Quan hệ giữa các bảng trong từng database (ERD, bản số, FK thật hay tham chiếu logic) và các liên kết giữa database: [docs/database.md](docs/database.md).
 
 **Tính năng PostgreSQL dùng cho các yêu cầu then chốt:**
 
@@ -212,11 +214,10 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 | Một khách không có nhiều chuyến hoạt động xung đột (FR-TRIP-007) | Unique partial index trên `trips(customer_id)` cho các trạng thái hoạt động (tùy chính sách) |
 | Chống lost update (DR-009) | Cột `version` + JPA `@Version` (optimistic locking) |
 | Idempotency API (COM-008) | `idempotency_keys(scope, key)` khóa chính, lưu hash payload + response; khác hash → `409 IDEMPOTENCY_KEY_REUSED` |
-| Idempotency tài chính (BR-009, BR-015) | `UNIQUE(trip_id)` trên `final_fares`; `UNIQUE(trip_id, attempt_no)` trên `payment_attempts`; `UNIQUE(provider, provider_ref)` trên `provider_callbacks`; `UNIQUE(reference_type, reference_id, entry_type)` trên `wallet_entries` |
+| Idempotency tài chính (BR-009, BR-015) | `UNIQUE(trip_id)` trên `final_fares`; `UNIQUE(trip_id, attempt_no)` trên `payment_attempts`; `UNIQUE(provider, provider_event_id)` trên `provider_callbacks` |
 | Outbox relay nhiều instance | `SELECT ... FROM outbox_events WHERE status='PENDING' ORDER BY id LIMIT n FOR UPDATE SKIP LOCKED` |
 | Consumer idempotent | `processed_events(consumer, event_id)` khóa chính, insert cùng transaction nghiệp vụ |
-| Bản ghi bất biến (DR-005, FR-ADM-006) | `trip_status_history`, `wallet_entries`, `audit_records` chỉ `INSERT`: thu hồi quyền `UPDATE/DELETE` của user ứng dụng, hoặc dùng trigger chặn |
-| Số dư ví không âm (FR-WAL-009) | Ghi bút toán trong transaction có `SELECT ... FOR UPDATE` trên `wallets`; có thể lưu `balance` dẫn xuất kèm `CHECK (balance >= 0)` và đối soát với tổng ledger |
+| Bản ghi bất biến (DR-005, FR-ADM-006) | `trip_status_history`, `audit_records` chỉ `INSERT`: thu hồi quyền `UPDATE/DELETE` của user ứng dụng, hoặc dùng trigger chặn |
 | Tổng hoàn ≤ đã thu (BR-010) | Khóa dòng `payments` khi tạo refund, kiểm tra `SUM(refunds.amount) + new ≤ captured_amount` |
 | Tiền (FR-PRI-016, DR-008) | `BIGINT` (VND) hoặc `NUMERIC(19,4)` cho thành phần trung gian; cột `currency CHAR(3)` |
 | Thời gian (DR-007) | `TIMESTAMPTZ`, JVM và kết nối đặt `UTC` |
@@ -255,7 +256,7 @@ Thành phần logic **API & WebSocket Gateway** trong SRS được tách thành 
 - Redis GEO không có TTL cho từng member, nên độ mới được bảo đảm theo hai lớp: (1) job dọn dựa trên `geo:lastseen`, (2) khi truy vấn, kiểm tra lại `loc:driver:{id}` còn tồn tại và `serverTs` còn trong ngưỡng.
 - Tài xế chỉ có mặt trong `geo:drivers:*` khi `AVAILABLE`. Location service cập nhật tập này chỉ từ `DriverAvailabilityChanged`: `user-service` chuyển các event offer/chuyến của trip-service thành `OFFERED`/`BUSY`/`AVAILABLE` rồi phát lại, nên trạng thái tài xế chỉ có một nguồn và một dãy `aggregateVersion`.
 - Cập nhật vị trí và kiểm tra sequence chạy trong **một Lua script** để nguyên tử: so sánh `seq`, ghi `HSET`, `GEOADD`, `ZADD`.
-- Không lưu số dư ví, trạng thái chuyến hay kết quả thanh toán **chỉ** trong Redis.
+- Không lưu trạng thái chuyến hay kết quả thanh toán **chỉ** trong Redis.
 
 ### 4.7. Thiết kế Kafka
 
@@ -272,7 +273,6 @@ Mỗi topic tương ứng một aggregate. **Message key = ID của aggregate** 
 | `dispatch.offers.v1` | driverId | trip | realtime, user | `DriverOfferCreated`, `DriverOfferExpired`, `DriverOfferDeclined`, `DriverOfferCancelled` |
 | `pricing.events.v1` | tripId | pricing | payment, trip | `FareFinalized`, `CancellationFeeCalculated` |
 | `payment.events.v1` | tripId | payment | trip, realtime | `PaymentSucceeded`, `PaymentFailed`, `RefundCompleted` |
-| `wallet.events.v1` | driverId | payment | realtime | `DriverEarningPosted`, `WalletAdjusted` |
 | `<topic>.DLT` | như topic gốc | Spring Kafka (`common-messaging` đặt tên rõ ràng, cùng partition với bản ghi lỗi) | admin tool | Event không xử lý được (FR-EVT-008) |
 
 Loại event được ghi trong header `eventType` và trong envelope (§9). Topic có hậu tố `.v1`; thay đổi không tương thích sẽ tạo topic `.v2` (NFR-MNT-002).
@@ -296,7 +296,6 @@ contracts/events/
 ├── dispatch/                               # DriverOfferCreated/Expired/Declined/Cancelled
 ├── pricing/FareFinalized.v1.schema.json
 ├── payment/PaymentSucceeded.v1.schema.json
-├── wallet/DriverEarningPosted.v1.schema.json
 └── examples/                               # Payload mẫu hợp lệ, dùng cho contract test
 ```
 
@@ -326,14 +325,14 @@ Bản tin WebSocket (Phụ lục A của SRS) cũng theo cách này, schema đ�
 | Lỗi tạm thời (FR-EVT-005) | `DefaultErrorHandler` + `ExponentialBackOff` có số lần giới hạn |
 | Lỗi nghiệp vụ / poison message | Đánh dấu exception không retry → `DeadLetterPublishingRecoverer` → `<topic>.DLT` |
 | Event sai thứ tự (FR-EVT-006) | Payload có `aggregateVersion`; consumer bỏ event có version ≤ version đã áp dụng hoặc không hợp lệ theo state machine |
-| Payment/Wallet down (FR-EVT-007) | Event nằm lại trong Kafka; consumer xử lý tiếp từ offset đã commit khi service hoạt động lại |
+| Payment down (FR-EVT-007) | Event nằm lại trong Kafka; consumer xử lý tiếp từ offset đã commit khi service hoạt động lại |
 | Xử lý lại (FR-EVT-008) | Endpoint admin đọc DLT, cho người có quyền replay hoặc đánh dấu đã bù |
 
 **Telemetry không đi qua outbox.** Đây là dữ liệu tần suất cao và ngắn hạn, nên `realtime-gateway` publish trực tiếp vào `location.telemetry.raw.v1`. Producer telemetry dùng `linger.ms` nhỏ để giữ độ trễ ≤ 500 ms; topic này có retention ngắn.
 
 #### Fan-out realtime khi chạy nhiều instance
 
-Mỗi instance `realtime-gateway` consume `location.updates`, `trip.events`, `dispatch.offers`, `payment.events`, `wallet.events` bằng **consumer group riêng** (`realtime-{instanceId}`), tức là mọi instance đều nhận mọi bản tin. Mỗi instance chỉ đẩy xuống các phiên đang kết nối với chính nó. Quy mô nghiệm thu (100 tài xế × 3 s ≈ 33 msg/s) phù hợp với cách này. Khi tải tăng, có thể chuyển sang định tuyến qua Redis Pub/Sub theo `ws:session:{userId}`.
+Mỗi instance `realtime-gateway` consume `location.updates`, `trip.events`, `dispatch.offers`, `payment.events` bằng **consumer group riêng** (`realtime-{instanceId}`), tức là mọi instance đều nhận mọi bản tin. Mỗi instance chỉ đẩy xuống các phiên đang kết nối với chính nó. Quy mô nghiệm thu (100 tài xế × 3 s ≈ 33 msg/s) phù hợp với cách này. Khi tải tăng, có thể chuyển sang định tuyến qua Redis Pub/Sub theo `ws:session:{userId}`.
 
 ### 4.8. Chống gán trùng tài xế (CON-06, UC-06)
 
@@ -380,12 +379,12 @@ sequenceDiagram
 flowchart LR
     T[trip-service<br/>COMPLETED] -- TripCompleted --> P[pricing-service<br/>tính cước cuối]
     P -- FareFinalized --> PA[payment-service<br/>charge idempotent theo tripId]
-    PA -- PaymentSucceeded --> W[wallet: ghi ledger<br/>thu nhập + hoa hồng<br/>idempotent theo tripId]
-    W -- DriverEarningPosted --> RT[realtime-gateway → Driver App]
+    PA -- charge / refund --> PP[Payment Provider mô phỏng<br/>giữ ví + thu nhập tài xế]
     PA -- PaymentSucceeded/Failed --> T
+    PA -- PaymentSucceeded/Failed --> RT[realtime-gateway → Customer App]
 ```
 
-- Ràng buộc idempotent theo nghiệp vụ: `UNIQUE(trip_id)` trên `final_fares`, `UNIQUE(trip_id, attempt_no)` trên `payment_attempts`, `UNIQUE(reference_type, reference_id, entry_type)` trên `wallet_entries`.
+- Ràng buộc idempotent theo nghiệp vụ: `UNIQUE(trip_id)` trên `final_fares`, `UNIQUE(trip_id, purpose)` trên `payments`, `UNIQUE(payment_id, attempt_no)` trên `payment_attempts`.
 - Tiền lưu bằng `BIGINT` (VND, đơn vị nhỏ nhất) hoặc `NUMERIC(19,0)`; trong Java dùng `long` hoặc `BigDecimal`, **không dùng `double`**.
 
 ### 4.10. Cấu trúc mã nguồn dự kiến
@@ -568,7 +567,7 @@ cd frontend && npm ci && npm run dev
 - **Service discovery:** chạy `eureka-server` trước. Service nào khởi động khi registry chưa lên vẫn chạy được và tự đăng ký lại sau. Sau khi một service lên, gateway cần tới khoảng 1 phút mới thấy nó (chu kỳ làm mới registry 30 giây ở mỗi phía); trong lúc đó gateway trả `503 DEPENDENCY_UNAVAILABLE`. Mỗi service đăng ký với hostname `localhost` (`EUREKA_INSTANCE_HOSTNAME`); khi chạy trên nhiều máy hoặc container, đặt biến này hoặc `EUREKA_PREFER_IP_ADDRESS=true`. Test tắt Eureka client (`eureka.client.enabled=false` trong parent POM).
 - **Không tạo bảng bằng tay.** Khi service khởi động, Flyway chạy các file `src/main/resources/db/migration/V{n}__*.sql` chưa chạy (lịch sử trong `flyway_schema_history`), rồi Hibernate chỉ đối chiếu entity với schema (`ddl-auto: validate`). Đổi schema = thêm file `V{n+1}__...sql`; không sửa migration đã chạy ở môi trường nào.
 - Entity dùng Lombok giới hạn: `@Getter` + `@NoArgsConstructor(access = PROTECTED)`; bean Spring dùng `@RequiredArgsConstructor`. `@Data`, `@Setter`, `@EqualsAndHashCode`, `@ToString` bị chặn trong `lombok.config` (proxy Hibernate, lazy loading, lộ PII qua log, bỏ qua quy tắc nghiệp vụ).
-- Admin đầu tiên được tạo khi khởi động nếu đặt `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 ký tự); vai trò nhân viên không tự đăng ký được.
+- Admin đầu tiên được tạo khi khởi động nếu đặt `BOOTSTRAP_ADMIN_EMAIL` và `BOOTSTRAP_ADMIN_PASSWORD` (≥ 12 ký tự); vai trò quản trị viên không tự đăng ký được.
 - Tuyến đường cho bản đồ (tài xế, khách): `GET /api/v1/routes?fromLatitude=&fromLongitude=&toLatitude=&toLongitude=&serviceType=` (pricing-service) trả `{distanceMeters, durationSeconds, source, polyline}` — cùng nguồn với báo giá (OSRM, `ESTIMATE` khi OSRM tắt/lỗi thì không có `polyline`); chỉ để hiển thị, giá vẫn lấy từ báo giá.
 - Tra cứu người dùng (Administrator): `GET /api/v1/admin/users?q=&role=&status=&before=&limit=` — `q` (2–100 ký tự) là một phần tên, email hoặc số điện thoại (gõ kiểu `0912…` vẫn khớp số lưu dạng `+84912…`), hoặc đúng mã người dùng; mới nhất trước, trang sau truyền `nextBefore` vào `before`. `GET /api/v1/admin/users/{id}` trả thêm trạng thái xác minh liên hệ và trạng thái hồ sơ tài xế; mỗi lần xem ghi audit `USER_VIEWED`.
 - Xác minh liên hệ: `POST /api/v1/users/me/contacts/{email|phone}/verification` gửi mã 6 số tới địa chỉ trên tài khoản (→ 202, địa chỉ được che, `expiresInSeconds`, `resendAfterSeconds`), rồi `POST …/verification/confirm {"code"}` (→ hồ sơ có `emailVerified`/`phoneVerified`). Mã sống `rhl.verification.code-ttl` (10 phút), sai `max-attempts` (5) lần thì hủy, gửi lại sau `resend-cooldown` (60 s), tối đa `max-sends-per-hour` (5); mã chỉ lưu dạng băm trong Redis (`auth:otp:*`) và gắn với địa chỉ. Tài xế phải xác minh ít nhất email hoặc SĐT trước khi nộp hồ sơ (tạm thời, chờ TBD-11).
@@ -580,27 +579,27 @@ cd frontend && npm ci && npm run dev
 - OpenAPI: user-service `http://localhost:8081/swagger-ui/index.html`, location-service `http://localhost:8082/swagger-ui/index.html`, trip-service `http://localhost:8083/swagger-ui/index.html`, pricing-service `http://localhost:8084/swagger-ui/index.html`, payment-service `http://localhost:8086/swagger-ui/index.html`.
 - location-service: tài xế gửi vị trí qua `POST /api/v1/locations/me` (HTTP dự phòng, cùng luồng xử lý với `location.telemetry.raw.v1` từ realtime-gateway) và xem lại bằng `GET /api/v1/locations/me`. trip-service gọi `GET /internal/v1/drivers/nearby?latitude&longitude&serviceType[&radiusMeters&limit]` và `GET /internal/v1/drivers/{id}/location`. Gateway không định tuyến `/internal/**` (trả 403); bản thân location-service chỉ nhận service token scope `internal:location` ở đó (§8.5).
 - trip-service: khách lấy quote ở pricing-service rồi tạo chuyến bằng `POST /api/v1/trips` với `{"quoteId"}` (bắt buộc header `Idempotency-Key`; gửi lại cùng khóa trả về cùng chuyến, khác nội dung → `409 IDEMPOTENCY_KEY_REUSED`). Điểm đón/đến, loại dịch vụ và giá lấy từ quote, không lấy từ client; mỗi quote chỉ dùng cho một chuyến (`409`); quote có surge > 1 (`surgeConfirmationRequired`) phải gửi kèm `acceptedSurgeMultiplier` đúng bằng hệ số đã hiển thị (BR-006). Pricing-service không trả lời → `503 DEPENDENCY_UNAVAILABLE`. Tiếp theo xem `GET /api/v1/trips`, `/{id}`, `/{id}/history`, hủy bằng `POST /api/v1/trips/{id}/cancel`. Tài xế xem offer `GET /api/v1/offers`, `POST /api/v1/offers/{id}/accept|decline`, rồi `POST /api/v1/trips/{id}/start-pickup|arrive|start|complete`. Bộ ghép chạy ngay sau khi tạo chuyến và theo nhịp `rhl.matching.tick-interval`: mỗi lần mời một tài xế (gần nhất, giữ bằng `dispatch:driver-hold:*`), hết hạn/từ chối thì mời người kế tiếp, hết ứng viên thì nới bán kính, quá `matching-timeout` → `NO_DRIVER`.
-- trip-service, giao hàng và mã bàn giao: quote `DELIVERY` phải kèm `"delivery": {recipientName, recipientPhone, packageDescription, packageSize (SMALL|MEDIUM|LARGE), packageWeightGrams, instructions?}` (≤ `rhl.delivery.max-weight-grams`, tạm 20 kg — TBD-08), quote `RIDE` thì không được kèm (422). Thông tin người nhận lưu ở `delivery_details`, chỉ khách, tài xế đã nhận chuyến và nhân viên thấy; không có trong offer hay event Kafka (BR-013, UC-05). Mỗi chuyến có **mã đón** 4 số (`rhl.codes.pickup-required`, mặc định RIDE và DELIVERY) và chuyến giao hàng có thêm **mã giao**; chỉ khách thấy hai mã trong `GET /api/v1/trips/{id}` (`pickupCode`, `deliveryCode`). Tài xế gửi `POST …/start {"code": mã đón}` để sang `IN_TRIP` và, với giao hàng, `POST …/complete {"code": mã giao người nhận đọc}` để hoàn tất — bằng chứng giao ghi vào `delivery_proofs` (append-only). Mã sai → 422 và được đếm; sai `rhl.codes.max-attempts` (5) lần thì mã bị khóa, phải nhờ hỗ trợ: nhân viên (SUPPORT_STAFF/ADMINISTRATOR) `POST /api/v1/admin/trips/{id}/code-unlocks {"code": "PICKUP"|"DELIVERY", "note"}` (ghi chú ≥ 10 ký tự) đưa bộ đếm về 0, mã giữ nguyên; chỉ khi mã đang khóa và còn dùng (mã đón trước `IN_TRIP`, mã giao trong `IN_TRIP`), không thì 422/409. Mỗi lần mở khóa ghi `handover_code_unlocks` (append-only, có ghi chú) và audit `TRIP_CODE_UNLOCKED` (không chứa ghi chú); chi tiết chuyến cho nhân viên có `codeMaxAttempts` và `codeUnlocks`. Không mở được thì hủy ngoại lệ.
-- trip-service, nơi hoàn tất: khi tài xế hoàn tất, trip-service hỏi location-service `GET /internal/v1/drivers/{driverId}/location` và lưu vị trí cuối của tài xế cùng khoảng cách tới điểm đến (Flyway V5); không có vị trí (location-service lỗi, không báo gần đây) thì vẫn hoàn tất, chỉ không ghi. Chi tiết chuyến cho nhân viên có `completion {latitude, longitude, distanceToDropoffMeters, awayFromDropoff}`, `awayFromDropoff` khi xa hơn `rhl.completion.max-distance-meters` (300 m) để hỗ trợ đối soát.
-- trip-service, hủy và hỗ trợ: trước khi xác nhận hủy, người được hủy (khách, tài xế được gán, nhân viên) xem phí bằng `GET /api/v1/trips/{id}/cancellation-fee?reason=…` → `{decision, fee, currency, ruleVersion, freeUntil}`; trip-service hỏi pricing-service `GET /internal/v1/cancellation-fees/preview` (cùng quy tắc với phí thật, không ghi gì). Nhân viên hỗ trợ (`SUPPORT_STAFF`, `ADMINISTRATOR`) tra cứu `GET /api/v1/admin/trips?status=&customerId=&driverId=&serviceType=&createdFrom=&createdTo=&before=&limit=` và xem chi tiết `GET /api/v1/admin/trips/{id}` (lịch sử trạng thái, các offer, bằng chứng giao, số lần nhập sai mã, nơi hoàn tất `completion`; không thấy mã) — mỗi lần xem chi tiết ghi `audit_records` `TRIP_VIEWED`. Nhân viên hủy (kể cả khi `IN_TRIP`) qua `POST /api/v1/trips/{id}/cancel` phải có `note` ≥ 10 ký tự và được ghi audit `TRIP_CANCELLED_BY_STAFF` (delta không chứa ghi chú). Lời gọi location-service và pricing-service có circuit breaker + retry 1 lần chỉ cho lỗi mạng/5xx (`rhl.resilience.*`, Resilience4j): khi mở mạch, đặt chuyến trả 503 ngay, vòng ghép tài xế thử lại ở tick sau.
+- trip-service, giao hàng và mã bàn giao: quote `DELIVERY` phải kèm `"delivery": {recipientName, recipientPhone, packageDescription, packageSize (SMALL|MEDIUM|LARGE), packageWeightGrams, instructions?}` (≤ `rhl.delivery.max-weight-grams`, tạm 20 kg — TBD-08), quote `RIDE` thì không được kèm (422). Thông tin người nhận lưu ở `delivery_details`, chỉ khách, tài xế đã nhận chuyến và quản trị viên thấy; không có trong offer hay event Kafka (BR-013, UC-05). Mỗi chuyến có **mã đón** 4 số (`rhl.codes.pickup-required`, mặc định RIDE và DELIVERY) và chuyến giao hàng có thêm **mã giao**; chỉ khách thấy hai mã trong `GET /api/v1/trips/{id}` (`pickupCode`, `deliveryCode`). Tài xế gửi `POST …/start {"code": mã đón}` để sang `IN_TRIP` và, với giao hàng, `POST …/complete {"code": mã giao người nhận đọc}` để hoàn tất — bằng chứng giao ghi vào `delivery_proofs` (append-only). Mã sai → 422 và được đếm; sai `rhl.codes.max-attempts` (5) lần thì mã bị khóa, phải nhờ hỗ trợ: quản trị viên (ADMINISTRATOR) `POST /api/v1/admin/trips/{id}/code-unlocks {"code": "PICKUP"|"DELIVERY", "note"}` (ghi chú ≥ 10 ký tự) đưa bộ đếm về 0, mã giữ nguyên; chỉ khi mã đang khóa và còn dùng (mã đón trước `IN_TRIP`, mã giao trong `IN_TRIP`), không thì 422/409. Mỗi lần mở khóa ghi `handover_code_unlocks` (append-only, có ghi chú) và audit `TRIP_CODE_UNLOCKED` (không chứa ghi chú); chi tiết chuyến cho quản trị viên có `codeMaxAttempts` và `codeUnlocks`. Không mở được thì hủy ngoại lệ.
+- trip-service, nơi hoàn tất: khi tài xế hoàn tất, trip-service hỏi location-service `GET /internal/v1/drivers/{driverId}/location` và lưu vị trí cuối của tài xế cùng khoảng cách tới điểm đến (Flyway V5); không có vị trí (location-service lỗi, không báo gần đây) thì vẫn hoàn tất, chỉ không ghi. Chi tiết chuyến cho quản trị viên có `completion {latitude, longitude, distanceToDropoffMeters, awayFromDropoff}`, `awayFromDropoff` khi xa hơn `rhl.completion.max-distance-meters` (300 m) để hỗ trợ đối soát.
+- trip-service, hủy và hỗ trợ: trước khi xác nhận hủy, người được hủy (khách, tài xế được gán, quản trị viên) xem phí bằng `GET /api/v1/trips/{id}/cancellation-fee?reason=…` → `{decision, fee, currency, ruleVersion, freeUntil}`; trip-service hỏi pricing-service `GET /internal/v1/cancellation-fees/preview` (cùng quy tắc với phí thật, không ghi gì). Quản trị viên (`ADMINISTRATOR`) tra cứu `GET /api/v1/admin/trips?status=&customerId=&driverId=&serviceType=&createdFrom=&createdTo=&before=&limit=` và xem chi tiết `GET /api/v1/admin/trips/{id}` (lịch sử trạng thái, các offer, bằng chứng giao, số lần nhập sai mã, nơi hoàn tất `completion`; không thấy mã) — mỗi lần xem chi tiết ghi `audit_records` `TRIP_VIEWED`. Quản trị viên hủy (kể cả khi `IN_TRIP`) qua `POST /api/v1/trips/{id}/cancel` phải có `note` ≥ 10 ký tự và được ghi audit `TRIP_CANCELLED_BY_STAFF` (delta không chứa ghi chú). Lời gọi location-service và pricing-service có circuit breaker + retry 1 lần chỉ cho lỗi mạng/5xx (`rhl.resilience.*`, Resilience4j): khi mở mạch, đặt chuyến trả 503 ngay, vòng ghép tài xế thử lại ở tick sau.
 - pricing-service: khách lấy báo giá bằng `POST /api/v1/quotes` (`serviceType`, `pickup`, `dropoff`) và xem lại bằng `GET /api/v1/quotes/{id}`; quote gắn với khách, có hạn `rhl.quote.ttl` (5 phút), ghi rõ thành phần giá (luôn cộng đúng bằng tổng), hệ số surge, `ruleVersion`, nguồn tuyến. trip-service kiểm tra quote qua `GET /internal/v1/quotes/{id}?customerId&serviceType` (service token scope `internal:pricing`, §8.5; 404 nếu không phải của khách, 422 `QUOTE_EXPIRED` nếu hết hạn). Admin xem và lên lịch bảng giá mới bằng `GET|POST /api/v1/admin/pricing/rules`: bảng giá không sửa được, mỗi lần đổi là một version mới có hiệu lực từ thời điểm trong tương lai, version trước tự đóng lại; quote cũ giữ nguyên giá. Quy tắc surge quản lý giống vậy qua `GET|POST /api/v1/admin/pricing/surge-rules` (`serviceType`, `minDemand` 1–10000, `ratioThreshold` 0–100, `slope` 0–10, `maxMultiplier` 1–5, `step` 0.01–1, tối đa 2 chữ số thập phân, `effectiveFrom` trong tương lai). Mỗi lần lên lịch bảng giá hoặc quy tắc surge ghi `audit_records` (append-only) với giá trị cũ và mới: `PRICING_RULE_SCHEDULED`, `SURGE_RULE_SCHEDULED`; bảng giá và quy tắc surge trả thêm `createdBy`. Tuyến đường tạm ước tính (đường chim bay × 1.35, 22 km/h) cho tới khi chốt Map Provider (TBD-02).
-- payment-service: không có API tạo thanh toán; thanh toán được mở từ `FareFinalized` và `CancellationFeeCalculated` (phí > 0) rồi thu ngay qua provider (sandbox, chờ TBD-09). Mỗi lần gọi provider có idempotency key `<paymentId>:<lần>`; lần nào chưa rõ kết quả được gửi lại sau `rhl.charge.resolve-after` với cùng key, nên không thu trùng. Thu thành công thì ghi ví tài xế: dòng `EARNING` (+cước) và `COMMISSION` (−hoa hồng theo `commission_rules` có version, tạm 20%). Khách xem `GET /api/v1/payments?tripId=…` và `GET /api/v1/payments/{id}`; nhân viên tài chính xem mọi payment; tài xế xem số dư và sổ cái `GET /api/v1/wallets/me`. Khách thu lại thanh toán thất bại bằng `POST /api/v1/payments/{id}/retry` (tối đa `rhl.charge.max-attempts` lần, không tạo lần mới khi đang có lần chờ hoặc đã trả). Provider báo kết quả bất đồng bộ qua `POST /api/v1/payments/callbacks/{provider}` (không cần JWT, gateway cho qua): header `X-Rhl-Signature: t=<giây>,v1=<HMAC-SHA256(secret, t.body)>`, lệch quá `rhl.provider.signature-tolerance` thì từ chối; mỗi `eventId` ghi một lần vào `provider_callbacks` (trùng → `DUPLICATE`), số tiền/tiền tệ phải khớp, kết quả đi qua cùng bước ghi nhận idempotent nên callback lặp hoặc tới muộn không thu/ghi có lần hai. Bộ phận tài chính: `GET /api/v1/admin/payments?status=&before=&limit=`, `GET /api/v1/admin/payments/{id}/attempts`, `GET /api/v1/admin/wallets/{driverId}`. Hoàn tiền: `POST /api/v1/admin/payments/{id}/refunds` (bắt buộc header `Idempotency-Key`; body `{amount?, reason, note?}`, bỏ `amount` = hoàn hết phần còn lại; `reason` = `SERVICE_NOT_PROVIDED`/`OVERCHARGE`/`DUPLICATE_CHARGE`/`SERVICE_COMPLAINT`/`GOODWILL`/`OTHER`, `OTHER` cần `note`). Khóa dòng `payments`, kiểm tra `amount ≤ amount − refunded_amount` và CHECK trong DB (BR-010); mỗi payment chỉ một refund đang chạy (409 nếu đang có). Refund gửi provider với key `refund:<refundId>`, chưa rõ kết quả thì gửi lại cùng key; provider có thể báo qua callback `refund.succeeded`/`refund.failed`. Trạng thái payment: `REFUND_PENDING` → `PARTIALLY_REFUNDED`/`REFUNDED` (bị từ chối thì trở lại như cũ, tạo refund mới với key mới). Thành công phát `RefundCompleted`. Khách xem `GET /api/v1/payments/{id}/refunds` (không thấy ghi chú nội bộ). Hoàn tiền **không** tự trừ ví tài xế; khi tài xế chịu, tài chính ghi điều chỉnh: `POST /api/v1/admin/wallets/{driverId}/adjustments` (`Idempotency-Key`; body `{amount (±), reason, note?, tripId?, refundId?}`; `reason` = `REFUND_CLAWBACK`/`EARNING_CORRECTION`/`INCENTIVE`/`OTHER`). Điều chỉnh là bút toán `ADJUSTMENT` mới (không sửa dòng cũ), chỉ cho ví đã tồn tại, không làm số dư âm, tối đa `rhl.wallet.max-adjustment` mỗi lần; `REFUND_CLAWBACK` phải là khoản trừ, gắn refund đã thành công của chính tài xế đó và tổng trừ ≤ số đã hoàn. Phát `WalletAdjusted`. Yêu cầu hoàn tiền, kết quả hoàn tiền và điều chỉnh ví được ghi `audit_records` (append-only).
-- realtime-gateway: app kết nối thẳng `ws://localhost:8085/ws` (không qua api-gateway), xác thực bằng access token ở header `Authorization: Bearer …` hoặc `?access_token=…` (trình duyệt không đặt được header WebSocket); thiếu/sai/hết hạn/bị thu hồi → 401 ngay ở handshake. Bản tin JSON theo `contracts/websocket/` (`messageId`, `type`, `version`, `sentAt`, `sequence`, `data`). Bản tin đầu là `SESSION_READY` (userId, roles, `tokenExpiresAt`, `heartbeatIntervalSeconds`); sau đó app tải snapshot qua REST rồi áp dụng bản tin mới, `sequence` của server tăng đúng 1 mỗi bản tin nên thấy hụt là tải lại snapshot. App gửi `PING` (→ `PONG`), im lặng quá `rhl.realtime.heartbeat-timeout` → đóng `4408`; gửi `AUTH {accessToken}` trước khi token hết hạn (→ `AUTH_REFRESHED`, phải cùng người dùng), hết hạn hoặc bị thu hồi (logout) → đóng `4401`. Tài xế gửi `DRIVER_LOCATION_UPDATED` (tối đa 1 lần/`rhl.realtime.telemetry-min-interval`), driverId lấy từ token, chuyển thành `DriverLocationReported` vào `location.telemetry.raw.v1`. Server đẩy event cho đúng người: offer và ví → tài xế; trạng thái chuyến → khách và tài xế được gán; thanh toán/hoàn tiền → khách (`type` = tên event dạng `UPPER_SNAKE`, `messageId` = `eventId`, `data` = payload). Bản tin sai → `ERROR` (không đóng kết nối). Theo dõi chuyến: khách hoặc tài xế được gán gửi `SUBSCRIBE_TRIP {tripId}` (→ `TRIP_SUBSCRIBED`; chuyến không thuộc mình hay không tồn tại đều trả `ERROR RESOURCE_NOT_FOUND`), sau đó khách nhận `TRIP_DRIVER_LOCATION` (vị trí đã kiểm tra từ `location.updates.v1`, `aggregateVersion` = sequence vị trí; tài xế không nhận lại vị trí của mình). Quyền dựa trên `ws:trip-participants:{tripId}` và `ws:driver-trip:{driverId}` dựng từ `trip.events.v1` (bỏ event có `aggregateVersion` cũ hơn). Chuyến kết thúc (`COMPLETED`, `CANCELLED`, `NO_DRIVER`) vẫn thấy tài xế thêm `rhl.realtime.trip.grace` (tạm 2 phút), sau đó server gửi `TRIP_UNSUBSCRIBED {reason: TRIP_ENDED}` và ngừng chia sẻ (BR-013); `UNSUBSCRIBE_TRIP` để tự dừng; tối đa `rhl.realtime.trip.max-subscriptions` chuyến mỗi kết nối, mất kết nối thì đăng ký lại. Mỗi instance đọc mọi event bằng consumer group `realtime-{instanceId}` từ offset mới nhất; `ws:session:{userId}` ghi instance đang giữ phiên.
+- payment-service: không có API tạo thanh toán; thanh toán được mở từ `FareFinalized` và `CancellationFeeCalculated` (phí > 0) rồi thu ngay qua provider (sandbox, chờ TBD-09). Mỗi lần gọi provider có idempotency key `<paymentId>:<lần>`; lần nào chưa rõ kết quả được gửi lại sau `rhl.charge.resolve-after` với cùng key, nên không thu trùng. payment-service chỉ ghi nhận thu thành công hay thất bại; ví, thu nhập và hoa hồng của tài xế do provider (bên thứ ba mô phỏng) giữ, `payment_db` không có bảng ví (Flyway V4 đã xoá). Khách xem `GET /api/v1/payments?tripId=…` và `GET /api/v1/payments/{id}`; quản trị viên xem mọi payment. Khách thu lại thanh toán thất bại bằng `POST /api/v1/payments/{id}/retry` (tối đa `rhl.charge.max-attempts` lần, không tạo lần mới khi đang có lần chờ hoặc đã trả). Provider báo kết quả bất đồng bộ qua `POST /api/v1/payments/callbacks/{provider}` (không cần JWT, gateway cho qua): header `X-Rhl-Signature: t=<giây>,v1=<HMAC-SHA256(secret, t.body)>`, lệch quá `rhl.provider.signature-tolerance` thì từ chối; mỗi `eventId` ghi một lần vào `provider_callbacks` (trùng → `DUPLICATE`), số tiền/tiền tệ phải khớp, kết quả đi qua cùng bước ghi nhận idempotent nên callback lặp hoặc tới muộn không thu lần hai. Quản trị viên: `GET /api/v1/admin/payments?status=&before=&limit=`, `GET /api/v1/admin/payments/{id}/attempts`. Hoàn tiền: `POST /api/v1/admin/payments/{id}/refunds` (bắt buộc header `Idempotency-Key`; body `{amount?, reason, note?}`, bỏ `amount` = hoàn hết phần còn lại; `reason` = `SERVICE_NOT_PROVIDED`/`OVERCHARGE`/`DUPLICATE_CHARGE`/`SERVICE_COMPLAINT`/`GOODWILL`/`OTHER`, `OTHER` cần `note`). Khóa dòng `payments`, kiểm tra `amount ≤ amount − refunded_amount` và CHECK trong DB (BR-010); mỗi payment chỉ một refund đang chạy (409 nếu đang có). Refund gửi provider với key `refund:<refundId>`, chưa rõ kết quả thì gửi lại cùng key; provider có thể báo qua callback `refund.succeeded`/`refund.failed`. Trạng thái payment: `REFUND_PENDING` → `PARTIALLY_REFUNDED`/`REFUNDED` (bị từ chối thì trở lại như cũ, tạo refund mới với key mới). Thành công phát `RefundCompleted`. Khách xem `GET /api/v1/payments/{id}/refunds` (không thấy ghi chú nội bộ). Yêu cầu hoàn tiền và kết quả hoàn tiền được ghi `audit_records` (append-only).
+- realtime-gateway: app kết nối thẳng `ws://localhost:8085/ws` (không qua api-gateway), xác thực bằng access token ở header `Authorization: Bearer …` hoặc `?access_token=…` (trình duyệt không đặt được header WebSocket); thiếu/sai/hết hạn/bị thu hồi → 401 ngay ở handshake. Bản tin JSON theo `contracts/websocket/` (`messageId`, `type`, `version`, `sentAt`, `sequence`, `data`). Bản tin đầu là `SESSION_READY` (userId, roles, `tokenExpiresAt`, `heartbeatIntervalSeconds`); sau đó app tải snapshot qua REST rồi áp dụng bản tin mới, `sequence` của server tăng đúng 1 mỗi bản tin nên thấy hụt là tải lại snapshot. App gửi `PING` (→ `PONG`), im lặng quá `rhl.realtime.heartbeat-timeout` → đóng `4408`; gửi `AUTH {accessToken}` trước khi token hết hạn (→ `AUTH_REFRESHED`, phải cùng người dùng), hết hạn hoặc bị thu hồi (logout) → đóng `4401`. Tài xế gửi `DRIVER_LOCATION_UPDATED` (tối đa 1 lần/`rhl.realtime.telemetry-min-interval`), driverId lấy từ token, chuyển thành `DriverLocationReported` vào `location.telemetry.raw.v1`. Server đẩy event cho đúng người: offer → tài xế; trạng thái chuyến → khách và tài xế được gán; thanh toán/hoàn tiền → khách (`type` = tên event dạng `UPPER_SNAKE`, `messageId` = `eventId`, `data` = payload). Bản tin sai → `ERROR` (không đóng kết nối). Theo dõi chuyến: khách hoặc tài xế được gán gửi `SUBSCRIBE_TRIP {tripId}` (→ `TRIP_SUBSCRIBED`; chuyến không thuộc mình hay không tồn tại đều trả `ERROR RESOURCE_NOT_FOUND`), sau đó khách nhận `TRIP_DRIVER_LOCATION` (vị trí đã kiểm tra từ `location.updates.v1`, `aggregateVersion` = sequence vị trí; tài xế không nhận lại vị trí của mình). Quyền dựa trên `ws:trip-participants:{tripId}` và `ws:driver-trip:{driverId}` dựng từ `trip.events.v1` (bỏ event có `aggregateVersion` cũ hơn). Chuyến kết thúc (`COMPLETED`, `CANCELLED`, `NO_DRIVER`) vẫn thấy tài xế thêm `rhl.realtime.trip.grace` (tạm 2 phút), sau đó server gửi `TRIP_UNSUBSCRIBED {reason: TRIP_ENDED}` và ngừng chia sẻ (BR-013); `UNSUBSCRIBE_TRIP` để tự dừng; tối đa `rhl.realtime.trip.max-subscriptions` chuyến mỗi kết nối, mất kết nối thì đăng ký lại. Mỗi instance đọc mọi event bằng consumer group `realtime-{instanceId}` từ offset mới nhất; `ws:session:{userId}` ghi instance đang giữ phiên.
 
 | Thành phần | Trạng thái | Ghi chú |
 |---|---|---|
 | `libs/common-web` | ✅ | Envelope `ApiResponse`, mã lỗi §8.3, `CorrelationIdFilter`, xử lý exception, UUIDv7 |
 | `libs/common-security` | ✅ | `Role`, quy ước claim JWT, converter `roles` → `ROLE_*`, `CurrentUser`, handler 401/403, `TokenRules` (access token / service token theo scope), `ServiceScopes` |
 | `libs/common-messaging` | ✅ | Envelope event, Outbox writer + relay (`SKIP LOCKED`), `processed_events`, validate JSON Schema, DLT |
-| `contracts/events` | 🟡 | `envelope.v1`, `DriverAvailabilityChanged.v1`, `DriverLocationReported.v1`, `DriverLocationUpdated.v1`, 5 event `trip/*` và 4 event `dispatch/*`; pricing/payment/wallet thêm cùng service sở hữu |
+| `contracts/events` | 🟡 | `envelope.v1`, `DriverAvailabilityChanged.v1`, `DriverLocationReported.v1`, `DriverLocationUpdated.v1`, 5 event `trip/*` và 4 event `dispatch/*`; pricing/payment thêm cùng service sở hữu |
 | `eureka-server` | ✅ | Service registry một node (cổng 8761); 7 service đăng ký, gateway và trip-service tra cứu theo tên |
 | `api-gateway` | ✅ | Định tuyến 5 service qua registry (`lb://`), JWT qua JWKS, kiểm tra token thu hồi, rate limit Redis, CORS |
 | `user-service` | 🟡 | Xong: đăng ký/đăng nhập, refresh xoay vòng + phát hiện dùng lại, logout, RBAC, hồ sơ tài xế, xe, giấy tờ, xét duyệt, Online/Offline, audit, consumer `dispatch.offers` + `trip.events` (OFFERED/BUSY, phát lại `DriverAvailabilityChanged`). Xong thêm: xác minh email/SĐT bằng mã một lần (băm trong Redis, giới hạn lần thử/gửi lại, tài xế phải xác minh trước khi nộp hồ sơ), quên mật khẩu (không lộ tài khoản, thu hồi mọi phiên), rate limit đăng ký và đặt lại theo IP client. Xong thêm: cấp service token cho lời gọi giữa các service (OAuth 2.0 client credentials, `POST /oauth2/token`). Xong thêm: upload file giấy tờ lên object store S3/MinIO (kiểm tra loại thật, kích thước, nội dung nguy hiểm; bỏ metadata ảnh; tải về có kiểm tra quyền và audit). Xong thêm: thu hồi ngay mọi access token còn hạn khi đặt lại mật khẩu, khi admin khóa/vô hiệu hóa tài khoản hoặc đổi vai trò (`auth:user-tokens:{userId}` → `auth:revoked:{jti}`); xóa file upload không gắn vào giấy tờ sau `rhl.documents.orphan-retention` (24 giờ). Còn: nhà cung cấp email/SMS thật, quét virus file |
 | `location-service` | ✅ | Xong: consume `DriverAvailabilityChanged` (projection `driver_presence`, bỏ event cũ theo `aggregateVersion`), validate telemetry (phạm vi, thời gian, accuracy, nhảy vị trí bất khả thi, gửi bù), Lua cập nhật vị trí + GEO nguyên tử, dọn GEO quá hạn, `telemetry_history` phân vùng theo ngày, publish `DriverLocationUpdated`, API tìm tài xế gần; tài xế `OFFERED`/`BUSY` (qua `DriverAvailabilityChanged` từ user-service) giữ vị trí nhưng rời GEO. Xong thêm: `/internal/**` chỉ nhận service token scope `internal:location` (OAuth 2.0 client credentials từ user-service) |
-| `trip-service` | 🟡 | Xong: tạo chuyến idempotent, state machine tường minh, lịch sử trạng thái bất biến (trigger chặn sửa/xóa), matching (location-service + giữ tài xế bằng Redis + nới bán kính + `NO_DRIVER`), offer có hạn, accept nguyên tử (khóa dòng + unique partial index), hủy chuyến, 9 event qua outbox. Xong thêm: tạo chuyến từ quote (kiểm tra qua pricing-service, snapshot giá trên chuyến, mỗi quote một chuyến, khách xác nhận surge). Xong thêm: chuyến giao hàng (snapshot người nhận và kiện hàng, chỉ người liên quan thấy), mã đón để bắt đầu chuyến (bật theo loại dịch vụ), mã giao làm bằng chứng giao (giới hạn số lần nhập sai). Xong thêm: xem trước phí hủy, API tra cứu cho nhân viên hỗ trợ (có audit), hủy ngoại lệ bắt buộc ghi chú và có audit, circuit breaker + retry giới hạn (Resilience4j) cho lời gọi location-service/pricing-service. Xong thêm: nhân viên mở khóa mã đón/giao bị khóa (có ghi chú, append-only, audit). Còn: bằng chứng giao bằng ảnh/chữ ký (nếu TBD-08 cần) |
+| `trip-service` | 🟡 | Xong: tạo chuyến idempotent, state machine tường minh, lịch sử trạng thái bất biến (trigger chặn sửa/xóa), matching (location-service + giữ tài xế bằng Redis + nới bán kính + `NO_DRIVER`), offer có hạn, accept nguyên tử (khóa dòng + unique partial index), hủy chuyến, 9 event qua outbox. Xong thêm: tạo chuyến từ quote (kiểm tra qua pricing-service, snapshot giá trên chuyến, mỗi quote một chuyến, khách xác nhận surge). Xong thêm: chuyến giao hàng (snapshot người nhận và kiện hàng, chỉ người liên quan thấy), mã đón để bắt đầu chuyến (bật theo loại dịch vụ), mã giao làm bằng chứng giao (giới hạn số lần nhập sai). Xong thêm: xem trước phí hủy, API tra cứu cho quản trị viên (có audit), hủy ngoại lệ bắt buộc ghi chú và có audit, circuit breaker + retry giới hạn (Resilience4j) cho lời gọi location-service/pricing-service. Xong thêm: quản trị viên mở khóa mã đón/giao bị khóa (có ghi chú, append-only, audit). Còn: bằng chứng giao bằng ảnh/chữ ký (nếu TBD-08 cần) |
 | `pricing-service` | 🟡 | Xong: bảng giá có version + thời gian hiệu lực (chặn chồng lấn bằng exclusion constraint), công thức cước tất định (tiền `long` VND, thành phần cộng đúng tổng, làm tròn lên bước 1.000), ước tính tuyến, quote gắn khách + hết hạn + cache Redis, API nội bộ kiểm tra quote. Xong thêm: surge theo cung/cầu ô H3 (consume `TripRequested`, `DriverAvailabilityChanged`, `DriverLocationUpdated`; quy tắc surge có version; Redis lỗi → 1.00 và ghi `UNAVAILABLE`). Xong thêm: cước cuối theo giá chốt trước (`TripCompleted` → `final_fares` → `FareFinalized`, đúng một lần mỗi chuyến), phí hủy theo quy tắc có version (`TripCancelled` → `cancellation_fees` → `CancellationFeeCalculated`, phát cả khi phí 0). Xong thêm: API nội bộ xem trước phí hủy (`/internal/v1/cancellation-fees/preview`). Xong thêm: audit thay đổi bảng giá và quy tắc surge, API + màn hình admin lên lịch quy tắc surge theo version. Còn: cước tính theo quãng đường thực tế (TBD-05), Map Provider thật (TBD-02), dựng lại bộ đếm cung khi mất Redis (hiện chờ tài xế đổi trạng thái) |
-| `payment-service` | 🟡 | Xong: thanh toán từ `FareFinalized`/`CancellationFeeCalculated` (một lần mỗi chuyến và mục đích), provider sandbox có idempotency key + gửi lại lần chưa rõ kết quả, `PaymentSucceeded`/`PaymentFailed`, ví tài xế dạng sổ cái bất biến (trigger chặn sửa/xóa, số dư không âm), hoa hồng có version, `DriverEarningPosted`, API xem thanh toán/ví. Xong thêm: callback bất đồng bộ từ provider (HMAC + timestamp + `eventId` duy nhất, đối chiếu số tiền), khách thu lại khi thất bại (giới hạn số lần), API tra cứu cho bộ phận tài chính. Xong thêm: hoàn tiền toàn phần/một phần (tổng ≤ đã thu, kiểm tra cả trong DB, idempotent theo `Idempotency-Key`, có lý do, gửi lại khi chưa rõ kết quả, callback provider, `RefundCompleted`), điều chỉnh ví bằng bút toán bù (`WalletAdjusted`, không âm số dư, giới hạn thu hồi theo refund), audit. Còn: provider thật (TBD-09), duyệt hai người cho điều chỉnh lớn, rút tiền ví tài xế |
-| `realtime-gateway` | 🟡 | Xong: WebSocket `/ws` xác thực JWT khi handshake (header hoặc query), làm mới token qua `AUTH`, đóng phiên khi token hết hạn/bị thu hồi, heartbeat, registry phiên Redis, vị trí tài xế → `location.telemetry.raw.v1` (giới hạn tần suất), đẩy offer/trạng thái chuyến/thanh toán/ví tới đúng người, contract `contracts/websocket/`. Xong thêm: kênh theo dõi chuyến (chỉ khách/tài xế của chuyến, khách thấy vị trí tài xế realtime, thu hồi sau chuyến + thời gian ân hạn, chống event chuyến sai thứ tự). Còn: dựng lại người tham gia chuyến khi mọi instance cùng mất event (hiện chỉ từ Kafka), rate limit kết nối, Redis Pub/Sub khi tải tăng |
+| `payment-service` | 🟡 | Xong: thanh toán từ `FareFinalized`/`CancellationFeeCalculated` (một lần mỗi chuyến và mục đích), provider sandbox có idempotency key + gửi lại lần chưa rõ kết quả, `PaymentSucceeded`/`PaymentFailed`, API xem thanh toán. Xong thêm: callback bất đồng bộ từ provider (HMAC + timestamp + `eventId` duy nhất, đối chiếu số tiền), khách thu lại khi thất bại (giới hạn số lần), API tra cứu cho quản trị viên. Xong thêm: hoàn tiền toàn phần/một phần (tổng ≤ đã thu, kiểm tra cả trong DB, idempotent theo `Idempotency-Key`, có lý do, gửi lại khi chưa rõ kết quả, callback provider, `RefundCompleted`), audit. Đã bỏ: ví tài xế, sổ cái và hoa hồng (chuyển sang provider mô phỏng, Flyway V4). Còn: provider thật (TBD-09) |
+| `realtime-gateway` | 🟡 | Xong: WebSocket `/ws` xác thực JWT khi handshake (header hoặc query), làm mới token qua `AUTH`, đóng phiên khi token hết hạn/bị thu hồi, heartbeat, registry phiên Redis, vị trí tài xế → `location.telemetry.raw.v1` (giới hạn tần suất), đẩy offer/trạng thái chuyến/thanh toán tới đúng người, contract `contracts/websocket/`. Xong thêm: kênh theo dõi chuyến (chỉ khách/tài xế của chuyến, khách thấy vị trí tài xế realtime, thu hồi sau chuyến + thời gian ân hạn, chống event chuyến sai thứ tự). Còn: dựng lại người tham gia chuyến khi mọi instance cùng mất event (hiện chỉ từ Kafka), rate limit kết nối, Redis Pub/Sub khi tải tăng |
 
 ---
 
@@ -655,10 +654,10 @@ sequenceDiagram
     GW->>TR: state transition
     TR-)K: TripCompleted (outbox)
     K-)PR: tính cước cuối → FareFinalized
-    K-)PW: charge idempotent, hoa hồng, ledger
-    PW-)K: PaymentSucceeded, DriverEarningPosted
+    K-)PW: charge idempotent qua provider
+    PW-)K: PaymentSucceeded
     K-)RT: consume
-    RT-->>D: DRIVER_EARNING_POSTED
+    RT-->>C: PAYMENT_SUCCEEDED
 ```
 
 ### 5.2. Matching
@@ -697,7 +696,7 @@ stateDiagram-v2
     CREATED --> CANCELLED: Khách hủy trước matching
     MATCHING --> ACCEPTED: Một driver chấp nhận (nguyên tử)
     MATCHING --> NO_DRIVER: Hết giới hạn matching
-    MATCHING --> CANCELLED: Khách/nhân viên hủy
+    MATCHING --> CANCELLED: Khách/quản trị viên hủy
     ACCEPTED --> PICKING_UP: Driver bắt đầu tới điểm đón
     ACCEPTED --> CANCELLED: Hủy (có thể có phí)
     PICKING_UP --> ARRIVED: Driver gần điểm đón & xác nhận
@@ -782,7 +781,7 @@ Mỗi bước chuyển phải:
 - Accept lặp của offer đã thắng → cùng kết quả; offer thua/hết hạn → `409`.
 - Ghép thành công → trip `ACCEPTED`, driver `BUSY`, hủy offer khác, báo hai bên.
 - Bắt đầu chuyến cần xác nhận/OTP nếu bật; giao hàng hoàn tất cần **bằng chứng giao** (OTP/ảnh/chữ ký — TBD).
-- Hủy: bắt buộc mã lý do; phí theo actor/trạng thái/thời gian chờ/rule version; hiển thị phí trước khi xác nhận; **idempotent**; hủy ngoại lệ của nhân viên phải audit.
+- Hủy: bắt buộc mã lý do; phí theo actor/trạng thái/thời gian chờ/rule version; hiển thị phí trước khi xác nhận; **idempotent**; hủy ngoại lệ của quản trị viên phải audit.
 </details>
 
 <details>
@@ -796,16 +795,14 @@ Mỗi bước chuyển phải:
 </details>
 
 <details>
-<summary><b>Payment & Wallet (FR-PAY-001…013, FR-WAL-001…010)</b></summary>
+<summary><b>Payment (FR-PAY-001…013)</b></summary>
 
 - Payment record gắn trip, customer, amount, currency, method, status.
 - Số tiền lấy từ **cước cuối đã chốt** — không tin client.
 - Trạng thái: `PENDING`, `SUCCEEDED`, `FAILED`, `REFUND_PENDING`, `REFUNDED`, `PARTIALLY_REFUNDED`.
 - Xác minh kết quả với provider; callback lặp/sai thứ tự không gây thu trùng; xác minh chữ ký + chống replay.
 - Thanh toán thất bại → ghi khoản phải thu, cho retry, **không hoàn tác chuyến**.
-- Ví: một ví/tài xế/tiền tệ; **ledger bất biến**, số dư = tổng bút toán; điều chỉnh bằng **bút toán bù**.
-- Thu nhập ròng = tổng được hưởng − hoa hồng ± điều chỉnh; công thức hoa hồng có version/dịch vụ/vùng/hiệu lực.
-- Ghi có thu nhập & hoa hồng **idempotent theo trip**; số dư không âm (trừ chính sách được phê duyệt).
+- Ví tài xế, thu nhập ròng và hoa hồng **không thuộc phạm vi**: nhà cung cấp thanh toán (bên thứ ba mô phỏng) đảm nhận; nền tảng chỉ cần biết thanh toán thành công hay thất bại.
 - Hoàn tiền: toàn phần/một phần, tổng hoàn ≤ tổng đã thu, idempotent, có lý do & liên kết giao dịch gốc.
 </details>
 
@@ -815,7 +812,7 @@ Mỗi bước chuyển phải:
 - Thay đổi nghiệp vụ + event ghi **nguyên tử bằng Outbox**.
 - Consumer idempotent theo eventId/business key; retry giới hạn cho lỗi tạm thời; lỗi nghiệp vụ không retry vô hạn → **DLQ**.
 - Event sai thứ tự xử lý dựa trên aggregate version/state transition.
-- Payment/Wallet down không được làm mất `TripCompleted`.
+- Payment down không được làm mất `TripCompleted`.
 - Có công cụ để người có quyền xem & xử lý lại event/giao dịch lỗi.
 - Audit: actor, action, target, result, timestamp, correlationId, delta an toàn — **không sửa/xóa được**.
 - Danh sách lớn: phân trang, lọc, giới hạn page size.
@@ -932,7 +929,7 @@ Mỗi bước chuyển phải:
 | trip-service → user-service | OAuth 2.0 client credentials (`POST /oauth2/token`) | Lấy service token cho các lời gọi `/internal/**` |
 | Mọi service ↔ eureka-server | HTTP (Eureka REST) | Đăng ký, heartbeat, lấy danh sách instance |
 | Pricing ↔ Map Provider | HTTPS | Geocoding, tuyến, khoảng cách, ETA |
-| Services ↔ Kafka | Kafka protocol (Spring Kafka) | Trip / payment / wallet events |
+| Services ↔ Kafka | Kafka protocol (Spring Kafka) | Trip / payment events |
 | Payment ↔ Payment Provider | HTTPS | Tạo thanh toán, xác minh, hoàn tiền |
 
 **Xác thực giữa các service.** API `/internal/**` không nhận token của người dùng. Service gọi (hiện chỉ trip-service) lấy **service token** từ user-service theo OAuth 2.0 client credentials (RFC 6749 §4.4): `POST /oauth2/token` với `Authorization: Basic <clientId:secret>` và form `grant_type=client_credentials[&scope=...]`, trả `{access_token, token_type, expires_in, scope}` theo đúng RFC (không bọc `ApiResponse`). Token ký cùng khóa RS256 với access token, `sub` = client ID, `typ=service`, `scope` cách nhau bằng dấu cách (`internal:location`, `internal:pricing`), không có `roles`, sống `rhl.jwt.service-token-ttl` (10 phút). location-service và pricing-service chỉ mở `/internal/**` cho service token có đúng scope (thiếu token → 401, token người dùng hoặc sai scope → 403), còn API cho người dùng thì từ chối service token; các service khác từ chối service token hoàn toàn. Client và scope khai trong `rhl.service-clients` của user-service (secret ≥ 16 ký tự, đặt qua `SERVICE_CLIENT_TRIP_SECRET`); trip-service đặt cùng secret qua `SERVICE_CLIENT_SECRET`, giữ một token dùng chung, đổi token trước khi hết hạn 60 s, gặp 401 thì bỏ token và gửi lại một lần với token mới; khi user-service tạm lỗi thì dùng tiếp token còn hạn. Gateway không định tuyến `/oauth2/**` và `/internal/**`.
@@ -953,8 +950,7 @@ Bảng dưới là hợp đồng event tối thiểu theo SRS §5.6, đã ánh x
 | `TripCompleted` | trip-service | `trip.events.v1` (tripId) | pricing, payment, user | tripId, customerId, driverId, route summary, completedAt |
 | `TripCancelled` | trip-service | `trip.events.v1` (tripId) | payment, realtime, user | tripId, actor, reason, fee data |
 | `FareFinalized` | pricing-service | `pricing.events.v1` (tripId) | payment, trip | tripId, breakdown, total, currency, rule version |
-| `PaymentSucceeded` | payment-service | `payment.events.v1` (tripId) | trip, wallet (nội bộ payment-service), realtime | paymentId, tripId, amount, currency |
-| `DriverEarningPosted` | payment-service (wallet) | `wallet.events.v1` (driverId) | realtime → Driver App | tripId, walletId, net earning, balance reference |
+| `PaymentSucceeded` | payment-service | `payment.events.v1` (tripId) | trip, realtime | paymentId, tripId, amount, currency |
 
 **Envelope:**
 
@@ -993,15 +989,13 @@ Bảng dưới là hợp đồng event tối thiểu theo SRS §5.6, đã ánh x
 | Pricing | `PricingRule` | ruleId, serviceType, region, components, version, effective period |
 | Pricing | `FareQuote` | quoteId, customerId, route, breakdown, surge, total, currency, expiresAt |
 | Payment | `Payment` | paymentId, tripId, customerId, amount, currency, provider, status, providerRef |
-| Wallet | `Wallet` | walletId, driverId, currency, status, derived balance |
-| Wallet | `WalletEntry` | entryId, walletId, type, signed amount, reference, status, timestamp |
 | Platform | `OutboxEvent` | eventId, aggregate, type, version, payload, status, timestamps |
 | Platform | `AuditRecord` | auditId, actor, action, target, delta, result, timestamp, correlationId |
 
 ### 10.2. Quy tắc dữ liệu
 
 - Mỗi thực thể có **đúng một service làm nguồn sự thật**; không shared database.
-- Trip status history, payment, wallet ledger, audit là **append-only**; sửa sai bằng bản ghi bù.
+- Trip status history, payment, audit là **append-only**; sửa sai bằng bản ghi bù.
 - ID chia sẻ giữa service không va chạm và **không chứa PII** (gợi ý: ULID/UUID).
 - Thời gian lưu **UTC**; client hiển thị theo múi giờ.
 - Tiền: **decimal hoặc số nguyên VND** kèm currency.
@@ -1015,9 +1009,9 @@ Bảng dưới là hợp đồng event tối thiểu theo SRS §5.6, đã ánh x
 ### 10.3. Quyền riêng tư
 
 - Thu thập vị trí theo nguyên tắc **tối thiểu cần thiết**, có thông báo/đồng ý.
-- Vị trí chính xác chỉ chia sẻ cho người tham gia chuyến & nhân viên có quyền, trong thời gian cần thiết.
+- Vị trí chính xác chỉ chia sẻ cho người tham gia chuyến & quản trị viên có quyền, trong thời gian cần thiết.
 - Giấy tờ định danh, giấy phép, liên hệ, vị trí lịch sử = **dữ liệu nhạy cảm**; che PII khi không cần đầy đủ.
-- Nhân viên xem vị trí lịch sử phải có mục đích hợp lệ và **được audit**.
+- Quản trị viên xem vị trí lịch sử phải có mục đích hợp lệ và **được audit**.
 - Log không chứa password, token, khóa, dữ liệu thẻ, tài liệu đầy đủ, PII/vị trí không cần thiết.
 
 ---
@@ -1042,19 +1036,19 @@ Bảng dưới là hợp đồng event tối thiểu theo SRS §5.6, đã ánh x
 - Mất WebSocket không mất trạng thái chuyến; client đồng bộ lại từ snapshot.
 - Vị trí trùng/sai thứ tự không làm lùi vị trí mới nhất.
 - **Không double assignment** (một tài xế 2 chuyến / một chuyến 2 tài xế).
-- Không mất `TripCompleted`, thanh toán thành công, bút toán ví sau khi đã xác nhận.
+- Không mất `TripCompleted` và thanh toán thành công sau khi đã xác nhận.
 - Timeout + retry có giới hạn với Map/Payment cho thao tác idempotent.
-- Pricing down không ảnh hưởng quote đã snapshot; Payment/Wallet down không mất chuyến hoàn tất.
+- Pricing down không ảnh hưởng quote đã snapshot; Payment down không mất chuyến hoàn tất.
 - Tác vụ nền/consumer tiếp tục sau restart **không tạo hiệu ứng trùng**.
 
 ### 11.3. Bảo mật
 
-TLS ≥ 1.2 · Argon2id/bcrypt · secret không hard-code, xoay vòng được · least privilege, object-level & function-level authorization · token WebSocket có hạn, gắn phiên · chống injection / XSS / CSRF / SSRF / path traversal / insecure deserialization / mass assignment · **rate limit** cho login, telemetry, quote, tạo chuyến, offer, payment, upload · callback thanh toán xác minh chữ ký + replay protection + đối chiếu trip/amount/currency · **client không tự quyết** giá, trạng thái, assignment, payment success, wallet balance · quét lỗ hổng dependency trước phát hành.
+TLS ≥ 1.2 · Argon2id/bcrypt · secret không hard-code, xoay vòng được · least privilege, object-level & function-level authorization · token WebSocket có hạn, gắn phiên · chống injection / XSS / CSRF / SSRF / path traversal / insecure deserialization / mass assignment · **rate limit** cho login, telemetry, quote, tạo chuyến, offer, payment, upload · callback thanh toán xác minh chữ ký + replay protection + đối chiếu trip/amount/currency · **client không tự quyết** giá, trạng thái, assignment, payment success · quét lỗ hổng dependency trước phát hành.
 
 ### 11.4. Bảo trì & tương thích
 
 - REST có **OpenAPI**; event và bản tin WebSocket có **JSON Schema** kèm version trong `contracts/`.
-- Unit test bắt buộc cho state machine, matching, pricing, payment, wallet.
+- Unit test bắt buộc cho state machine, matching, pricing, payment.
 - Cấu hình (bảng giá, bán kính, timeout offer, TTL vị trí, chu kỳ telemetry) **không hard-code**.
 - Migration DB có version và phương án rollback.
 - Tương thích ngược trong cùng major version; app cũ nhận thông báo nâng cấp rõ ràng.
@@ -1079,11 +1073,11 @@ Tối ưu thao tác trên di động khi đang di chuyển · thể hiện rõ M
 | BR-008 | Chuyển trạng thái chỉ hợp lệ theo state machine và quyền actor |
 | BR-009 | Hoàn tất chuyến ghi nhận **một lần**, kích hoạt tính cước/thanh toán **một lần** |
 | BR-010 | Tổng hoàn tiền ≤ tổng đã thu |
-| BR-011 | Ledger ví bất biến; điều chỉnh bằng bút toán bù |
-| BR-012 | Thu nhập ròng = tổng được hưởng − hoa hồng ± điều chỉnh hợp lệ |
+| BR-011 | *(Bỏ)* Ví tài xế do nhà cung cấp thanh toán mô phỏng quản lý |
+| BR-012 | *(Bỏ)* Thu nhập ròng và hoa hồng do nhà cung cấp thanh toán mô phỏng tính |
 | BR-013 | Vị trí chính xác chỉ chia sẻ trong quan hệ chuyến hợp lệ |
-| BR-014 | Thao tác nhạy cảm (hồ sơ, giá, chuyến, thanh toán, ví, quyền) phải audit |
-| BR-015 | Request/event lặp không tạo nhiều trip, assignment, payment hoặc wallet entry |
+| BR-014 | Thao tác nhạy cảm (hồ sơ, giá, chuyến, thanh toán, quyền) phải audit |
+| BR-015 | Request/event lặp không tạo nhiều trip, assignment hoặc payment |
 
 ---
 
@@ -1094,7 +1088,7 @@ Tối ưu thao tác trên di động khi đang di chuyển · thể hiện rõ M
 | UC-01 | Đăng ký & xét duyệt tài xế | Hồ sơ thiếu/hết hạn không được duyệt; người không có quyền không xem được tài liệu; quyết định có lịch sử |
 | UC-02 | Tạo báo giá | Tổng giá đúng, tái lập được theo rule version; surge hiển thị rõ; quote không dùng được bởi người khác / sau hết hạn |
 | **UC-03** | Đặt chuyến & ghép tài xế | Retry chỉ tạo một trip; chỉ một driver thắng; không driver nào bị gán hai trip |
-| **UC-04** | Theo dõi & hoàn tất chuyến chở khách | Độ trễ ≤ 500 ms p95; thứ tự trạng thái hợp lệ; event hoàn tất, payment, wallet không trùng |
+| **UC-04** | Theo dõi & hoàn tất chuyến chở khách | Độ trễ ≤ 500 ms p95; thứ tự trạng thái hợp lệ; event hoàn tất, payment không trùng |
 | UC-05 | Hoàn tất giao hàng | Người không liên quan không xem được người nhận; bằng chứng giao gắn đúng trip; cước/thanh toán ghi một lần |
 | **UC-06** | Cạnh tranh chấp nhận chuyến | 100 accept đồng thời → một assignment; driver không kẹt `OFFERED`/`BUSY`; bên thua nhận conflict/expired; retry không tạo event trùng |
 | **UC-07** | Mất & khôi phục realtime | Trạng thái server không mất; client lấy snapshot mới nhất; bản tin cũ/trùng bị bỏ qua |
@@ -1107,8 +1101,8 @@ Tối ưu thao tác trên di động khi đang di chuyển · thể hiện rõ M
 - [ ] Không còn lỗi Critical/Blocker; lỗi High đã đánh giá và chấp nhận rủi ro.
 - [ ] Unit, integration, contract, E2E, concurrency, security, regression test đạt.
 - [ ] **UC-03, UC-04, UC-06, UC-07, UC-09** đạt trên bộ dữ liệu chuẩn.
-- [ ] Không double assignment, mất trạng thái chuyến, thu tiền trùng, ghi ví trùng.
-- [ ] Đã kiểm chứng quyền truy cập vị trí, tài liệu tài xế, trip, payment, wallet.
+- [ ] Không double assignment, mất trạng thái chuyến, thu tiền trùng.
+- [ ] Đã kiểm chứng quyền truy cập vị trí, tài liệu tài xế, trip, payment.
 - [ ] OpenAPI, WebSocket contract, event schema, quy tắc giá/state machine được cập nhật.
 
 ### Truy vết đề tài → yêu cầu
@@ -1125,7 +1119,7 @@ Tối ưu thao tác trên di động khi đang di chuyển · thể hiện rõ M
 | Giá theo quãng đường/thời gian | FR-PRI-001…006, 013…018 | UC-02, pricing test |
 | Surge theo cung/cầu khu vực | FR-PRI-007…012 | Pricing rule/boundary test |
 | TripCompleted kích hoạt tài chính | FR-TRIP-014, FR-EVT-001…008 | UC-04/05, event test |
-| Thanh toán, hoa hồng, ví | FR-PAY-001…013, FR-WAL-001…010 | UC-04/05/08, ledger test |
+| Thanh toán, hoàn tiền | FR-PAY-001…013 | UC-04/05/08, payment test |
 | Độ trễ vị trí < 500 ms | NFR-PERF-001 | UC-09, performance test |
 | Mô phỏng 100 tài xế | NFR-PERF-002 | UC-09 |
 
@@ -1135,10 +1129,10 @@ Tối ưu thao tác trên di động khi đang di chuyển · thể hiện rõ M
 
 | Loại | Trọng tâm |
 |---|---|
-| Unit | State machine, matching rank, pricing, surge, cancellation, commission, ledger |
+| Unit | State machine, matching rank, pricing, surge, cancellation, refund |
 | Integration | Spatial index, WebSocket session, DB transaction, broker, map/payment adapter |
 | Contract | REST, WebSocket, event compatibility |
-| End-to-end | Onboarding driver, quote, matching, ride/delivery, payment, wallet |
+| End-to-end | Onboarding driver, quote, matching, ride/delivery, payment |
 | Concurrency | Nhiều offer/driver/trip cạnh tranh, request lặp |
 | Performance | Độ trễ location, spatial query, matching, 100 tài xế mô phỏng |
 | Reliability | Mất/reconnect WebSocket, event trùng/sai thứ tự, dependency timeout |
@@ -1160,7 +1154,7 @@ Tối ưu thao tác trên di động khi đang di chuyển · thể hiện rõ M
 | TBD-07 | Hủy / no-show | Trạng thái được hủy, phí, phân bổ phí | Product / Tài chính |
 | TBD-08 | Giao hàng | Giới hạn kiện hàng, loại bằng chứng giao | Product / Legal |
 | TBD-09 | Thanh toán | Provider, tiền mặt, pre-authorization, retry | Product / Tài chính |
-| TBD-10 | Ví tài xế | Điều kiện ghi có, rút tiền, số dư âm | Tài chính |
+| TBD-10 | Ví tài xế | Đã chốt: do nhà cung cấp thanh toán mô phỏng (bên thứ ba) quản lý, ngoài phạm vi nền tảng | Tài chính |
 | TBD-11 | KYC | Tài liệu bắt buộc, thời hạn, quy trình xét duyệt | Operations / Legal |
 | TBD-12 | Quyền riêng tư | Thời hạn giữ telemetry, trip, tài liệu tài xế | Legal / Product |
 | TBD-13 | Mobile | Phiên bản Android/iOS tối thiểu | Product / Mobile |

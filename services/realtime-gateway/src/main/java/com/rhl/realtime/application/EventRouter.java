@@ -17,7 +17,7 @@ import java.util.UUID;
 /**
  * Pushes domain events to the people they concern, on this instance's sessions (README §4.7:
  * every instance reads every event). Who receives what follows BR-013 and FR-RT: a driver gets
- * their offers and wallet changes, the customer and the assigned driver get the trip's status,
+ * their offers, the customer and the assigned driver get the trip's status,
  * the customer gets payments and refunds. Recipients come from the event itself, never from a
  * client subscription, and each user only on sessions opened with the matching role.
  */
@@ -44,9 +44,7 @@ public class EventRouter {
             Map.entry("TripCancelled", Audience.CUSTOMER_AND_DRIVER),
             Map.entry("PaymentSucceeded", Audience.CUSTOMER),
             Map.entry("PaymentFailed", Audience.CUSTOMER),
-            Map.entry("RefundCompleted", Audience.CUSTOMER),
-            Map.entry("DriverEarningPosted", Audience.DRIVER),
-            Map.entry("WalletAdjusted", Audience.DRIVER));
+            Map.entry("RefundCompleted", Audience.CUSTOMER));
 
     private final SessionRegistry sessions;
     private final Messages messages;

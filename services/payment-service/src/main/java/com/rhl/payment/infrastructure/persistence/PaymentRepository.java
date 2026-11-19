@@ -14,7 +14,7 @@ import java.util.UUID;
 
 public interface PaymentRepository extends JpaRepository<Payment, UUID> {
 
-    /** Payment first, then attempt, then wallet: one lock order for every writer. */
+    /** Payment first, then attempt: one lock order for every writer. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT p FROM Payment p WHERE p.id = :id")
     Optional<Payment> findByIdForUpdate(@Param("id") UUID id);
