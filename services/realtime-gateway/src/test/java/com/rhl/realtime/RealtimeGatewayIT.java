@@ -166,8 +166,6 @@ class RealtimeGatewayIT {
                 Map.of("tripId", trip.toString(), "customerId", customer.toString(), "driverId", driver.toString()));
         publish("payment.events.v1", trip, "PaymentSucceeded",
                 Map.of("tripId", trip.toString(), "customerId", customer.toString(), "driverId", driver.toString()));
-        publish("wallet.events.v1", driver, "DriverEarningPosted",
-                Map.of("tripId", trip.toString(), "driverId", driver.toString()));
 
         JsonNode offer = driverApp.next();
         assertThat(offer.path("type").asString()).isEqualTo("DRIVER_OFFER_CREATED");
@@ -175,10 +173,9 @@ class RealtimeGatewayIT {
         assertThat(offer.path("sequence").asLong()).isEqualTo(2);
         assertThat(offer.path("data").path("tripId").asString()).isEqualTo(trip.toString());
         assertThat(offer.has("aggregateVersion")).isTrue();
-        assertThat(driverApp.next().path("type").asString()).isEqualTo("TRIP_ACCEPTED");
-        JsonNode earning = driverApp.next();
-        assertThat(earning.path("type").asString()).isEqualTo("DRIVER_EARNING_POSTED");
-        assertThat(earning.path("sequence").asLong()).isEqualTo(4);
+        JsonNode accepted = driverApp.next();
+        assertThat(accepted.path("type").asString()).isEqualTo("TRIP_ACCEPTED");
+        assertThat(accepted.path("sequence").asLong()).isEqualTo(3);
 
         assertThat(customerApp.next().path("type").asString()).isEqualTo("TRIP_ACCEPTED");
         assertThat(customerApp.next().path("type").asString()).isEqualTo("PAYMENT_SUCCEEDED");

@@ -23,7 +23,7 @@ class RealtimeUnitTest {
             "DriverOfferCreated, DRIVER_OFFER_CREATED",
             "TripStatusChanged, TRIP_STATUS_CHANGED",
             "RefundCompleted, REFUND_COMPLETED",
-            "DriverEarningPosted, DRIVER_EARNING_POSTED"})
+            "PaymentFailed, PAYMENT_FAILED"})
     void eventTypesBecomeMessageTypes(String eventType, String messageType) {
         assertThat(EventRouter.upperSnake(eventType)).isEqualTo(messageType);
         assertThat(EventRouter.isForwarded(eventType)).isTrue();

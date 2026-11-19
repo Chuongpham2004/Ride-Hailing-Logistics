@@ -12,7 +12,7 @@
     </parent>
 
     <artifactId>realtime-gateway</artifactId>
-    <description>WebSocket sessions: authentication, heartbeat, driver telemetry in, trip/offer/payment/wallet events out.</description>
+    <description>WebSocket sessions: authentication, heartbeat, driver telemetry in, trip/offer/payment events out.</description>
 
     <dependencies>
         <dependency>

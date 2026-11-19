@@ -1,23 +1,19 @@
 package com.rhl.payment.application;
 
 import com.rhl.common.messaging.OutboxWriter;
-import com.rhl.payment.domain.CommissionRule;
 import com.rhl.payment.domain.Payment;
 import com.rhl.payment.domain.PaymentAttempt;
 import com.rhl.payment.domain.Refund;
-import com.rhl.payment.domain.Wallet;
-import com.rhl.payment.domain.WalletAdjustment;
 import com.rhl.payment.infrastructure.messaging.Topics;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Maps payment and wallet changes to events in {@code contracts/events/payment} and
- * {@code contracts/events/wallet}, written to the outbox in the caller's transaction.
+ * Maps payment changes to events in {@code contracts/events/payment}, written to the outbox in
+ * the caller's transaction.
  */
 @Component
 @RequiredArgsConstructor
@@ -43,24 +39,6 @@ public class PaymentEvents {
         payment(payment, "PaymentFailed", p);
     }
 
-    public void earningPosted(Wallet wallet, Payment payment, CommissionRule.Split split, Instant at) {
-        Map<String, Object> p = new LinkedHashMap<>();
-        p.put("walletId", wallet.getId().toString());
-        p.put("driverId", wallet.getDriverId().toString());
-        p.put("tripId", payment.getTripId().toString());
-        p.put("paymentId", payment.getId().toString());
-        p.put("grossAmount", split.gross());
-        p.put("commission", split.commission());
-        p.put("netEarning", split.net());
-        p.put("currency", wallet.getCurrency());
-        p.put("commissionRuleVersion", split.ruleVersion());
-        p.put("balance", wallet.getBalance());
-        p.put("postedAt", at.toString());
-        String driverId = wallet.getDriverId().toString();
-        outbox.append(Topics.WALLET_EVENTS, driverId, "DriverEarningPosted", 1, wallet.getId().toString(),
-                wallet.getVersion(), p);
-    }
-
     /** Once per refund, after the provider confirmed it; {@code refundedTotal} includes it. */
     public void refundCompleted(Payment payment, Refund refund) {
         Map<String, Object> p = new LinkedHashMap<>();
@@ -80,22 +58,6 @@ public class PaymentEvents {
         p.put("providerRef", refund.getProviderRef());
         p.put("completedAt", refund.getCompletedAt().toString());
         payment(payment, "RefundCompleted", p);
-    }
-
-    public void walletAdjusted(Wallet wallet, WalletAdjustment adjustment) {
-        Map<String, Object> p = new LinkedHashMap<>();
-        p.put("adjustmentId", adjustment.getId().toString());
-        p.put("walletId", wallet.getId().toString());
-        p.put("driverId", wallet.getDriverId().toString());
-        p.put("amount", adjustment.getAmount());
-        p.put("currency", adjustment.getCurrency());
-        p.put("reason", adjustment.getReason().name());
-        p.put("tripId", adjustment.getTripId() == null ? null : adjustment.getTripId().toString());
-        p.put("refundId", adjustment.getRefundId() == null ? null : adjustment.getRefundId().toString());
-        p.put("balance", wallet.getBalance());
-        p.put("postedAt", adjustment.getCreatedAt().toString());
-        outbox.append(Topics.WALLET_EVENTS, wallet.getDriverId().toString(), "WalletAdjusted", 1,
-                wallet.getId().toString(), wallet.getVersion(), p);
     }
 
     private void payment(Payment payment, String eventType, Map<String, Object> payload) {

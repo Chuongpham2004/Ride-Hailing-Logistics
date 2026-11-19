@@ -5,7 +5,7 @@ import type { Role } from '@/shared/api/types';
  * the server answers 403 / 404 whatever the sidebar shows.
  */
 
-export type SectionKey = 'drivers' | 'trips' | 'payments' | 'wallets' | 'pricing' | 'users';
+export type SectionKey = 'drivers' | 'trips' | 'payments' | 'pricing' | 'users';
 
 export interface Section {
   key: SectionKey;
@@ -18,7 +18,6 @@ export const SECTIONS: Section[] = [
   { key: 'drivers', to: '/admin/drivers', label: 'Hồ sơ tài xế', roles: ['REVIEWER', 'ADMINISTRATOR'] },
   { key: 'trips', to: '/admin/trips', label: 'Chuyến', roles: ['SUPPORT_STAFF', 'ADMINISTRATOR'] },
   { key: 'payments', to: '/admin/payments', label: 'Thanh toán', roles: ['FINANCE_STAFF', 'ADMINISTRATOR'] },
-  { key: 'wallets', to: '/admin/wallets', label: 'Ví tài xế', roles: ['FINANCE_STAFF', 'ADMINISTRATOR'] },
   { key: 'pricing', to: '/admin/pricing', label: 'Bảng giá', roles: ['ADMINISTRATOR'] },
   { key: 'users', to: '/admin/users', label: 'Người dùng', roles: ['ADMINISTRATOR'] },
 ];

@@ -110,13 +110,13 @@ class PaymentServiceIT {
     }
 
     @Test
-    void aFinalFareIsChargedOnceAndTheDriverIsCreditedNetOfCommission() throws Exception {
+    void aFinalFareIsChargedExactlyOnce() throws Exception {
         UUID trip = UuidV7.random();
         UUID customer = UUID.randomUUID();
         UUID driver = UUID.randomUUID();
         Map<String, Object> fare = fareFinalized(trip, customer, driver, 27_000);
 
-        // Redelivered (same eventId) and duplicated (new eventId, same trip): one payment, one credit.
+        // Redelivered (same eventId) and duplicated (new eventId, same trip): one payment.
         UUID eventId = UuidV7.random();
         publish(trip, eventId, "FareFinalized", fare);
         publish(trip, eventId, "FareFinalized", fare);
@@ -127,21 +127,10 @@ class PaymentServiceIT {
         assertThat(count("SELECT COUNT(*) FROM payments WHERE trip_id = ?", trip)).isEqualTo(1);
         assertThat(count("SELECT COUNT(*) FROM payment_attempts a JOIN payments p ON p.id = a.payment_id "
                 + "WHERE p.trip_id = ?", trip)).isEqualTo(1);
-        assertThat(jdbc.queryForList("""
-                        SELECT e.amount FROM wallet_entries e JOIN wallets w ON w.id = e.wallet_id
-                        WHERE w.driver_id = ? ORDER BY e.created_at, e.id
-                        """, Long.class, driver)).containsExactly(27_000L, -5_400L);
-        assertThat(jdbc.queryForObject("SELECT balance FROM wallets WHERE driver_id = ?", Long.class, driver))
-                .isEqualTo(21_600);
 
         JsonNode succeeded = consume("payment.events.v1", trip.toString());
         assertThat(succeeded.path("eventType").asString()).isEqualTo("PaymentSucceeded");
         assertThat(succeeded.path("payload").path("amount").asLong()).isEqualTo(27_000);
-        JsonNode earning = consume("wallet.events.v1", driver.toString());
-        assertThat(earning.path("eventType").asString()).isEqualTo("DriverEarningPosted");
-        assertThat(earning.path("payload").path("netEarning").asLong()).isEqualTo(21_600);
-        assertThat(earning.path("payload").path("commission").asLong()).isEqualTo(5_400);
-        assertThat(earning.path("payload").path("balance").asLong()).isEqualTo(21_600);
 
         // The customer sees it, other customers do not, finance staff see everything.
         mvc.perform(get("/api/v1/payments").param("tripId", trip.toString()).with(token(customer, "CUSTOMER")))
@@ -153,20 +142,10 @@ class PaymentServiceIT {
                 .andExpect(status().isNotFound());
         mvc.perform(get("/api/v1/payments/" + paymentId).with(token(UUID.randomUUID(), "FINANCE_STAFF")))
                 .andExpect(status().isOk());
-
-        // The driver's wallet: balance and ledger, newest first.
-        mvc.perform(get("/api/v1/wallets/me").with(token(driver, "DRIVER")))
-                .andExpect(jsonPath("$.data.balance").value(21_600))
-                .andExpect(jsonPath("$.data.entries.length()").value(2));
-        mvc.perform(get("/api/v1/wallets/me").with(token(customer, "CUSTOMER"))).andExpect(status().isForbidden());
-
-        // The ledger is append-only, whoever tries to change it.
-        assertThatThrownBy(() -> jdbc.update("UPDATE wallet_entries SET amount = 1"))
-                .hasMessageContaining("append-only");
     }
 
     @Test
-    void aDeclinedChargeIsReportedAndNothingIsCredited() throws Exception {
+    void aDeclinedChargeIsReported() throws Exception {
         UUID trip = UuidV7.random();
         UUID driver = UUID.randomUUID();
         // do..when: re-stubbing with when(...) would call the sandbox answer with a null argument.
@@ -180,7 +159,6 @@ class PaymentServiceIT {
         JsonNode failed = consume("payment.events.v1", trip.toString());
         assertThat(failed.path("eventType").asString()).isEqualTo("PaymentFailed");
         assertThat(failed.path("payload").path("failureCode").asString()).isEqualTo("CARD_DECLINED");
-        assertThat(count("SELECT COUNT(*) FROM wallets WHERE driver_id = ?", driver)).isZero();
     }
 
     @Test
@@ -222,8 +200,6 @@ class PaymentServiceIT {
         await().ignoreExceptions().atMost(Duration.ofSeconds(20)).untilAsserted(() -> assertThat(jdbc.queryForObject(
                 "SELECT status FROM payments WHERE trip_id = ? AND purpose = 'CANCELLATION_FEE'", String.class, late))
                 .isEqualTo("SUCCEEDED"));
-        assertThat(jdbc.queryForObject("SELECT balance FROM wallets WHERE driver_id = ?", Long.class, driver))
-                .isEqualTo(8_000);
         assertThat(count("SELECT COUNT(*) FROM payments WHERE trip_id = ?", free)).isZero();
     }
 
@@ -264,10 +240,8 @@ class PaymentServiceIT {
 
         assertThat(jdbc.queryForObject("SELECT status FROM payments WHERE trip_id = ?", String.class, trip))
                 .isEqualTo("SUCCEEDED");
-        await().ignoreExceptions().atMost(Duration.ofSeconds(10)).untilAsserted(() -> assertThat(jdbc.queryForObject(
-                "SELECT balance FROM wallets WHERE driver_id = ?", Long.class, driver)).isEqualTo(21_600));
-        assertThat(count("SELECT COUNT(*) FROM wallet_entries e JOIN wallets w ON w.id = e.wallet_id "
-                + "WHERE w.driver_id = ?", driver)).isEqualTo(2);
+        JsonNode paid = consume("payment.events.v1", trip.toString(), "PaymentSucceeded");
+        assertThat(paid.path("payload").path("providerRef").asString()).isEqualTo("prov_123");
 
         // Wrong amount or unknown attempt: recorded, never applied.
         sendCallback(callback("evt_unknown_" + trip, "charge.succeeded", "nope:1", 27_000, "VND"))
@@ -337,8 +311,6 @@ class PaymentServiceIT {
         // Paid: retrying again is a no-op, not a second charge.
         mvc.perform(post("/api/v1/payments/" + paymentId + "/retry").with(token(customer, "CUSTOMER")))
                 .andExpect(jsonPath("$.data.attemptCount").value(2));
-        assertThat(jdbc.queryForObject("SELECT balance FROM wallets WHERE driver_id = ?", Long.class, driver))
-                .isEqualTo(21_600);
     }
 
     /** FR-PAY, BR-010: partial and full refunds, never above what was captured, idempotent per key. */
@@ -398,11 +370,9 @@ class PaymentServiceIT {
                         .content(refundBody(1L, "GOODWILL", null)))
                 .andExpect(status().isForbidden());
 
-        // Audited (BR-014); the driver's wallet is untouched until finance claws back.
+        // Audited (BR-014).
         assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_records WHERE action = 'REFUND_REQUESTED' "
                 + "AND target_id = ? AND actor_id = ?", Integer.class, paymentId, finance)).isEqualTo(2);
-        assertThat(jdbc.queryForObject("SELECT balance FROM wallets WHERE driver_id = ?", Long.class, driver))
-                .isEqualTo(21_600);
         assertThatThrownBy(() -> jdbc.update("DELETE FROM audit_records")).hasMessageContaining("append-only");
     }
 
@@ -466,62 +436,6 @@ class PaymentServiceIT {
                 + "AND target_id IN (?, ?)", Integer.class, first, second)).isEqualTo(2);
     }
 
-    /** BR-011, BR-012, FR-WAL-009: corrections are new ledger lines, idempotent, audited, never overdrawn. */
-    @Test
-    void walletAdjustmentsAreIdempotentAuditedAndNeverOverdrawn() throws Exception {
-        UUID trip = UuidV7.random();
-        UUID driver = UUID.randomUUID();
-        UUID finance = UUID.randomUUID();
-        String paymentId = paidFare(trip, UUID.randomUUID(), driver, 27_000);
-        String refundId = data(refund(paymentId, "refund-key-0301", refundBody(10_000L, "OVERCHARGE", null),
-                finance)).path("id").asString();
-
-        String clawback = adjustmentBody(-8_000, "REFUND_CLAWBACK", null, refundId);
-        String adjustmentId = data(adjust(driver, "adjust-key-0001", clawback, finance).andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.balanceAfter").value(13_600))
-                .andExpect(jsonPath("$.data.tripId").value(trip.toString()))).path("id").asString();
-        adjust(driver, "adjust-key-0001", clawback, finance)
-                .andExpect(jsonPath("$.data.id").value(adjustmentId))
-                .andExpect(jsonPath("$.data.balanceAfter").value(13_600));
-        adjust(driver, "adjust-key-0001", adjustmentBody(-7_000, "REFUND_CLAWBACK", null, refundId), finance)
-                .andExpect(status().isConflict());
-        // At most the refunded 10 000 is taken back.
-        adjust(driver, "adjust-key-0002", adjustmentBody(-2_001, "REFUND_CLAWBACK", null, refundId), finance)
-                .andExpect(status().isUnprocessableEntity());
-        adjust(driver, "adjust-key-0003", adjustmentBody(1_000, "REFUND_CLAWBACK", null, refundId), finance)
-                .andExpect(status().isBadRequest());
-        // FR-WAL-009: never below zero.
-        adjust(driver, "adjust-key-0004", adjustmentBody(-13_601, "EARNING_CORRECTION", null, null), finance)
-                .andExpect(status().isUnprocessableEntity());
-        adjust(driver, "adjust-key-0005", adjustmentBody(2_000, "OTHER", null, null), finance)
-                .andExpect(status().isBadRequest());
-        adjust(driver, "adjust-key-0006", adjustmentBody(2_000, "OTHER", "Fuel bonus October", null), finance)
-                .andExpect(jsonPath("$.data.balanceAfter").value(15_600));
-        adjust(UUID.randomUUID(), "adjust-key-0007", adjustmentBody(2_000, "INCENTIVE", null, null), finance)
-                .andExpect(status().isNotFound());
-        mvc.perform(post("/api/v1/admin/wallets/" + driver + "/adjustments").with(token(driver, "DRIVER"))
-                        .header("Idempotency-Key", "adjust-key-0008").contentType(MediaType.APPLICATION_JSON)
-                        .content(adjustmentBody(1_000_000, "INCENTIVE", null, null)))
-                .andExpect(status().isForbidden());
-
-        // The ledger sums to the balance and shows what each line was for.
-        assertThat(jdbc.queryForObject("SELECT SUM(e.amount) FROM wallet_entries e JOIN wallets w "
-                + "ON w.id = e.wallet_id WHERE w.driver_id = ?", Long.class, driver)).isEqualTo(15_600);
-        mvc.perform(get("/api/v1/wallets/me").with(token(driver, "DRIVER")))
-                .andExpect(jsonPath("$.data.balance").value(15_600))
-                .andExpect(jsonPath("$.data.entries.length()").value(4))
-                .andExpect(jsonPath("$.data.entries[1].type").value("ADJUSTMENT"))
-                .andExpect(jsonPath("$.data.entries[1].referenceId").value(adjustmentId));
-        JsonNode adjusted = consume("wallet.events.v1", driver.toString(), "WalletAdjusted");
-        assertThat(adjusted.path("payload").path("amount").asLong()).isEqualTo(-8_000);
-        assertThat(adjusted.path("payload").path("refundId").asString()).isEqualTo(refundId);
-        assertThat(adjusted.path("payload").path("balance").asLong()).isEqualTo(13_600);
-        assertThat(jdbc.queryForObject("SELECT COUNT(*) FROM audit_records WHERE action = 'WALLET_ADJUSTED' "
-                + "AND actor_id = ?", Integer.class, finance)).isEqualTo(2);
-        assertThatThrownBy(() -> jdbc.update("UPDATE wallet_adjustments SET amount = 1"))
-                .hasMessageContaining("append-only");
-    }
-
     // ---- helpers --------------------------------------------------------------------------------
 
     /** A FareFinalized that was charged successfully; returns the payment ID. */
@@ -538,26 +452,11 @@ class PaymentServiceIT {
                 .contentType(MediaType.APPLICATION_JSON).content(body));
     }
 
-    private ResultActions adjust(UUID driver, String key, String body, UUID finance) throws Exception {
-        return mvc.perform(post("/api/v1/admin/wallets/" + driver + "/adjustments")
-                .with(token(finance, "FINANCE_STAFF")).header("Idempotency-Key", key)
-                .contentType(MediaType.APPLICATION_JSON).content(body));
-    }
-
     private String refundBody(Long amount, String reason, String note) throws Exception {
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("amount", amount);
         body.put("reason", reason);
         body.put("note", note);
-        return json.writeValueAsString(body);
-    }
-
-    private String adjustmentBody(long amount, String reason, String note, String refundId) throws Exception {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("amount", amount);
-        body.put("reason", reason);
-        body.put("note", note);
-        body.put("refundId", refundId);
         return json.writeValueAsString(body);
     }
 

@@ -17,7 +17,7 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Append-only audit trail for refunds and wallet corrections (BR-014, FR-ADM-006). {@code delta}
+ * Append-only audit trail for refunds (BR-014, FR-ADM-006). {@code delta}
  * holds only amounts, reasons and references: never card data or free-text notes.
  */
 @Getter

@@ -3,7 +3,6 @@ package com.rhl.payment.application;
 import com.rhl.common.security.CurrentUser;
 import com.rhl.common.security.Role;
 import com.rhl.common.web.ApiException;
-import com.rhl.payment.domain.AdjustmentReason;
 import com.rhl.payment.domain.Payment;
 import com.rhl.payment.domain.PaymentAttempt;
 import com.rhl.payment.domain.PaymentPurpose;
@@ -11,14 +10,9 @@ import com.rhl.payment.domain.PaymentStatus;
 import com.rhl.payment.domain.Refund;
 import com.rhl.payment.domain.RefundReason;
 import com.rhl.payment.domain.RefundStatus;
-import com.rhl.payment.domain.Wallet;
-import com.rhl.payment.domain.WalletAdjustment;
-import com.rhl.payment.domain.WalletEntry;
 import com.rhl.payment.infrastructure.persistence.PaymentAttemptRepository;
 import com.rhl.payment.infrastructure.persistence.PaymentRepository;
 import com.rhl.payment.infrastructure.persistence.RefundRepository;
-import com.rhl.payment.infrastructure.persistence.WalletEntryRepository;
-import com.rhl.payment.infrastructure.persistence.WalletRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,19 +21,15 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-/** Read side for customers, drivers and finance staff (FR-PAY, FR-WAL). */
+/** Read side for customers and finance staff (FR-PAY). */
 @Service
 @RequiredArgsConstructor
 public class PaymentQueries {
 
-    /** Wallets are kept per currency; v1.0 has one (README §2). */
-    private static final String CURRENCY = "VND";
     private static final Role[] FINANCE = {Role.FINANCE_STAFF, Role.ADMINISTRATOR};
 
     private final PaymentRepository payments;
     private final PaymentAttemptRepository attempts;
-    private final WalletRepository wallets;
-    private final WalletEntryRepository entries;
     private final RefundRepository refunds;
 
     public record PaymentView(UUID id, UUID tripId, PaymentPurpose purpose, UUID customerId, UUID driverId,
@@ -52,21 +42,6 @@ public class PaymentQueries {
                     p.getAmount(), p.getRefundedAmount(), p.getCurrency(), p.getStatus(), p.getAttemptCount(),
                     p.getProvider(), p.getProviderRef(), p.getFailureCode(), p.getCreatedAt(), p.getSucceededAt());
         }
-    }
-
-    /** @param referenceType {@code PAYMENT} or {@code ADJUSTMENT}; {@code referenceId} is its ID */
-    public record EntryView(UUID id, String type, long amount, long balanceAfter, String referenceType,
-                            UUID referenceId, UUID tripId, Integer commissionRuleVersion, Instant createdAt) {
-
-        static EntryView of(WalletEntry e) {
-            return new EntryView(e.getId(), e.getEntryType(), e.getAmount(), e.getBalanceAfter(), e.getReferenceType(),
-                    e.getReferenceId(), e.getTripId(), e.getCommissionRuleVersion(), e.getCreatedAt());
-        }
-    }
-
-    /** @param nextBefore pass as {@code before} for the next page; {@code null} on the last one */
-    public record WalletView(UUID walletId, UUID driverId, long balance, String currency, List<EntryView> entries,
-                             UUID nextBefore) {
     }
 
     /** The customer who owes it, or finance staff; anyone else gets 404 so IDs cannot be probed. */
@@ -100,18 +75,6 @@ public class PaymentQueries {
         RefundView forCustomer() {
             return new RefundView(id, paymentId, tripId, amount, currency, reason, null, status, null, null, null,
                     null, createdAt, completedAt);
-        }
-    }
-
-    /** @param balanceAfter the wallet balance right after this adjustment */
-    public record AdjustmentView(UUID id, UUID walletId, UUID driverId, long amount, String currency,
-                                 AdjustmentReason reason, String note, UUID tripId, UUID refundId, long balanceAfter,
-                                 UUID requestedBy, Instant createdAt) {
-
-        static AdjustmentView of(WalletAdjustment a, UUID driverId, long balanceAfter) {
-            return new AdjustmentView(a.getId(), a.getWalletId(), driverId, a.getAmount(), a.getCurrency(),
-                    a.getReason(), a.getNote(), a.getTripId(), a.getRefundId(), balanceAfter, a.getRequestedBy(),
-                    a.getCreatedAt());
         }
     }
 
@@ -160,19 +123,5 @@ public class PaymentQueries {
             throw ApiException.notFound("Payment");
         }
         return attempts.findByPaymentIdOrderByAttemptNo(paymentId).stream().map(AttemptView::of).toList();
-    }
-
-    /** The caller's own wallet, newest ledger lines first; an empty wallet before the first earning. */
-    @Transactional(readOnly = true)
-    public WalletView wallet(UUID driverId, UUID before, int limit) {
-        Wallet wallet = wallets.findByDriverIdAndCurrency(driverId, CURRENCY).orElse(null);
-        if (wallet == null) {
-            return new WalletView(null, driverId, 0, CURRENCY, List.of(), null);
-        }
-        List<WalletEntry> page = before == null ? entries.findPage(wallet.getId(), limit)
-                : entries.findPage(wallet.getId(), before, limit);
-        UUID next = page.size() == limit ? page.getLast().getId() : null;
-        return new WalletView(wallet.getId(), driverId, wallet.getBalance(), wallet.getCurrency(),
-                page.stream().map(EntryView::of).toList(), next);
     }
 }

@@ -1,11 +1,8 @@
 package com.rhl.payment.domain;
 
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.CsvSource;
 
 import java.time.Instant;
-import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -14,24 +11,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class PaymentDomainTest {
 
     private static final Instant NOW = Instant.parse("2026-10-07T08:00:00Z");
-    private static final CommissionRule TWENTY_PERCENT = CommissionRule.of(ServiceType.RIDE, 1, "0.2000");
-
-    @ParameterizedTest
-    @CsvSource({
-            // gross, commission (half-up to whole VND), net
-            "27000, 5400, 21600",
-            "12347, 2469, 9878",
-            "12348, 2470, 9878",
-            "1, 0, 1",
-            "0, 0, 0"})
-    void commissionIsRoundedHalfUpAndNetIsWhatIsLeft(long gross, long commission, long net) {
-        CommissionRule.Split split = TWENTY_PERCENT.split(gross);
-
-        assertThat(split.commission()).isEqualTo(commission);
-        assertThat(split.net()).isEqualTo(net);
-        assertThat(split.gross()).isEqualTo(split.commission() + split.net());
-        assertThat(split.ruleVersion()).isEqualTo(1);
-    }
 
     @Test
     void aDeclinedPaymentCanBeChargedAgainUntilItSucceeds() {
@@ -60,38 +39,6 @@ class PaymentDomainTest {
     @Test
     void nothingToChargeIsNotAPayment() {
         assertThatThrownBy(() -> payment(0)).isInstanceOf(IllegalArgumentException.class);
-    }
-
-    @Test
-    void aPaidTripCreditsTheGrossAndDebitsTheCommission() {
-        Payment payment = paid(27_000);
-        Wallet wallet = Wallet.open(UUID.randomUUID(), payment.getDriverId(), "VND", NOW);
-
-        List<WalletEntry> lines = wallet.creditPayment(payment, TWENTY_PERCENT.split(27_000), UUID::randomUUID, NOW);
-
-        assertThat(lines).extracting(WalletEntry::getEntryType).containsExactly("EARNING", "COMMISSION");
-        assertThat(lines).extracting(WalletEntry::getAmount).containsExactly(27_000L, -5_400L);
-        assertThat(lines).extracting(WalletEntry::getBalanceAfter).containsExactly(27_000L, 21_600L);
-        assertThat(lines).allSatisfy(line -> {
-            assertThat(line.getReferenceId()).isEqualTo(payment.getId());
-            assertThat(line.getTripId()).isEqualTo(payment.getTripId());
-        });
-        assertThat(wallet.getBalance()).isEqualTo(21_600);
-    }
-
-    @Test
-    void aZeroCommissionWritesNoLineAndCurrenciesMustMatch() {
-        Payment payment = paid(10_000);
-        Wallet wallet = Wallet.open(UUID.randomUUID(), payment.getDriverId(), "VND", NOW);
-
-        List<WalletEntry> lines = wallet.creditPayment(payment, CommissionRule.of(ServiceType.RIDE, 2, "0").split(10_000),
-                UUID::randomUUID, NOW);
-
-        assertThat(lines).extracting(WalletEntry::getEntryType).containsExactly("EARNING");
-        assertThat(wallet.getBalance()).isEqualTo(10_000);
-        Wallet usd = Wallet.open(UUID.randomUUID(), payment.getDriverId(), "USD", NOW);
-        assertThatThrownBy(() -> usd.creditPayment(payment, TWENTY_PERCENT.split(10_000), UUID::randomUUID, NOW))
-                .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
@@ -147,37 +94,6 @@ class PaymentDomainTest {
         Payment unpaid = payment(27_000);
         assertThat(unpaid.refundable()).isZero();
         assertThatThrownBy(() -> refund(unpaid, 1_000)).isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
-    void adjustmentsAreCompensatingLinesThatNeverTakeTheBalanceBelowZero() {
-        Payment payment = paid(27_000);
-        Wallet wallet = Wallet.open(UUID.randomUUID(), payment.getDriverId(), "VND", NOW);
-        wallet.creditPayment(payment, TWENTY_PERCENT.split(27_000), UUID::randomUUID, NOW);
-        UUID actor = UUID.randomUUID();
-
-        Wallet.Adjusted debit = wallet.adjust(UUID.randomUUID(), UUID.randomUUID(), -8_000,
-                AdjustmentReason.REFUND_CLAWBACK, null, payment.getTripId(), UUID.randomUUID(), "key-00001", "h", actor,
-                NOW);
-
-        assertThat(debit.entry().getEntryType()).isEqualTo("ADJUSTMENT");
-        assertThat(debit.entry().getReferenceType()).isEqualTo(Wallet.ADJUSTMENT);
-        assertThat(debit.entry().getReferenceId()).isEqualTo(debit.adjustment().getId());
-        assertThat(debit.entry().getAmount()).isEqualTo(-8_000);
-        assertThat(debit.entry().getBalanceAfter()).isEqualTo(13_600);
-        assertThat(debit.adjustment().getRequestedBy()).isEqualTo(actor);
-        assertThat(wallet.getBalance()).isEqualTo(13_600);
-
-        assertThatThrownBy(() -> wallet.adjust(UUID.randomUUID(), UUID.randomUUID(), -13_601,
-                AdjustmentReason.EARNING_CORRECTION, null, null, null, "key-00002", "h", actor, NOW))
-                .isInstanceOf(Wallet.NegativeBalanceException.class);
-        assertThat(wallet.getBalance()).isEqualTo(13_600);
-        assertThatThrownBy(() -> wallet.adjust(UUID.randomUUID(), UUID.randomUUID(), 0,
-                AdjustmentReason.INCENTIVE, null, null, null, "key-00003", "h", actor, NOW))
-                .isInstanceOf(IllegalArgumentException.class);
-        wallet.adjust(UUID.randomUUID(), UUID.randomUUID(), 5_000, AdjustmentReason.INCENTIVE, null, null, null,
-                "key-00004", "h", actor, NOW);
-        assertThat(wallet.getBalance()).isEqualTo(18_600);
     }
 
     private static Refund refund(Payment payment, long amount) {

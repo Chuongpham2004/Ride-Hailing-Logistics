@@ -4,8 +4,6 @@ import com.rhl.common.security.CurrentUser;
 import com.rhl.common.web.ApiResponse;
 import com.rhl.payment.application.PaymentProcessor;
 import com.rhl.payment.application.PaymentQueries;
-import jakarta.validation.constraints.Max;
-import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.validation.annotation.Validated;
@@ -49,14 +47,5 @@ public class PaymentController {
     @PreAuthorize("hasRole('CUSTOMER')")
     public ApiResponse<PaymentQueries.PaymentView> retry(@PathVariable UUID paymentId) {
         return ApiResponse.ok(processor.retry(CurrentUser.get(), paymentId));
-    }
-
-    /** The driver's balance and ledger, newest first (FR-WAL). */
-    @GetMapping("/api/v1/wallets/me")
-    @PreAuthorize("hasRole('DRIVER')")
-    public ApiResponse<PaymentQueries.WalletView> myWallet(@RequestParam(required = false) UUID before,
-                                                           @RequestParam(defaultValue = "20") @Min(1) @Max(100)
-                                                           int limit) {
-        return ApiResponse.ok(queries.wallet(CurrentUser.get().id(), before, limit));
     }
 }

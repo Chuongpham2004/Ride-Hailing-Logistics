@@ -424,7 +424,6 @@ function driverPanel(a) {
         <option>CUSTOMER_NO_SHOW</option><option>VEHICLE_ISSUE</option><option>WRONG_PICKUP</option>
         <option>SAFETY_CONCERN</option></select></label>
       <button class="danger" data-act="cancel" data-actor="${k}">Huỷ chuyến</button>
-      <button class="ghost" data-act="wallet" data-actor="${k}">Ví</button>
     </div>
     <div class="row">${tripTools(k)}</div>
 
@@ -493,18 +492,6 @@ function staffPanel() {
       <button class="ghost" data-act="refundResend" data-actor="staff" title="Cùng khoá → cùng refund">Gửi lại (cùng khoá)</button>
       <button class="ghost" data-act="refundOtherAmount" data-actor="staff" title="Phải bị chặn">Cùng khoá, số tiền khác</button>
       <button class="ghost" data-act="refundTooMuch" data-actor="staff" title="Phải bị chặn">Hoàn vượt số đã thu</button>
-    </div>
-
-    <h3>UC-08: ví tài xế</h3>
-    <div class="row">
-      <label>Số tiền (âm = trừ)<input id="staff-adjust" value="-8000"></label>
-      <label>Lý do<select id="staff-adjust-reason"><option>REFUND_CLAWBACK</option><option>EARNING_CORRECTION</option>
-        <option>INCENTIVE</option><option>OTHER</option></select></label>
-    </div>
-    <div class="row">
-      <button data-act="adjust" data-actor="staff" title="Áp dụng cho tài xế đang chọn ở trên">Điều chỉnh ví</button>
-      <button class="ghost" data-act="adjustResend" data-actor="staff" title="Cùng khoá → không trừ hai lần">Gửi lại (cùng khoá)</button>
-      <button class="ghost" data-act="staffWallet" data-actor="staff">Xem ví</button>
     </div>
   </article>`;
 }
@@ -1018,15 +1005,6 @@ async function advance(a, btn) {
   renderTrip(a);
   if (step === 'complete') refreshAvailabilitySoon(a);
 }
-async function wallet(a) {
-  logWallet(a, await api(a, 'GET', '/api/v1/wallets/me?limit=10'));
-}
-function logWallet(a, w) {
-  log(a, 'info', `Ví: số dư ${money(w.balance)} ${w.currency}`);
-  for (const e of w.entries || []) {
-    log(a, 'info', `   ${e.type} ${money(e.amount)} → ${money(e.balanceAfter)}${e.tripId ? ' (trip ' + short(e.tripId) + ')' : ''}`);
-  }
-}
 function renderOffer(a, note) {
   const el = field(a, 'offer'), o = a.offer;
   el.classList.toggle('offer', Boolean(o));
@@ -1248,27 +1226,6 @@ async function refundTooMuch() {
       { paymentId, key: 'refund-over-' + Date.now(), body: { reason: 'OVERCHARGE' } }, 999999999));
 }
 
-const adjustCall = j => staff('POST', `/api/v1/admin/wallets/${j.driverId}/adjustments`, j.body,
-    { 'Idempotency-Key': j.key });
-async function adjust() {
-  const reason = $('staff-adjust-reason').value;
-  const body = { amount: Number($('staff-adjust').value), reason, note: 'Điều chỉnh từ test console' };
-  if (reason === 'REFUND_CLAWBACK' && admin.lastRefund) body.refundId = admin.lastRefund.id;
-  const j = { driverId: staffDriver().userId, key: 'adjust-' + Date.now(), body };
-  const d = await adjustCall(j);
-  j.id = d.id;
-  admin.lastAdjust = j;
-  log(admin, 'info', `Điều chỉnh ${short(d.id)}: ${money(d.amount)} → số dư ${money(d.balanceAfter)} ${d.currency}`);
-}
-async function adjustResend() {
-  const j = need(admin.lastAdjust, 'Chưa điều chỉnh lần nào');
-  const d = await adjustCall(j);
-  (d.id === j.id ? pass : fail)(admin, `Gửi lại cùng khoá: điều chỉnh ${short(d.id)} (lần đầu ${short(j.id)}), số dư ${money(d.balanceAfter)}`);
-}
-async function staffWallet() {
-  logWallet(admin, await staff('GET', `/api/v1/admin/wallets/${staffDriver().userId}?limit=20`));
-}
-
 // ---------- small DOM helpers ----------
 function kv(rows) {
   const dl = document.createElement('dl');
@@ -1317,9 +1274,9 @@ const actions = {
   onboard, verifySubmit, approveNow, resendCode, submitProfile, missing,
   expiredLicense: a => license(a, '2015-01-01', '2020-01-01'),
   validLicense: a => license(a, '2024-01-01', '2030-01-01'),
-  online, offline, sendLocation, sendAnomaly, currentLocation, loadOffers, accept, decline, advance, wallet,
+  online, offline, sendLocation, sendAnomaly, currentLocation, loadOffers, accept, decline, advance,
   reviewQueue, reviewShow, approve, reject, approveStale, takeTrip, tripDetail, staffCancel, staffCancelShort,
-  findPayments, refund, refundResend, refundOtherAmount, refundTooMuch, adjust, adjustResend, staffWallet
+  findPayments, refund, refundResend, refundOtherAmount, refundTooMuch
 };
 document.addEventListener('click', async e => {
   const btn = e.target.closest('button[data-act]');

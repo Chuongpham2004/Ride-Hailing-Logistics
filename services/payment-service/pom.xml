@@ -12,7 +12,7 @@
     </parent>
 
     <artifactId>payment-service</artifactId>
-    <description>Payments, provider charges, driver wallets (immutable ledger) and commission.</description>
+    <description>Payments: provider charges, callbacks and refunds. Driver wallets live at the payment provider.</description>
 
     <dependencies>
         <dependency>

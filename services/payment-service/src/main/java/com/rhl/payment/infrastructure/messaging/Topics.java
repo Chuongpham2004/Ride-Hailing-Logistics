@@ -15,8 +15,6 @@ public class Topics {
     public static final String PRICING_EVENTS = "pricing.events.v1";
     /** Key = tripId. */
     public static final String PAYMENT_EVENTS = "payment.events.v1";
-    /** Key = driverId. */
-    public static final String WALLET_EVENTS = "wallet.events.v1";
 
     @Bean
     public KafkaAdmin.NewTopics paymentTopics(PaymentServiceProperties properties) {
@@ -26,7 +24,6 @@ public class Topics {
                 TopicBuilder.name(PRICING_EVENTS).partitions(partitions).replicas(replicas).build(),
                 TopicBuilder.name(MessagingAutoConfiguration.deadLetterTopic(PRICING_EVENTS)).partitions(partitions)
                         .replicas(replicas).build(),
-                TopicBuilder.name(PAYMENT_EVENTS).partitions(partitions).replicas(replicas).build(),
-                TopicBuilder.name(WALLET_EVENTS).partitions(partitions).replicas(replicas).build());
+                TopicBuilder.name(PAYMENT_EVENTS).partitions(partitions).replicas(replicas).build());
     }
 }

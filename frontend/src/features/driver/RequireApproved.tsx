@@ -5,7 +5,7 @@ import { Button } from '@/shared/ui/Button';
 import { useDriverProfile } from './profile';
 
 /**
- * The working screens (home, trips, earnings, history, profile) are for approved drivers only
+ * The working screens (home, trips, history, profile) are for approved drivers only
  * (frontend-design.md §4.3): no profile yet or sent back for changes → onboarding; submitted,
  * rejected or suspended → the review page. Convenience only: the server refuses to put an
  * unapproved driver online whatever this shows.
