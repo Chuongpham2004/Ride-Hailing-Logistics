@@ -149,9 +149,6 @@ function Review({ review }: { review: DriverReview }) {
             {canUse('trips', user?.roles ?? []) && (
               <Link to={`/admin/trips?driverId=${profile.driverId}`}>Xem chuyến của tài xế</Link>
             )}
-            {canUse('wallets', user?.roles ?? []) && (
-              <Link to={`/admin/wallets/${profile.driverId}`}>Ví tài xế</Link>
-            )}
             {canUse('users', user?.roles ?? []) && (
               <Link to={`/admin/users/${profile.driverId}`}>Tài khoản đăng nhập</Link>
             )}

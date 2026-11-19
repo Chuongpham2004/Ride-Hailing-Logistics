@@ -14,14 +14,7 @@ import java.time.Duration;
 @Validated
 @ConfigurationProperties(prefix = "rhl")
 public record PaymentServiceProperties(@Valid @NotNull Charge charge, @Valid @NotNull Provider provider,
-                                       @Valid @NotNull Wallet wallet, @Valid @NotNull Kafka kafka) {
-
-    /**
-     * @param maxAdjustment the largest correction, credit or debit, one request may post; larger
-     *                      ones are split or handled outside the API
-     */
-    public record Wallet(@Min(1) long maxAdjustment) {
-    }
+                                       @Valid @NotNull Kafka kafka) {
 
     /**
      * @param resolveAfter    an attempt still unresolved this long after it started is sent again

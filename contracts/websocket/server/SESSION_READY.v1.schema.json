@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rhl:ws:SESSION_READY:v1",
   "title": "SESSION_READY v1 (server -> client)",
-  "description": "First message of every connection. After it the client loads its REST snapshot (trip, offers, wallet) and applies later messages on top (FR-RT, UC-07).",
+  "description": "First message of every connection. After it the client loads its REST snapshot (trip, offers, payments) and applies later messages on top (FR-RT, UC-07).",
   "type": "object",
   "allOf": [
     {

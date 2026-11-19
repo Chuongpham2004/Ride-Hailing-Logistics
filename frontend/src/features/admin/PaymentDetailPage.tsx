@@ -110,15 +110,7 @@ function Detail({ payment }: { payment: Payment }) {
             <dt className="text-curb">Khách</dt>
             <dd className="m-0 tabular-nums">{payment.customerId}</dd>
             <dt className="text-curb">Tài xế</dt>
-            <dd className="m-0 tabular-nums">
-              {payment.driverId ? (
-                <Link to={`/admin/wallets/${payment.driverId}`} className="font-semibold">
-                  {payment.driverId}
-                </Link>
-              ) : (
-                '—'
-              )}
-            </dd>
+            <dd className="m-0 tabular-nums">{payment.driverId ?? '—'}</dd>
             <dt className="text-curb">Đã hoàn</dt>
             <dd className="m-0">
               <Money amount={payment.refundedAmount} />

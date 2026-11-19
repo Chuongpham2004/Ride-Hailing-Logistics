@@ -10,7 +10,7 @@ import { useDriverProfile, useDriverStateSync } from './profile';
 
 const TABS: AreaTab[] = [
   { to: '/driver', end: true, label: 'Trang chủ', Icon: PinIcon },
-  { to: '/driver/earnings', end: false, label: 'Thu nhập', Icon: ListIcon },
+  { to: '/driver/activity', end: false, label: 'Lịch sử', Icon: ListIcon },
   { to: '/driver/profile', end: false, label: 'Hồ sơ', Icon: UserIcon },
 ];
 

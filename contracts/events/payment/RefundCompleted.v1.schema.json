@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "urn:rhl:event:RefundCompleted:v1",
   "title": "RefundCompleted v1",
-  "description": "The provider confirmed a refund of a captured payment. Published once per refund; refundedTotal is the payment's refunded sum including this refund and never exceeds paymentAmount (BR-010). Driver wallets are not changed by a refund: finance staff post a WalletAdjusted (REFUND_CLAWBACK) when the driver bears it. Topic payment.events.v1, key = tripId.",
+  "description": "The provider confirmed a refund of a captured payment. Published once per refund; refundedTotal is the payment's refunded sum including this refund and never exceeds paymentAmount (BR-010). Topic payment.events.v1, key = tripId.",
   "type": "object",
   "allOf": [{ "$ref": "urn:rhl:event:envelope:v1" }],
   "properties": {

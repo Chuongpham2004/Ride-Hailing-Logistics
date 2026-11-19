@@ -360,29 +360,6 @@ export interface StaffTripDetail {
   };
 }
 
-/** payment-service PaymentQueries.EntryView; `amount` is signed (commission is negative). */
-export interface WalletEntry {
-  id: string;
-  type: 'EARNING' | 'COMMISSION' | 'ADJUSTMENT';
-  amount: number;
-  balanceAfter: number;
-  referenceType: 'PAYMENT' | 'ADJUSTMENT';
-  referenceId: string;
-  tripId?: string;
-  commissionRuleVersion?: number;
-  createdAt: string;
-}
-
-/** payment-service PaymentQueries.WalletView; walletId is absent until the first entry. */
-export interface Wallet {
-  walletId?: string;
-  driverId: string;
-  balance: number;
-  currency: string;
-  entries: WalletEntry[];
-  nextBefore?: string;
-}
-
 /** payment-service PaymentQueries.PaymentPage; pass nextBefore as `before` for the next page. */
 export interface PaymentPage {
   items: Payment[];
@@ -407,24 +384,6 @@ export interface StaffRefund extends Refund {
   providerRef?: string;
   failureCode?: string;
   requestedBy?: string;
-}
-
-export type AdjustmentReason = 'REFUND_CLAWBACK' | 'EARNING_CORRECTION' | 'INCENTIVE' | 'OTHER';
-
-/** payment-service PaymentQueries.AdjustmentView; amount is signed (negative debits the driver). */
-export interface WalletAdjustment {
-  id: string;
-  walletId: string;
-  driverId: string;
-  amount: number;
-  currency: string;
-  reason: AdjustmentReason;
-  note?: string;
-  tripId?: string;
-  refundId?: string;
-  balanceAfter: number;
-  requestedBy: string;
-  createdAt: string;
 }
 
 /** pricing-service PricingViews.RuleView; amounts in whole VND. */

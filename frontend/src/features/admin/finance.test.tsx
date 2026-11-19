@@ -9,7 +9,6 @@ import type { CurrentUser, Payment } from '@/shared/api/types';
 import { useSession } from '@/shared/auth/session';
 import { apiUrl, fail, ok, server } from '@/test/server';
 import PaymentDetailPage from './PaymentDetailPage';
-import WalletPage from './WalletPage';
 
 const FINANCE = {
   id: 'finance-1',
@@ -120,86 +119,5 @@ describe('PaymentDetailPage', () => {
     });
     expect(await screen.findByText(/Đang chờ nhà cung cấp/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Hoàn tiền' })).toBeDisabled();
-  });
-});
-
-describe('WalletPage', () => {
-  function serveWallet(balance: number) {
-    server.use(
-      http.get(apiUrl(`/api/v1/admin/wallets/${DRIVER_ID}`), () =>
-        ok({
-          walletId: 'w1',
-          driverId: DRIVER_ID,
-          balance,
-          currency: 'VND',
-          entries: [
-            {
-              id: 'e1',
-              type: 'EARNING',
-              amount: balance,
-              balanceAfter: balance,
-              referenceType: 'PAYMENT',
-              referenceId: PAYMENT_ID,
-              tripId: 'trip-1',
-              createdAt: '2026-11-05T02:00:01Z',
-            },
-          ],
-        }),
-      ),
-    );
-  }
-
-  it('debits with a negative amount and cannot take more than the balance', async () => {
-    serveWallet(30000);
-    let sent: unknown;
-    server.use(
-      http.post(apiUrl(`/api/v1/admin/wallets/${DRIVER_ID}/adjustments`), async ({ request }) => {
-        sent = await request.json();
-        return ok({
-          id: 'a1',
-          walletId: 'w1',
-          driverId: DRIVER_ID,
-          amount: -5000,
-          currency: 'VND',
-          reason: 'EARNING_CORRECTION',
-          balanceAfter: 25000,
-          requestedBy: 'finance-1',
-          createdAt: '2026-11-05T03:00:00Z',
-        });
-      }),
-    );
-    renderAt(`/admin/wallets/${DRIVER_ID}`, '/admin/wallets/:driverId', <WalletPage />);
-    const user = userEvent.setup();
-
-    await user.click(await screen.findByRole('button', { name: 'Tạo điều chỉnh' }));
-    const dialog = screen.getByRole('dialog');
-    await user.selectOptions(within(dialog).getByLabelText('Lý do'), 'EARNING_CORRECTION');
-    await user.click(within(dialog).getByLabelText('Trừ khỏi ví'));
-    await user.type(within(dialog).getByLabelText('Số tiền (₫)'), '40000');
-    expect(within(dialog).getByText(/Số dư chỉ còn 30\.000/)).toBeInTheDocument();
-    await user.clear(within(dialog).getByLabelText('Số tiền (₫)'));
-    await user.type(within(dialog).getByLabelText('Số tiền (₫)'), '5000');
-    await user.click(within(dialog).getByRole('button', { name: /^Trừ 5\.000/ }));
-
-    expect(await screen.findByText(/Đã trừ 5\.000.*Số dư mới 25\.000/)).toBeInTheDocument();
-    expect(sent).toEqual({ amount: -5000, reason: 'EARNING_CORRECTION' });
-  });
-
-  it('asks for the refund id on a clawback', async () => {
-    serveWallet(30000);
-    renderAt(`/admin/wallets/${DRIVER_ID}`, '/admin/wallets/:driverId', <WalletPage />);
-    const user = userEvent.setup();
-
-    await user.click(await screen.findByRole('button', { name: 'Tạo điều chỉnh' }));
-    const dialog = screen.getByRole('dialog');
-    await user.selectOptions(within(dialog).getByLabelText('Lý do'), 'REFUND_CLAWBACK');
-    expect(within(dialog).queryByLabelText('Cộng vào ví')).not.toBeInTheDocument();
-    await user.type(within(dialog).getByLabelText('Số tiền (₫)'), '5000');
-    expect(within(dialog).getByRole('button', { name: /^Trừ 5\.000/ })).toBeDisabled();
-    await user.type(
-      within(dialog).getByLabelText('Mã lần hoàn tiền'),
-      '01a1aae3-3333-7000-8000-000000000003',
-    );
-    expect(within(dialog).getByRole('button', { name: /^Trừ 5\.000/ })).toBeEnabled();
   });
 });

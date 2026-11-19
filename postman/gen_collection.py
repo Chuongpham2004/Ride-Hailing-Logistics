@@ -484,15 +484,6 @@ pm.test("SUCCEEDED, amount = giá báo", () => {
   pm.expect(String(p.amount)).to.eql(pm.collectionVariables.get("quoteIdTotal"));
 });
 pm.collectionVariables.set("farePaymentId", p.id);"""),
-    req("Ví tài xế A có thu nhập từ chuyến (1 dòng EARNING)", "GET", "/api/v1/wallets/me?limit=100",
-        token="driverAToken", tests=status(200) + "\n" + DATA + """
-const rows = d.entries.filter(e => e.tripId === pm.collectionVariables.get("tripId"));
-pm.test("Có dòng ví cho trip", () => pm.expect(rows).to.not.be.empty);
-pm.test("Không ghi trùng loại", () => {
-  const types = rows.map(r => r.type);
-  pm.expect(new Set(types).size).to.eql(types.length);
-});
-pm.collectionVariables.set("walletBalanceA", String(d.balance));"""),
     payments_for_trip("Gọi lại: vẫn chỉ 1 payment (không trùng)", "customerToken", "tripId",
                       '\npm.test("Vẫn 1", () => pm.expect(d.length).to.eql(1));', wait_ms=2000),
     req("[NEG] Khách 2 xem payment của khách 1 → 404", "GET", "/api/v1/payments/{{farePaymentId}}",
@@ -726,19 +717,6 @@ pm.test("Không áp dụng lại", () => pm.expect(["ALREADY_RESOLVED", "DUPLICA
         headers={"X-Rhl-Signature": "t=1,v1=deadbeef"}, raw_body="{{cbBody}}", tests=status(401)),
     req("[Hoàn tiền] refundedAmount vẫn 10 000", "GET", "/api/v1/payments/{{farePaymentId}}", token="customerToken",
         tests=status(200) + "\n" + DATA + '\npm.test("Không đổi", () => pm.expect(d.refundedAmount).to.eql(10000));'),
-    req("[Ví] Finance trừ lại 8 000 của tài xế A (REFUND_CLAWBACK)", "POST",
-        "/api/v1/admin/wallets/{{driverAId}}/adjustments", token="adminToken",
-        headers={"Idempotency-Key": "{{adjKey}}"}, pre='pm.collectionVariables.set("adjKey", "adj-" + Date.now());',
-        raw_body='{\n  "amount": -8000,\n  "reason": "REFUND_CLAWBACK",\n  "note": "Thu hồi phần hoàn tiền",\n  "refundId": "{{refundId}}"\n}',
-        tests=status_in(200, 201)),
-    req("[Ví] Gửi lặp cùng key → không trừ 2 lần", "POST", "/api/v1/admin/wallets/{{driverAId}}/adjustments",
-        token="adminToken", headers={"Idempotency-Key": "{{adjKey}}"},
-        raw_body='{\n  "amount": -8000,\n  "reason": "REFUND_CLAWBACK",\n  "note": "Thu hồi phần hoàn tiền",\n  "refundId": "{{refundId}}"\n}',
-        tests=status_in(200, 201)),
-    req("[Ví] Số dư A giảm đúng 8 000 (+ phí no-show nếu có)", "GET", "/api/v1/wallets/me?limit=100",
-        token="driverAToken", tests=status(200) + "\n" + DATA + """
-pm.test("Chỉ 1 dòng điều chỉnh -8000", () => pm.expect(d.entries.filter(e => e.amount === -8000).length).to.eql(1));
-console.log("Số dư trước UC-08:", pm.collectionVariables.get("walletBalanceA"), "→ hiện tại:", d.balance);"""),
 ], desc="Callback cần biến webhookSecret = PAYMENT_WEBHOOK_SECRET của payment-service (mặc định dev đã điền sẵn).")
 
 uc09 = folder("UC-09 Vị trí tài xế", [
